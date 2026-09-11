@@ -19,8 +19,12 @@ namespace UberBagarre.Player
         [SerializeField] private PlayerInputReader _input;
 
         [Header("Vitesses (m/s)")]
-        [SerializeField, Min(0f)] private float _walkSpeed = 3.4f;
-        [SerializeField, Min(1f)] private float _sprintMultiplier = 1.5f;
+        [SerializeField, Min(0f)] private float _walkSpeed = 3.1f;
+        [SerializeField, Min(1f)] private float _sprintMultiplier = 1.75f;
+
+        [SerializeField]
+        [Tooltip("Le sprint ne s'applique que si on avance. Evite de sprinter en reculant ou en pas chasse.")]
+        private bool _sprintRequiresForwardInput = true;
         [SerializeField, Range(0.1f, 1f)] private float _backwardMultiplier = 0.78f;
         [SerializeField, Range(0.1f, 1f)] private float _strafeMultiplier = 0.9f;
 
@@ -52,6 +56,9 @@ namespace UberBagarre.Player
         public bool InputLocked { get; set; }
 
         public bool IsGrounded { get; private set; }
+
+        /// <summary>Vrai uniquement quand le sprint s'applique réellement (au sol, en mouvement, vers l'avant).</summary>
+        public bool IsSprinting { get; private set; }
         public Vector3 HorizontalVelocity { get { return _horizontalVelocity; } }
         public float CurrentSpeed { get { return _horizontalVelocity.magnitude; } }
 
@@ -86,9 +93,9 @@ namespace UberBagarre.Player
             IsGrounded = _controller.isGrounded;
 
             Vector2 moveInput = (_input != null && !InputLocked) ? _input.Move : Vector2.zero;
-            bool sprinting = _input != null && !InputLocked && _input.SprintHeld;
+            IsSprinting = EvaluateSprint(moveInput);
 
-            UpdateHorizontalVelocity(moveInput, sprinting, dt);
+            UpdateHorizontalVelocity(moveInput, IsSprinting, dt);
             UpdateVerticalVelocity(dt);
 
             _externalVelocity = Vector3.MoveTowards(_externalVelocity, Vector3.zero, _externalVelocityDamping * dt);
@@ -96,6 +103,15 @@ namespace UberBagarre.Player
             Vector3 motion = (_horizontalVelocity + _externalVelocity) * dt;
             motion.y += _verticalVelocity * dt;
             _controller.Move(motion);
+        }
+
+        private bool EvaluateSprint(Vector2 moveInput)
+        {
+            if (_input == null || InputLocked || !_input.SprintHeld) return false;
+            if (!IsGrounded || moveInput.sqrMagnitude < 0.01f) return false;
+
+            // Sprinter en marche arrière ou en pas chassé n'a pas de sens et casse la lisibilité du combat.
+            return !_sprintRequiresForwardInput || moveInput.y > 0.35f;
         }
 
         private void UpdateHorizontalVelocity(Vector2 moveInput, bool sprinting, float dt)

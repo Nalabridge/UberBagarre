@@ -54,6 +54,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 |---|---|
 | **W A S D** (ou Z Q S D en AZERTY, selon ton clavier) | Déplacement |
 | **Souris** | Regarder |
+| **Maj gauche** (maintenu) | Sprint (uniquement vers l'avant) |
 | **Espace** | Saut |
 | **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
 | Clic dans la vue | Recapturer le curseur |

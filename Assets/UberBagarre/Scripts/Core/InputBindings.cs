@@ -17,8 +17,8 @@ namespace UberBagarre.Core
         public InputBinding moveRight = InputBinding.FromKey(KeyCode.D);
         public InputBinding jump = InputBinding.FromKey(KeyCode.Space);
 
-        [Tooltip("Laisse sur None pour desactiver le sprint (par defaut : desactive, car Shift sert a l'esquive).")]
-        public InputBinding sprint = InputBinding.FromKey(KeyCode.None);
+        [Tooltip("Maintenu pour sprinter. Laisse sur None pour desactiver le sprint.")]
+        public InputBinding sprint = InputBinding.FromKey(KeyCode.LeftShift);
 
         [Header("Combat")]
         [Tooltip("Attaque principale. Le coup reellement joue est decide par l'AttackInputMap (phase 3).")]
@@ -34,7 +34,8 @@ namespace UberBagarre.Core
         public InputBinding attackModifierAlt = InputBinding.FromKey(KeyCode.LeftAlt);
 
         [Header("Esquive")]
-        public InputBinding dodge = InputBinding.FromKey(KeyCode.LeftShift);
+        [Tooltip("Phase 8. Shift etant pris par le sprint, l'esquive utilise une autre touche par defaut.")]
+        public InputBinding dodge = InputBinding.FromKey(KeyCode.LeftAlt);
 
         [Header("Systeme (toujours actif, meme curseur libere)")]
         [Tooltip("Libere le curseur souris pour revenir a l'editeur Unity.")]
@@ -42,5 +43,30 @@ namespace UberBagarre.Core
 
         [Tooltip("Affiche / masque l'overlay de debug de combat.")]
         public InputBinding toggleDebugOverlay = InputBinding.FromKey(KeyCode.F1);
+
+#if UNITY_EDITOR
+        /// <summary>
+        /// Restaure toutes les touches par défaut.
+        /// Accessible via le menu contextuel de l'Inspector (icône ⋮ en haut à droite du composant).
+        ///
+        /// Utile parce qu'un asset garde les valeurs enregistrées le jour de sa création :
+        /// changer une valeur par défaut dans le code ne met PAS à jour un asset déjà existant.
+        /// </summary>
+        [ContextMenu("Reinitialiser aux touches par defaut")]
+        private void ResetToDefaults()
+        {
+            InputBindings defaults = CreateInstance<InputBindings>();
+            string previousName = name;
+
+            UnityEditor.EditorUtility.CopySerialized(defaults, this);
+            name = previousName;
+
+            DestroyImmediate(defaults);
+            UnityEditor.EditorUtility.SetDirty(this);
+            UnityEditor.AssetDatabase.SaveAssets();
+
+            Debug.Log("[UberBagarre] Touches reinitialisees aux valeurs par defaut.", this);
+        }
+#endif
     }
 }

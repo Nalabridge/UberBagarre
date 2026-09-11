@@ -165,3 +165,18 @@ exactement comme un glisser-déposer manuel.
   glissade involontaire, comportement déterministe — ce qu'on veut pour juger des timings de combat.
 - **Sol en damier généré par code** : sur un sol uni, on ne perçoit pas son propre déplacement,
   donc impossible de régler vitesse et inertie à l'œil.
+
+### Phase 1 — calibrage après premier test en jeu
+- Head bob réduit d'environ 37 % (la marche était jugée légèrement exagérée), avec un renfort
+  interpolé au sprint pour que les deux allures restent distinctes.
+- Marche 3.4 → 3.1 m/s : à 3.4 m/s le joueur trottinait déjà, ce qui rendait le head bob plus
+  visible qu'il ne devrait et ne laissait pas de place au sprint.
+- **Sprint sur Maj gauche**, ×1.75, bloqué en marche arrière et en pas chassé
+  (`_sprintRequiresForwardInput`) : sprinter de côté casserait la lisibilité des déplacements de combat.
+- **Conflit de touche à trancher en phase 8** : l'esquive était prévue sur Maj gauche. Elle passe
+  provisoirement sur Alt gauche. Trois pistes le moment venu : esquive sur double-tap de direction,
+  sprint désactivé en garde (Maj redevient libre pour l'esquive en combat), ou touche dédiée.
+- `InputBindings.ResetToDefaults()` (menu contextuel de l'Inspector) : un asset conserve les valeurs
+  du jour de sa création, donc changer une valeur par défaut dans le code ne met jamais à jour un
+  asset déjà existant. Sans ce bouton, chaque changement de touche par défaut devrait être répercuté
+  à la main.
