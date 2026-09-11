@@ -46,6 +46,19 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 > Il demande confirmation, car il **remplace** la scène (tes assets — matériaux, réglages, données
 > d'attaque — ne sont jamais touchés).
 
+### 4. Après chaque mise à jour du code
+
+1. Récupère le code (`Fetch origin` → `Pull origin` dans GitHub Desktop), puis reviens dans Unity :
+   il recompile tout seul dès que la fenêtre reprend le focus.
+2. Menu **Uber Bagarre → 3 - Reinitialiser les touches par defaut** — *uniquement si j'ai changé
+   des touches.* Un asset garde les valeurs du jour de sa création : une nouvelle touche par défaut
+   dans le code ne met **pas** à jour un asset existant.
+3. Menu **Uber Bagarre → 2 - Construire la scene Combat Sandbox** — pour appliquer les nouveaux
+   réglages par défaut des composants (vitesses, head bob…) et récupérer les nouveaux objets.
+
+> ⚠️ Ces deux commandes **écrasent** l'asset de touches et la scène. Si tu as personnalisé des
+> valeurs que tu veux garder, note-les avant.
+
 ---
 
 ## Commandes
