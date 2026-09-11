@@ -237,3 +237,33 @@ gênant — ce n'est pas une contrainte d'architecture.
   qui trahit immédiatement l'illusion. Ils continuent de recevoir les ombres.
 - **Primitives Unity** pour la géométrie : le projet n'a aucun modèle 3D. Seuls les transforms
   d'os comptent pour l'animation, donc les remplacer par un vrai modèle ne touchera aucun script.
+
+### Phase 2b — corps complet, mains articulées, locomotion
+- **Un vrai squelette** (`BodyRig`) plutôt que deux bras flottants attachés à la caméra.
+  Déclencheur : « l'animation de marche est bizarre, c'est juste les mains qui montent et
+  descendent ». Le vrai correctif n'était pas d'ajuster une courbe, mais que les bras soient
+  portés par un torse qui marche, respire et contre-tourne.
+- **Le corps est enfant de la racine joueur, pas de la caméra** : il suit le lacet mais pas le
+  tangage. C'est ce qui permet de baisser les yeux et de voir son propre torse et ses jambes,
+  au lieu d'un corps qui bascule avec le regard.
+- **`HandsAimAnchor`** résout la tension entre les deux : les épaules sont sur le buste, mais
+  les poings visent dans un repère qui ne reprend qu'une fraction du tangage. À 100 %, les
+  bras se tordraient en regardant ses pieds ; à 0 %, la garde sortirait de l'écran en levant
+  les yeux.
+- **Pieds réellement plantés au sol.** Un pied en appui garde sa position MONDE pendant toute
+  sa phase d'appui, le corps passe au-dessus, puis il décolle et se repose plus loin. C'est la
+  seule façon d'éviter le patinage. Bassin, buste et balancement des bras sont dérivés du même
+  cycle, donc tout le corps reste synchrone par construction.
+- **La foulée se mesure par cycle complet (deux pas)**, pas par pas. L'erreur inverse donne une
+  cadence double, effet « petits pas pressés ».
+- **La cible d'IK des jambes est la cheville, pas la semelle** (`_ankleHeight`). Sans ce décalage
+  la jambe se tend à l'extrême et le pied s'enfonce dans le sol.
+- **Mains à 5 doigts de 3 phalanges**, de longueurs différentes et à fermeture décalée
+  (`closeDelay`) : le poing est le résultat d'une vraie fermeture, pas un cube. Utile ensuite
+  pour valider qu'un impact a lieu poing fermé, ou ouvrir la main pour une parade.
+- **`IkLimb` générique** : bras et jambes sont le même problème géométrique. Un seul solveur,
+  un seul composant, deux usages.
+- **Accroupi et glissade dans `PlayerMotor`** : la hauteur de capsule ET la hauteur des yeux
+  sont le même fait physique, donc le moteur possède les deux. Le relevé vérifie qu'il y a la
+  place au-dessus, en ignorant les colliders du joueur lui-même plutôt qu'en imposant un calque
+  au projet.

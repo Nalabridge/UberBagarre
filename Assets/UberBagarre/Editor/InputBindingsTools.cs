@@ -72,6 +72,7 @@ namespace UberBagarre.EditorTools
             sb.AppendLine("  Avancer / Reculer     : " + b.moveForward + " / " + b.moveBackward);
             sb.AppendLine("  Gauche / Droite       : " + b.moveLeft + " / " + b.moveRight);
             sb.AppendLine("  Saut                  : " + b.jump);
+            sb.AppendLine("  Accroupi / glissade   : " + b.crouch);
             sb.AppendLine("  SPRINT                : " + b.sprint);
             sb.AppendLine("  Attaque               : " + b.attackPrimary);
             sb.AppendLine("  Garde                 : " + b.guard);

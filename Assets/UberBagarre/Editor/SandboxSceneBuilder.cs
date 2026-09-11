@@ -39,13 +39,21 @@ namespace UberBagarre.EditorTools
         private const float PlayerRadius = 0.3f;
         private const float SpawnDistance = 4.5f;
 
-        // Proportions des bras premiere personne. Legerement raccourcis par rapport a de vrais
-        // bras (0.30 / 0.27) : c'est la convention FPS, sinon les poings paraissent trop loin.
+        // Proportions d'un corps de 1m80. Les os se chainent : bassin 0.92 + 0.13 + 0.17 + 0.20
+        // place la nuque a 1.42, juste sous les yeux a 1.62.
+        private const float PelvisHeight = 0.92f;
+        private const float SpineOffset = 0.13f;
+        private const float ChestOffset = 0.17f;
+        private const float NeckOffset = 0.20f;
+
         private const float ShoulderOffsetX = 0.19f;
-        private const float ShoulderOffsetY = -0.27f;
-        private const float ShoulderOffsetZ = -0.09f;
-        private const float UpperArmLength = 0.28f;
+        private const float ShoulderOffsetY = 0.16f;
+        private const float UpperArmLength = 0.30f;
         private const float ForearmLength = 0.26f;
+
+        private const float HipOffsetX = 0.10f;
+        private const float ThighLength = 0.44f;
+        private const float ShinLength = 0.42f;
 
         [MenuItem("Uber Bagarre/2 - Construire la scene Combat Sandbox", false, 20)]
         public static void BuildFromMenu()
@@ -112,7 +120,9 @@ namespace UberBagarre.EditorTools
             public Material Prop;
             public Material SpawnMarker;
             public Material Skin;
-            public Material Sleeve;
+            public Material Shirt;
+            public Material Pants;
+            public Material Shoe;
         }
 
         private static Materials CreateMaterials()
@@ -139,8 +149,14 @@ namespace UberBagarre.EditorTools
             materials.Skin = EditorBuildUtility.CreateOrUpdateMaterial(
                 MaterialsFolder, "M_Skin", new Color(0.72f, 0.55f, 0.45f), 0.22f, 0f);
 
-            materials.Sleeve = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_Sleeve", new Color(0.17f, 0.18f, 0.21f), 0.12f, 0f);
+            materials.Shirt = EditorBuildUtility.CreateOrUpdateMaterial(
+                MaterialsFolder, "M_Shirt", new Color(0.17f, 0.18f, 0.21f), 0.12f, 0f);
+
+            materials.Pants = EditorBuildUtility.CreateOrUpdateMaterial(
+                MaterialsFolder, "M_Pants", new Color(0.20f, 0.23f, 0.31f), 0.10f, 0f);
+
+            materials.Shoe = EditorBuildUtility.CreateOrUpdateMaterial(
+                MaterialsFolder, "M_Shoe", new Color(0.10f, 0.10f, 0.11f), 0.25f, 0f);
 
             return materials;
         }
@@ -215,16 +231,19 @@ namespace UberBagarre.EditorTools
         // ------------------------------------------------------------------ rig joueur
 
         /// <summary>
-        /// Hiérarchie du joueur. Chaque nœud a UNE responsabilité, ce qui permet d'empiler
-        /// les effets de caméra des phases suivantes sans qu'ils s'écrasent entre eux :
+        /// Hiérarchie du joueur.
         ///
-        /// Player            lacet (gauche/droite) + deplacement + entrees
-        ///  +- Head          tangage (haut/bas)
-        ///      +- CameraBob      oscillation de marche
-        ///          +- CameraShake    secousses d'impact        (phase 7)
-        ///              +- CameraPunch    recul des coups portes (phase 5)
-        ///                  +- MainCamera
-        ///                      +- HandsRig   mains FPS          (phase 2)
+        /// Player                    lacet, déplacement, entrées
+        ///  ├─ Body                  le vrai corps : bassin, buste, jambes, bras
+        ///  │   └─ Pelvis → Spine → Chest → (Neck, épaules)
+        ///  │       └─ hanches → cuisses → tibias → chevilles
+        ///  ├─ Head                  tangage
+        ///  │   └─ CameraBob → CameraShake → CameraPunch → MainCamera
+        ///  └─ HandsAimAnchor        repère de visée des poings + composition des mains
+        ///
+        /// Le corps est enfant de Player et NON de la caméra : il suit donc le lacet
+        /// mais pas le tangage. C'est ce qui permet de baisser les yeux et de voir
+        /// son propre torse et ses jambes, au lieu d'un corps qui bascule avec le regard.
         /// </summary>
         private static GameObject BuildPlayerRig(Materials materials)
         {
@@ -250,12 +269,16 @@ namespace UberBagarre.EditorTools
 
             Camera camera = cameraGo.AddComponent<Camera>();
             camera.fieldOfView = 75f;
-            // Un near clip serré est indispensable en FPS : sinon les mains sont coupées par le plan proche.
             camera.nearClipPlane = 0.04f;
             camera.farClipPlane = 300f;
             cameraGo.AddComponent<AudioListener>();
 
-            FirstPersonHands hands = BuildHands(cameraGo.transform, materials);
+            BodyRig bodyRig;
+            ProceduralLocomotion locomotion;
+            BuildBody(playerGo.transform, materials, out bodyRig, out locomotion);
+
+            GameObject aimAnchor = EditorBuildUtility.CreateEmpty("HandsAimAnchor", playerGo.transform, Vector3.zero);
+            FirstPersonHands hands = aimAnchor.AddComponent<FirstPersonHands>();
 
             InputBindings bindings = GetOrCreateInputBindings();
 
@@ -264,6 +287,7 @@ namespace UberBagarre.EditorTools
 
             PlayerMotor motor = playerGo.AddComponent<PlayerMotor>();
             SerializedWiring.SetObject(motor, "_input", input);
+            SerializedWiring.SetObject(motor, "_eyeTransform", head.transform);
 
             PlayerLook look = playerGo.AddComponent<PlayerLook>();
             SerializedWiring.SetObject(look, "_input", input);
@@ -277,68 +301,250 @@ namespace UberBagarre.EditorTools
             HeadBob bob = cameraBob.AddComponent<HeadBob>();
             SerializedWiring.SetObject(bob, "_motor", motor);
 
-            PlayerHandsDriver handsDriver = playerGo.AddComponent<PlayerHandsDriver>();
-            SerializedWiring.SetObject(handsDriver, "_input", input);
-            SerializedWiring.SetObject(handsDriver, "_motor", motor);
-            SerializedWiring.SetObject(handsDriver, "_hands", hands);
+            HandsAimAnchor anchorComponent = aimAnchor.AddComponent<HandsAimAnchor>();
+            SerializedWiring.SetObject(anchorComponent, "_look", look);
+            SerializedWiring.SetObject(anchorComponent, "_positionSource", cameraGo.transform);
+
+            SerializedWiring.SetObject(hands, "_poseSpace", aimAnchor.transform);
+            SerializedWiring.SetObject(hands, "_leftArm", bodyRig.LeftArm);
+            SerializedWiring.SetObject(hands, "_rightArm", bodyRig.RightArm);
+            SerializedWiring.SetObject(hands, "_leftHand", bodyRig.LeftHand);
+            SerializedWiring.SetObject(hands, "_rightHand", bodyRig.RightHand);
+            SerializedWiring.SetObject(hands, "_locomotion", locomotion);
+
+            PlayerAvatarDriver driver = playerGo.AddComponent<PlayerAvatarDriver>();
+            SerializedWiring.SetObject(driver, "_input", input);
+            SerializedWiring.SetObject(driver, "_motor", motor);
+            SerializedWiring.SetObject(driver, "_hands", hands);
+            SerializedWiring.SetObject(driver, "_locomotion", locomotion);
 
             return playerGo;
         }
 
-        // ------------------------------------------------------------------ mains FPS
+        // ------------------------------------------------------------------ corps
 
-        /// <summary>
-        /// Construit les deux bras sous la caméra.
-        ///
-        /// Les modèles sont des primitives Unity, volontairement : le projet n'a aucun asset 3D.
-        /// Seuls les transforms d'os comptent pour l'animation — remplacer ces primitives par un
-        /// vrai modèle plus tard ne demandera que de réassigner ces transforms.
-        /// </summary>
-        private static FirstPersonHands BuildHands(Transform cameraTransform, Materials materials)
+        private static void BuildBody(Transform playerRoot, Materials materials,
+            out BodyRig rig, out ProceduralLocomotion locomotion)
         {
-            GameObject rig = EditorBuildUtility.CreateEmpty("HandsRig", cameraTransform, Vector3.zero);
-            FirstPersonHands hands = rig.AddComponent<FirstPersonHands>();
+            GameObject bodyGo = EditorBuildUtility.CreateEmpty("Body", playerRoot, Vector3.zero);
 
-            FirstPersonArm left = BuildArm(rig.transform, HandSide.Left, materials);
-            FirstPersonArm right = BuildArm(rig.transform, HandSide.Right, materials);
+            GameObject pelvis = EditorBuildUtility.CreateEmpty("Pelvis", bodyGo.transform, new Vector3(0f, PelvisHeight, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "PelvisVisual", pelvis.transform,
+                new Vector3(0f, -0.02f, 0f), new Vector3(0.30f, 0.19f, 0.20f), materials.Pants, false);
 
-            SerializedWiring.SetObject(hands, "_leftArm", left);
-            SerializedWiring.SetObject(hands, "_rightArm", right);
+            GameObject spine = EditorBuildUtility.CreateEmpty("Spine", pelvis.transform, new Vector3(0f, SpineOffset, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "TorsoVisual", spine.transform,
+                new Vector3(0f, 0.10f, 0f), new Vector3(0.33f, 0.28f, 0.21f), materials.Shirt, false);
 
-            return hands;
+            GameObject chest = EditorBuildUtility.CreateEmpty("Chest", spine.transform, new Vector3(0f, ChestOffset, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "ChestVisual", chest.transform,
+                new Vector3(0f, 0.08f, 0f), new Vector3(0.38f, 0.24f, 0.23f), materials.Shirt, false);
+
+            GameObject neck = EditorBuildUtility.CreateEmpty("Neck", chest.transform, new Vector3(0f, NeckOffset, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "NeckVisual", neck.transform,
+                new Vector3(0f, 0.02f, 0f), new Vector3(0.11f, 0.05f, 0.11f), materials.Skin, false);
+
+            IkLimb leftArm = BuildArm(chest.transform, HandSide.Left, materials);
+            IkLimb rightArm = BuildArm(chest.transform, HandSide.Right, materials);
+            HandRig leftHand = leftArm.End.GetComponentInChildren<HandRig>();
+            HandRig rightHand = rightArm.End.GetComponentInChildren<HandRig>();
+
+            IkLimb leftLeg = BuildLeg(pelvis.transform, true, materials);
+            IkLimb rightLeg = BuildLeg(pelvis.transform, false, materials);
+
+            rig = bodyGo.AddComponent<BodyRig>();
+            SerializedWiring.SetObject(rig, "_pelvis", pelvis.transform);
+            SerializedWiring.SetObject(rig, "_spine", spine.transform);
+            SerializedWiring.SetObject(rig, "_chest", chest.transform);
+            SerializedWiring.SetObject(rig, "_neck", neck.transform);
+            SerializedWiring.SetObject(rig, "_leftLeg", leftLeg);
+            SerializedWiring.SetObject(rig, "_rightLeg", rightLeg);
+            SerializedWiring.SetObject(rig, "_leftArm", leftArm);
+            SerializedWiring.SetObject(rig, "_rightArm", rightArm);
+            SerializedWiring.SetObject(rig, "_leftHand", leftHand);
+            SerializedWiring.SetObject(rig, "_rightHand", rightHand);
+
+            locomotion = bodyGo.AddComponent<ProceduralLocomotion>();
+            SerializedWiring.SetObject(locomotion, "_rig", rig);
+            SerializedWiring.SetObject(locomotion, "_root", playerRoot);
         }
 
-        private static FirstPersonArm BuildArm(Transform rig, HandSide side, Materials materials)
+        private static IkLimb BuildArm(Transform chest, HandSide side, Materials materials)
         {
             bool isLeft = side == HandSide.Left;
             float sign = isLeft ? -1f : 1f;
             string prefix = isLeft ? "Left" : "Right";
 
-            GameObject shoulder = EditorBuildUtility.CreateEmpty(prefix + "Shoulder", rig,
-                new Vector3(sign * ShoulderOffsetX, ShoulderOffsetY, ShoulderOffsetZ));
+            GameObject shoulder = EditorBuildUtility.CreateEmpty(prefix + "Shoulder", chest,
+                new Vector3(sign * ShoulderOffsetX, ShoulderOffsetY, 0f));
 
             GameObject upperArm = EditorBuildUtility.CreateEmpty(prefix + "UpperArm", shoulder.transform, Vector3.zero);
             GameObject forearm = EditorBuildUtility.CreateEmpty(prefix + "Forearm", upperArm.transform,
                 new Vector3(0f, 0f, UpperArmLength));
-            GameObject fist = EditorBuildUtility.CreateEmpty(prefix + "Fist", forearm.transform,
+            GameObject wrist = EditorBuildUtility.CreateEmpty(prefix + "Wrist", forearm.transform,
                 new Vector3(0f, 0f, ForearmLength));
 
-            CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.056f, materials.Sleeve);
+            CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.058f, materials.Shirt);
             CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.047f, materials.Skin);
-            CreateFistVisual(fist.transform, prefix + "FistVisual", materials.Skin);
+            BuildHand(wrist.transform, side, materials);
 
-            FirstPersonArm arm = shoulder.AddComponent<FirstPersonArm>();
-            SerializedWiring.SetEnum(arm, "_side", isLeft ? 0 : 1);
-            SerializedWiring.SetObject(arm, "_upperArm", upperArm.transform);
-            SerializedWiring.SetObject(arm, "_forearm", forearm.transform);
-            SerializedWiring.SetObject(arm, "_fist", fist.transform);
-            SerializedWiring.SetFloat(arm, "_upperLength", UpperArmLength);
-            SerializedWiring.SetFloat(arm, "_forearmLength", ForearmLength);
+            IkLimb limb = shoulder.AddComponent<IkLimb>();
+            SerializedWiring.SetObject(limb, "_upper", upperArm.transform);
+            SerializedWiring.SetObject(limb, "_lower", forearm.transform);
+            SerializedWiring.SetObject(limb, "_end", wrist.transform);
+            SerializedWiring.SetFloat(limb, "_upperLength", UpperArmLength);
+            SerializedWiring.SetFloat(limb, "_lowerLength", ForearmLength);
 
-            // Coude vers le bas et vers l'exterieur : c'est ce qui donne la silhouette de garde.
-            SerializedWiring.SetVector3(arm, "_poleDirection", new Vector3(sign * 0.35f, -1f, -0.25f));
+            // Coude vers le bas, legerement en arriere et vers l'exterieur : silhouette de garde.
+            SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.25f, -1f, -0.35f));
 
-            return arm;
+            return limb;
+        }
+
+        private static IkLimb BuildLeg(Transform pelvis, bool isLeft, Materials materials)
+        {
+            float sign = isLeft ? -1f : 1f;
+            string prefix = isLeft ? "Left" : "Right";
+
+            GameObject hip = EditorBuildUtility.CreateEmpty(prefix + "Hip", pelvis,
+                new Vector3(sign * HipOffsetX, -0.02f, 0f));
+
+            GameObject thigh = EditorBuildUtility.CreateEmpty(prefix + "Thigh", hip.transform, Vector3.zero);
+            GameObject shin = EditorBuildUtility.CreateEmpty(prefix + "Shin", thigh.transform,
+                new Vector3(0f, 0f, ThighLength));
+            GameObject ankle = EditorBuildUtility.CreateEmpty(prefix + "Ankle", shin.transform,
+                new Vector3(0f, 0f, ShinLength));
+
+            CreateBoneVisual(thigh.transform, prefix + "ThighVisual", ThighLength, 0.075f, materials.Pants);
+            CreateBoneVisual(shin.transform, prefix + "ShinVisual", ShinLength, 0.060f, materials.Pants);
+
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "FootVisual", ankle.transform,
+                new Vector3(0f, -0.045f, 0.048f), new Vector3(0.10f, 0.06f, 0.25f), materials.Shoe, false);
+
+            IkLimb limb = hip.AddComponent<IkLimb>();
+            SerializedWiring.SetObject(limb, "_upper", thigh.transform);
+            SerializedWiring.SetObject(limb, "_lower", shin.transform);
+            SerializedWiring.SetObject(limb, "_end", ankle.transform);
+            SerializedWiring.SetFloat(limb, "_upperLength", ThighLength);
+            SerializedWiring.SetFloat(limb, "_lowerLength", ShinLength);
+
+            // Le genou plie vers l'avant : c'est tout ce qui distingue une jambe d'un bras.
+            SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.15f, 0.35f, 1f));
+
+            return limb;
+        }
+
+        // ------------------------------------------------------------------ mains
+
+        private struct FingerSpec
+        {
+            public string Name;
+            public Vector3 Base;
+            public Vector3 BaseEuler;
+            public float Proximal;
+            public float Middle;
+            public float Distal;
+            public float Radius;
+            public float ProximalCurl;
+            public float MiddleCurl;
+            public float DistalCurl;
+            public float CloseDelay;
+            public Vector3 CurlAxis;
+        }
+
+        /// <summary>
+        /// Construit une main articulée : paume + 5 doigts de 3 phalanges, aux longueurs
+        /// et aux temps de fermeture différents. Le poing est donc le résultat d'une vraie
+        /// fermeture de doigts, et non un cube posé au bout du bras.
+        /// </summary>
+        private static void BuildHand(Transform wrist, HandSide side, Materials materials)
+        {
+            float sign = side == HandSide.Left ? -1f : 1f;
+            string prefix = side == HandSide.Left ? "Left" : "Right";
+
+            GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.042f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "PalmVisual", palm.transform,
+                Vector3.zero, new Vector3(0.086f, 0.034f, 0.092f), materials.Skin, false);
+
+            FingerSpec[] specs = new FingerSpec[]
+            {
+                MakeFinger("Index",   new Vector3(sign * 0.030f,  0.002f, 0.046f), Vector3.zero,        0.045f, 0.027f, 0.021f, 0.0105f, 80f,  95f, 60f, 0.15f, Vector3.right),
+                MakeFinger("Majeur",  new Vector3(sign * 0.010f,  0.004f, 0.048f), Vector3.zero,        0.050f, 0.031f, 0.022f, 0.0110f, 85f,  98f, 62f, 0.08f, Vector3.right),
+                MakeFinger("Annulaire", new Vector3(sign * -0.010f, 0.002f, 0.046f), Vector3.zero,      0.046f, 0.029f, 0.021f, 0.0100f, 88f, 100f, 64f, 0.03f, Vector3.right),
+                MakeFinger("Auriculaire", new Vector3(sign * -0.029f, -0.002f, 0.042f), Vector3.zero,   0.037f, 0.023f, 0.019f, 0.0088f, 92f, 102f, 66f, 0f,    Vector3.right),
+                MakeFinger("Pouce",   new Vector3(sign * 0.042f, -0.006f, 0.008f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.040f, 0.032f, 0.024f, 0.0130f, 42f, 48f, 32f, 0.35f, Vector3.right)
+            };
+
+            Transform[,] joints = new Transform[specs.Length, 3];
+
+            for (int i = 0; i < specs.Length; i++)
+            {
+                FingerSpec spec = specs[i];
+
+                GameObject proximal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "1", palm.transform, spec.Base);
+                proximal.transform.localRotation = Quaternion.Euler(spec.BaseEuler);
+
+                GameObject middle = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "2", proximal.transform,
+                    new Vector3(0f, 0f, spec.Proximal));
+                GameObject distal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "3", middle.transform,
+                    new Vector3(0f, 0f, spec.Middle));
+
+                CreateBoneVisual(proximal.transform, prefix + spec.Name + "1Visual", spec.Proximal, spec.Radius, materials.Skin);
+                CreateBoneVisual(middle.transform, prefix + spec.Name + "2Visual", spec.Middle, spec.Radius * 0.92f, materials.Skin);
+                CreateBoneVisual(distal.transform, prefix + spec.Name + "3Visual", spec.Distal, spec.Radius * 0.85f, materials.Skin);
+
+                joints[i, 0] = proximal.transform;
+                joints[i, 1] = middle.transform;
+                joints[i, 2] = distal.transform;
+            }
+
+            HandRig handRig = wrist.gameObject.AddComponent<HandRig>();
+            SerializedWiring.SetEnum(handRig, "_side", side == HandSide.Left ? 0 : 1);
+            SerializedWiring.SetObject(handRig, "_palm", palm.transform);
+
+            SerializedObject so = SerializedWiring.Open(handRig);
+            SerializedProperty fingers = so.FindProperty("_fingers");
+            if (fingers != null)
+            {
+                fingers.arraySize = specs.Length;
+
+                for (int i = 0; i < specs.Length; i++)
+                {
+                    SerializedProperty element = fingers.GetArrayElementAtIndex(i);
+                    element.FindPropertyRelative("name").stringValue = specs[i].Name;
+                    element.FindPropertyRelative("proximal").objectReferenceValue = joints[i, 0];
+                    element.FindPropertyRelative("middle").objectReferenceValue = joints[i, 1];
+                    element.FindPropertyRelative("distal").objectReferenceValue = joints[i, 2];
+                    element.FindPropertyRelative("proximalCurl").floatValue = specs[i].ProximalCurl;
+                    element.FindPropertyRelative("middleCurl").floatValue = specs[i].MiddleCurl;
+                    element.FindPropertyRelative("distalCurl").floatValue = specs[i].DistalCurl;
+                    element.FindPropertyRelative("curlAxis").vector3Value = specs[i].CurlAxis;
+                    element.FindPropertyRelative("closeDelay").floatValue = specs[i].CloseDelay;
+                    element.FindPropertyRelative("curlScale").floatValue = 1f;
+                }
+
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        private static FingerSpec MakeFinger(string name, Vector3 basePosition, Vector3 baseEuler,
+            float proximal, float middle, float distal, float radius,
+            float proximalCurl, float middleCurl, float distalCurl, float closeDelay, Vector3 curlAxis)
+        {
+            FingerSpec spec = new FingerSpec();
+            spec.Name = name;
+            spec.Base = basePosition;
+            spec.BaseEuler = baseEuler;
+            spec.Proximal = proximal;
+            spec.Middle = middle;
+            spec.Distal = distal;
+            spec.Radius = radius;
+            spec.ProximalCurl = proximalCurl;
+            spec.MiddleCurl = middleCurl;
+            spec.DistalCurl = distalCurl;
+            spec.CloseDelay = closeDelay;
+            spec.CurlAxis = curlAxis;
+            return spec;
         }
 
         /// <summary>
@@ -352,28 +558,6 @@ namespace UberBagarre.EditorTools
                 new Vector3(radius * 2f, length * 0.5f, radius * 2f), material, false);
 
             visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            DisableShadowCasting(visual);
-        }
-
-        private static void CreateFistVisual(Transform fist, string name, Material material)
-        {
-            GameObject visual = EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, fist,
-                new Vector3(0f, 0f, 0.045f), new Vector3(0.085f, 0.078f, 0.098f), material, false);
-
-            DisableShadowCasting(visual);
-        }
-
-        /// <summary>
-        /// Des bras FPS n'ont pas de corps : leur ombre portée trahirait immédiatement
-        /// qu'il s'agit de deux bras flottants. On les laisse en revanche recevoir les ombres.
-        /// </summary>
-        private static void DisableShadowCasting(GameObject visual)
-        {
-            MeshRenderer renderer = visual.GetComponent<MeshRenderer>();
-            if (renderer != null)
-            {
-                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            }
         }
 
         private static InputBindings GetOrCreateInputBindings()

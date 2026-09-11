@@ -3,72 +3,80 @@ using UnityEngine;
 namespace UberBagarre.View
 {
     /// <summary>
-    /// Compose la pose des deux poings à chaque frame, puis la donne aux bras.
+    /// Compose la pose des deux poings et la transmet aux bras du corps.
     ///
-    /// La pose finale est un empilement de couches, dans cet ordre :
+    /// Les épaules appartiennent au VRAI corps (elles sont sur le buste), mais la cible des
+    /// poings est calculée dans un repère de visée séparé. C'est le compromis classique du FPS :
+    /// les bras restent solidaires d'un torse qui marche, respire et tourne, tout en gardant
+    /// la garde bien cadrée à l'écran. L'IK relie les deux sans effort.
     ///
-    ///   1. POSE DE BASE     garde normale → garde serrée → course   (mélangées par des poids)
-    ///   2. COUCHES ADDITIVES respiration + micro-mouvement + inertie de visée + déplacement
-    ///   3. LISSAGE          donne du poids : la main ne se téléporte jamais
-    ///   4. COUCHE D'ATTAQUE appliquée APRÈS le lissage (phase 3)
+    /// Empilement des couches :
+    ///   1. POSE DE BASE      garde → garde serrée → course (mélange par poids)
+    ///   2. COUCHES ADDITIVES respiration + bruit organique + inertie de visée
+    ///                        + balancement issu du cycle de marche
+    ///   3. LISSAGE           donne du poids
+    ///   4. COUCHE D'ATTAQUE  appliquée APRÈS le lissage, pour ne pas émousser un jab
     ///
-    /// Pourquoi l'attaque passe après le lissage : un lissage écraserait la vivacité d'un jab.
-    /// Une attaque impose sa propre position, avec son propre timing, et le poids du mélange
-    /// gère l'entrée et la sortie de coup.
-    ///
-    /// Ce composant ne lit AUCUNE entrée clavier/souris : il est piloté de l'extérieur
-    /// (voir PlayerHandsDriver). C'est ce qui permettra à l'ennemi de réutiliser le même
-    /// système d'animation, piloté par son IA au lieu des touches.
+    /// Aucune touche n'est lue ici : l'ennemi réutilisera ce composant, piloté par son IA.
     /// </summary>
     [DefaultExecutionOrder(100)]
     public class FirstPersonHands : MonoBehaviour
     {
-        [Header("Bras")]
-        [SerializeField] private FirstPersonArm _leftArm;
-        [SerializeField] private FirstPersonArm _rightArm;
+        [Header("References")]
+        [SerializeField]
+        [Tooltip("Repere dans lequel les poses sont exprimees (l'ancrage de visee).")]
+        private Transform _poseSpace;
 
-        [Header("Garde normale (espace camera)")]
-        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.17f, -0.17f, 0.32f), new Vector3(-8f, 18f, 8f));
-        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.16f, -0.20f, 0.26f), new Vector3(-6f, -16f, -10f));
+        [SerializeField] private IkLimb _leftArm;
+        [SerializeField] private IkLimb _rightArm;
+        [SerializeField] private HandRig _leftHand;
+        [SerializeField] private HandRig _rightHand;
 
-        [Header("Garde serree (clic droit maintenu)")]
-        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.11f, -0.09f, 0.26f), new Vector3(-14f, 26f, 12f));
-        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.11f, -0.09f, 0.25f), new Vector3(-14f, -26f, -12f));
+        [SerializeField]
+        [Tooltip("Optionnel : fournit le balancement des bras synchronise avec les jambes.")]
+        private ProceduralLocomotion _locomotion;
 
-        [Header("Course (sprint)")]
-        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.21f, -0.30f, 0.20f), new Vector3(10f, 22f, 6f));
-        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.21f, -0.30f, 0.20f), new Vector3(10f, -22f, -6f));
+        [Header("Garde normale (espace de visee)")]
+        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.17f, -0.16f, 0.27f), new Vector3(-6f, 22f, 6f));
+        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.16f, -0.19f, 0.21f), new Vector3(-4f, -20f, -8f));
+
+        [Header("Garde serree (clic droit)")]
+        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.11f, -0.08f, 0.22f), new Vector3(-12f, 30f, 10f));
+        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.11f, -0.08f, 0.21f), new Vector3(-12f, -30f, -10f));
+
+        [Header("Course")]
+        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.20f, -0.28f, 0.15f), new Vector3(14f, 26f, 4f));
+        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.20f, -0.28f, 0.15f), new Vector3(14f, -26f, -4f));
+
+        [Header("Fermeture des mains")]
+        [SerializeField, Range(0f, 1f)] private float _guardGrip = 1f;
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("On ne court pas les poings serres : les mains se relachent.")]
+        private float _sprintGrip = 0.3f;
 
         [Header("Respiration")]
         [SerializeField, Min(0f)] private float _breathAmplitude = 0.007f;
         [SerializeField, Min(0f)] private float _breathRotationAmplitude = 1.3f;
-        [SerializeField, Min(0f)]
-        [Tooltip("En cycles par seconde. 0.28 = un cycle toutes les 3.5 s, rythme d'un corps au repos.")]
-        private float _breathFrequency = 0.28f;
+        [SerializeField, Min(0f)] private float _breathFrequency = 0.28f;
 
-        [Header("Micro-mouvement (bruit organique)")]
+        [Header("Micro-mouvement")]
         [SerializeField, Min(0f)] private float _idleNoiseAmplitude = 0.005f;
         [SerializeField, Min(0f)] private float _idleNoiseFrequency = 0.55f;
 
         [Header("Inertie de visee")]
-        [SerializeField, Min(0f)]
-        [Tooltip("Retard des mains quand on tourne la camera. C'est le principal indice de poids en FPS.")]
-        private float _swayAmount = 0.02f;
-
+        [SerializeField, Min(0f)] private float _swayAmount = 0.02f;
         [SerializeField, Min(0f)] private float _swayRotationAmount = 22f;
         [SerializeField, Min(0f)] private float _swayMaxOffset = 0.06f;
         [SerializeField, Min(0.5f)] private float _swayResponse = 9f;
 
         [Header("Deplacement")]
-        [SerializeField] private float _strafeSwayAmount = 0.022f;
-        [SerializeField] private float _forwardSwayAmount = 0.018f;
-        [SerializeField, Min(0f)] private float _walkBobAmount = 0.012f;
-        [SerializeField, Min(0f)] private float _walkBobFrequency = 8f;
+        [SerializeField] private float _strafeSwayAmount = 0.02f;
+        [SerializeField, Min(0f)]
+        [Tooltip("Conversion du balancement de bras en mouvement vertical accompagnant.")]
+        private float _armSwingLift = 0.22f;
 
         [Header("Lissage")]
-        [SerializeField, Min(0.5f)]
-        [Tooltip("Plus haut = mains plus reactives et plus seches. Plus bas = plus lourdes.")]
-        private float _poseResponse = 13f;
+        [SerializeField, Min(0.5f)] private float _poseResponse = 13f;
 
         [Header("Debug")]
         [SerializeField] private bool _drawPoseGizmos;
@@ -79,74 +87,75 @@ namespace UberBagarre.View
         private Vector2 _lookRate;
         private Vector2 _swayOffset;
         private Vector3 _localVelocity;
-        private float _normalizedSpeed;
 
         private float _breathPhase;
         private float _noiseTime;
-        private float _walkPhase;
 
         private HandPose _leftAttackPose;
         private HandPose _rightAttackPose;
         private float _leftAttackWeight;
         private float _rightAttackWeight;
+        private float _leftAttackGrip = -1f;
+        private float _rightAttackGrip = -1f;
 
-        /// <summary>0 = garde normale, 1 = garde serrée. Piloté par le joueur ou par l'IA.</summary>
         public float GuardWeight { get; set; }
-
-        /// <summary>0 = à l'arrêt ou en marche, 1 = en course.</summary>
         public float SprintWeight { get; set; }
-
-        public FirstPersonArm LeftArm { get { return _leftArm; } }
-        public FirstPersonArm RightArm { get { return _rightArm; } }
 
         private void Awake()
         {
+            if (_poseSpace == null) _poseSpace = transform;
             _smoothedLeft = _leftGuardPose;
             _smoothedRight = _rightGuardPose;
         }
 
-        /// <summary>Déplacement souris de la frame. Converti en vitesse pour rester indépendant du framerate.</summary>
         public void SetLookDelta(Vector2 delta, float deltaTime)
         {
             _lookRate = delta / Mathf.Max(deltaTime, 0.0001f) * 0.01f;
         }
 
-        /// <summary>Vitesse du joueur exprimée dans son propre repère, et vitesse normalisée 0..1.</summary>
-        public void SetLocomotion(Vector3 localVelocity, float normalizedSpeed)
+        public void SetLocalVelocity(Vector3 localVelocity)
         {
             _localVelocity = localVelocity;
-            _normalizedSpeed = Mathf.Clamp01(normalizedSpeed);
         }
 
-        /// <summary>Pose imposée par une attaque. weight = 0 rend la main à la garde, 1 = attaque pure.</summary>
-        public void SetAttackPose(HandSide side, HandPose pose, float weight)
+        /// <summary>Pose imposée par une attaque. grip &lt; 0 = laisser la fermeture par défaut.</summary>
+        public void SetAttackPose(HandSide side, HandPose pose, float weight, float grip)
         {
             weight = Mathf.Clamp01(weight);
+
             if (side == HandSide.Left)
             {
                 _leftAttackPose = pose;
                 _leftAttackWeight = weight;
+                _leftAttackGrip = grip;
             }
             else
             {
                 _rightAttackPose = pose;
                 _rightAttackWeight = weight;
+                _rightAttackGrip = grip;
             }
         }
 
         public void ClearAttackPose(HandSide side)
         {
-            if (side == HandSide.Left) _leftAttackWeight = 0f;
-            else _rightAttackWeight = 0f;
+            if (side == HandSide.Left)
+            {
+                _leftAttackWeight = 0f;
+                _leftAttackGrip = -1f;
+            }
+            else
+            {
+                _rightAttackWeight = 0f;
+                _rightAttackGrip = -1f;
+            }
         }
 
-        /// <summary>Pose de repos courante, lissage compris. Point de départ naturel d'une attaque.</summary>
         public HandPose GetRestPose(HandSide side)
         {
             return side == HandSide.Left ? _smoothedLeft : _smoothedRight;
         }
 
-        /// <summary>Pose de garde configurée, sans aucune couche additive.</summary>
         public HandPose GetGuardPose(HandSide side)
         {
             return side == HandSide.Left ? _leftGuardPose : _rightGuardPose;
@@ -157,35 +166,18 @@ namespace UberBagarre.View
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
 
-            AdvanceClocks(dt);
-            UpdateSway(dt);
-
-            HandPose left = ComposeIdlePose(HandSide.Left);
-            HandPose right = ComposeIdlePose(HandSide.Right);
-
-            float t = 1f - Mathf.Exp(-_poseResponse * dt);
-            _smoothedLeft = HandPose.Lerp(_smoothedLeft, left, t);
-            _smoothedRight = HandPose.Lerp(_smoothedRight, right, t);
-
-            HandPose finalLeft = _leftAttackWeight > 0f
-                ? HandPose.Lerp(_smoothedLeft, _leftAttackPose, _leftAttackWeight)
-                : _smoothedLeft;
-
-            HandPose finalRight = _rightAttackWeight > 0f
-                ? HandPose.Lerp(_smoothedRight, _rightAttackPose, _rightAttackWeight)
-                : _smoothedRight;
-
-            ApplyToArm(_leftArm, finalLeft);
-            ApplyToArm(_rightArm, finalRight);
-        }
-
-        private void AdvanceClocks(float dt)
-        {
             _breathPhase += dt * _breathFrequency * Mathf.PI * 2f;
             if (_breathPhase > Mathf.PI * 2f) _breathPhase -= Mathf.PI * 2f;
-
             _noiseTime += dt;
-            _walkPhase += dt * _walkBobFrequency * Mathf.Max(0.2f, _normalizedSpeed);
+
+            UpdateSway(dt);
+
+            float t = 1f - Mathf.Exp(-_poseResponse * dt);
+            _smoothedLeft = HandPose.Lerp(_smoothedLeft, ComposeIdlePose(HandSide.Left), t);
+            _smoothedRight = HandPose.Lerp(_smoothedRight, ComposeIdlePose(HandSide.Right), t);
+
+            ApplyHand(HandSide.Left, _leftArm, _leftHand, _smoothedLeft, _leftAttackPose, _leftAttackWeight, _leftAttackGrip);
+            ApplyHand(HandSide.Right, _rightArm, _rightHand, _smoothedRight, _rightAttackPose, _rightAttackWeight, _rightAttackGrip);
         }
 
         private void UpdateSway(float dt)
@@ -194,29 +186,26 @@ namespace UberBagarre.View
             target.x = Mathf.Clamp(target.x, -_swayMaxOffset, _swayMaxOffset);
             target.y = Mathf.Clamp(target.y, -_swayMaxOffset, _swayMaxOffset);
 
-            float t = 1f - Mathf.Exp(-_swayResponse * dt);
-            _swayOffset = Vector2.Lerp(_swayOffset, target, t);
+            _swayOffset = Vector2.Lerp(_swayOffset, target, 1f - Mathf.Exp(-_swayResponse * dt));
         }
 
         private HandPose ComposeIdlePose(HandSide side)
         {
             bool isLeft = side == HandSide.Left;
 
-            HandPose guard = isLeft ? _leftGuardPose : _rightGuardPose;
-            HandPose tight = isLeft ? _leftTightGuardPose : _rightTightGuardPose;
-            HandPose sprint = isLeft ? _leftSprintPose : _rightSprintPose;
+            HandPose basePose = HandPose.Lerp(
+                isLeft ? _leftGuardPose : _rightGuardPose,
+                isLeft ? _leftTightGuardPose : _rightTightGuardPose,
+                Mathf.Clamp01(GuardWeight));
 
-            HandPose basePose = HandPose.Lerp(guard, tight, Mathf.Clamp01(GuardWeight));
-            basePose = HandPose.Lerp(basePose, sprint, Mathf.Clamp01(SprintWeight));
+            basePose = HandPose.Lerp(basePose, isLeft ? _leftSprintPose : _rightSprintPose, Mathf.Clamp01(SprintWeight));
 
-            return basePose + Breathing(isLeft) + IdleNoise(isLeft) + Sway() + Locomotion(isLeft);
+            return basePose + Breathing(isLeft) + IdleNoise(isLeft) + Sway() + ArmSwing(side);
         }
 
         private HandPose Breathing(bool isLeft)
         {
-            // Les deux mains sont légèrement déphasées : parfaitement synchrones, ça fait mécanique.
-            float phase = _breathPhase + (isLeft ? 0f : 0.6f);
-            float wave = Mathf.Sin(phase);
+            float wave = Mathf.Sin(_breathPhase + (isLeft ? 0f : 0.6f));
 
             return new HandPose(
                 new Vector3(0f, wave * _breathAmplitude, wave * _breathAmplitude * 0.35f),
@@ -225,7 +214,6 @@ namespace UberBagarre.View
 
         private HandPose IdleNoise(bool isLeft)
         {
-            // Perlin plutôt qu'un sinus : le mouvement ne se répète pas de façon perceptible.
             float seed = isLeft ? 0f : 37.4f;
             float x = (Mathf.PerlinNoise(_noiseTime * _idleNoiseFrequency, seed) - 0.5f) * 2f;
             float y = (Mathf.PerlinNoise(seed, _noiseTime * _idleNoiseFrequency) - 0.5f) * 2f;
@@ -244,47 +232,62 @@ namespace UberBagarre.View
                     _swayOffset.x * _swayRotationAmount * 0.6f));
         }
 
-        private HandPose Locomotion(bool isLeft)
+        /// <summary>
+        /// Balancement des bras. La valeur vient du CYCLE DE MARCHE, pas d'un sinus indépendant :
+        /// le bras avance donc exactement quand la jambe opposée avance. C'est ce qui manquait
+        /// avant, quand les mains montaient et descendaient sans rapport avec les pas.
+        /// </summary>
+        private HandPose ArmSwing(HandSide side)
         {
-            // Les bras traînent derrière le corps qui accélère, et oscillent en opposition de phase.
-            float phase = _walkPhase + (isLeft ? 0f : Mathf.PI);
-            float bob = Mathf.Sin(phase) * _walkBobAmount * _normalizedSpeed;
+            float swing = _locomotion != null ? _locomotion.ArmSwing(side) : 0f;
 
             return new HandPose(
                 new Vector3(
                     -_localVelocity.x * _strafeSwayAmount,
-                    bob,
-                    -Mathf.Max(0f, _localVelocity.z) * _forwardSwayAmount),
-                new Vector3(bob * 90f, 0f, 0f));
+                    -Mathf.Abs(swing) * _armSwingLift,
+                    swing),
+                new Vector3(-swing * 40f, 0f, 0f));
         }
 
-        private void ApplyToArm(FirstPersonArm arm, HandPose pose)
+        private void ApplyHand(HandSide side, IkLimb arm, HandRig hand, HandPose restPose,
+            HandPose attackPose, float attackWeight, float attackGrip)
         {
             if (arm == null) return;
 
-            Vector3 worldPosition = transform.TransformPoint(pose.position);
-            Quaternion worldRotation = transform.rotation * pose.Rotation;
+            HandPose finalPose = attackWeight > 0f ? HandPose.Lerp(restPose, attackPose, attackWeight) : restPose;
+
+            Vector3 worldPosition = _poseSpace.TransformPoint(finalPose.position);
+            Quaternion worldRotation = _poseSpace.rotation * finalPose.Rotation;
             arm.ApplyWorldPose(worldPosition, worldRotation);
+
+            if (hand == null) return;
+
+            float grip = Mathf.Lerp(_guardGrip, _sprintGrip, Mathf.Clamp01(SprintWeight));
+            if (attackGrip >= 0f) grip = Mathf.Lerp(grip, attackGrip, attackWeight);
+
+            hand.TargetGrip = grip;
         }
 
         private void OnDrawGizmosSelected()
         {
             if (!_drawPoseGizmos) return;
 
-            DrawPoseGizmo(_leftGuardPose, Color.green);
-            DrawPoseGizmo(_rightGuardPose, Color.green);
-            DrawPoseGizmo(_leftTightGuardPose, Color.cyan);
-            DrawPoseGizmo(_rightTightGuardPose, Color.cyan);
-            DrawPoseGizmo(_leftSprintPose, Color.yellow);
-            DrawPoseGizmo(_rightSprintPose, Color.yellow);
+            Transform space = _poseSpace != null ? _poseSpace : transform;
+
+            DrawPoseGizmo(space, _leftGuardPose, Color.green);
+            DrawPoseGizmo(space, _rightGuardPose, Color.green);
+            DrawPoseGizmo(space, _leftTightGuardPose, Color.cyan);
+            DrawPoseGizmo(space, _rightTightGuardPose, Color.cyan);
+            DrawPoseGizmo(space, _leftSprintPose, Color.yellow);
+            DrawPoseGizmo(space, _rightSprintPose, Color.yellow);
         }
 
-        private void DrawPoseGizmo(HandPose pose, Color color)
+        private void DrawPoseGizmo(Transform space, HandPose pose, Color color)
         {
             Gizmos.color = color;
-            Vector3 world = transform.TransformPoint(pose.position);
+            Vector3 world = space.TransformPoint(pose.position);
             Gizmos.DrawWireCube(world, Vector3.one * 0.05f);
-            Gizmos.DrawRay(world, transform.rotation * pose.Rotation * Vector3.forward * 0.08f);
+            Gizmos.DrawRay(world, space.rotation * pose.Rotation * Vector3.forward * 0.08f);
         }
     }
 }

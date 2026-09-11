@@ -3,7 +3,8 @@ using UnityEngine;
 namespace UberBagarre.View
 {
     /// <summary>
-    /// Cinématique inverse analytique à deux os (bras + avant-bras).
+    /// Cinématique inverse analytique à deux os. Sert aux bras (bras + avant-bras)
+    /// ET aux jambes (cuisse + tibia) : c'est le même problème géométrique.
     ///
     /// Le problème : on veut pouvoir dire « le poing va ici » et obtenir automatiquement
     /// une épaule et un coude crédibles. Sans ça, il faudrait régler à la main les angles
@@ -16,18 +17,18 @@ namespace UberBagarre.View
     /// La direction du coude est imposée par un « pôle » : c'est lui qui fait que le coude
     /// pointe vers le bas et vers l'extérieur, comme en garde de boxe, et pas n'importe où.
     /// </summary>
-    public static class ArmIkSolver
+    public static class TwoBoneIkSolver
     {
         public struct Result
         {
             /// <summary>Rotation monde du bras. Convention : l'axe +Z de l'os suit l'os.</summary>
             public Quaternion UpperRotation;
 
-            /// <summary>Rotation monde de l'avant-bras.</summary>
-            public Quaternion ForearmRotation;
+            /// <summary>Rotation monde du second os (avant-bras ou tibia).</summary>
+            public Quaternion LowerRotation;
 
-            /// <summary>Position monde du coude (utile pour le debug).</summary>
-            public Vector3 ElbowPosition;
+            /// <summary>Position monde de l'articulation intermediaire (coude ou genou).</summary>
+            public Vector3 JointPosition;
 
             /// <summary>Position réellement atteinte : diffère de la cible si elle était hors de portée.</summary>
             public Vector3 ReachedPosition;
@@ -73,10 +74,10 @@ namespace UberBagarre.View
             Vector3 upperDirection = direction * Mathf.Cos(alpha) + perpendicular * Mathf.Sin(alpha);
 
             Result result = new Result();
-            result.ElbowPosition = shoulder + upperDirection * upperLength;
+            result.JointPosition = shoulder + upperDirection * upperLength;
             result.ReachedPosition = shoulder + direction * distance;
 
-            Vector3 forearmDirection = result.ReachedPosition - result.ElbowPosition;
+            Vector3 forearmDirection = result.ReachedPosition - result.JointPosition;
             forearmDirection = forearmDirection.sqrMagnitude > 1e-6f ? forearmDirection.normalized : upperDirection;
 
             // Axe de flexion : perpendiculaire au plan du bras, donc perpendiculaire aux deux os.
@@ -84,7 +85,7 @@ namespace UberBagarre.View
             Vector3 bendAxis = Vector3.Cross(direction, perpendicular);
 
             result.UpperRotation = Quaternion.LookRotation(upperDirection, Vector3.Cross(bendAxis, upperDirection));
-            result.ForearmRotation = Quaternion.LookRotation(forearmDirection, Vector3.Cross(bendAxis, forearmDirection));
+            result.LowerRotation = Quaternion.LookRotation(forearmDirection, Vector3.Cross(bendAxis, forearmDirection));
 
             return result;
         }

@@ -20,6 +20,9 @@ namespace UberBagarre.Core
         [Tooltip("Maintenu pour sprinter. Laisse sur None pour desactiver le sprint.")]
         public InputBinding sprint = InputBinding.FromKey(KeyCode.LeftShift);
 
+        [Tooltip("Maintenu pour s'accroupir. Appuye pendant une course = glissade.")]
+        public InputBinding crouch = InputBinding.FromKey(KeyCode.C);
+
         [Header("Combat")]
         [Tooltip("Attaque principale. Le coup reellement joue est decide par l'AttackInputMap (phase 3).")]
         public InputBinding attackPrimary = InputBinding.FromMouse(0);

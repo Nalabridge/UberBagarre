@@ -42,6 +42,8 @@ namespace UberBagarre.Player
         public bool JumpPressed { get; private set; }
         public bool SprintHeld { get; private set; }
         public bool DodgePressed { get; private set; }
+        public bool CrouchHeld { get; private set; }
+        public bool CrouchPressed { get; private set; }
         public bool GuardHeld { get; private set; }
         public bool AttackPressed { get; private set; }
         public bool AttackModifierHeld { get; private set; }
@@ -102,6 +104,8 @@ namespace UberBagarre.Player
             JumpPressed = _provider.GetPressedThisFrame(_bindings.jump);
             SprintHeld = _provider.GetHeld(_bindings.sprint);
             DodgePressed = _provider.GetPressedThisFrame(_bindings.dodge);
+            CrouchHeld = _provider.GetHeld(_bindings.crouch);
+            CrouchPressed = _provider.GetPressedThisFrame(_bindings.crouch);
             GuardHeld = _provider.GetHeld(_bindings.guard);
             AttackPressed = _provider.GetPressedThisFrame(_bindings.attackPrimary);
             AttackModifierHeld = _provider.GetHeld(_bindings.attackModifier);
@@ -115,6 +119,8 @@ namespace UberBagarre.Player
             JumpPressed = false;
             SprintHeld = false;
             DodgePressed = false;
+            CrouchHeld = false;
+            CrouchPressed = false;
             GuardHeld = false;
             AttackPressed = false;
             AttackModifierHeld = false;
