@@ -37,16 +37,16 @@ namespace UberBagarre.View
         private ProceduralLocomotion _locomotion;
 
         [Header("Garde normale (espace de visee)")]
-        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.17f, -0.16f, 0.27f), new Vector3(-6f, 22f, 6f));
-        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.16f, -0.19f, 0.21f), new Vector3(-4f, -20f, -8f));
+        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.155f, -0.135f, 0.335f), new Vector3(-6f, 20f, 6f));
+        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.148f, -0.165f, 0.275f), new Vector3(-4f, -18f, -8f));
 
         [Header("Garde serree (clic droit)")]
-        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.11f, -0.08f, 0.22f), new Vector3(-12f, 30f, 10f));
-        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.11f, -0.08f, 0.21f), new Vector3(-12f, -30f, -10f));
+        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.115f, -0.072f, 0.300f), new Vector3(-10f, 28f, 10f));
+        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.115f, -0.078f, 0.290f), new Vector3(-10f, -28f, -10f));
 
         [Header("Course")]
-        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.20f, -0.28f, 0.15f), new Vector3(14f, 26f, 4f));
-        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.20f, -0.28f, 0.15f), new Vector3(14f, -26f, -4f));
+        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.205f, -0.30f, 0.20f), new Vector3(14f, 24f, 4f));
+        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.205f, -0.30f, 0.20f), new Vector3(14f, -24f, -4f));
 
         [Header("Fermeture des mains")]
         [SerializeField, Range(0f, 1f)] private float _guardGrip = 1f;
@@ -55,12 +55,12 @@ namespace UberBagarre.View
         private float _sprintGrip = 0.3f;
 
         [Header("Respiration")]
-        [SerializeField, Min(0f)] private float _breathAmplitude = 0.007f;
+        [SerializeField, Min(0f)] private float _breathAmplitude = 0.0045f;
         [SerializeField, Min(0f)] private float _breathRotationAmplitude = 1.3f;
         [SerializeField, Min(0f)] private float _breathFrequency = 0.28f;
 
         [Header("Micro-mouvement")]
-        [SerializeField, Min(0f)] private float _idleNoiseAmplitude = 0.005f;
+        [SerializeField, Min(0f)] private float _idleNoiseAmplitude = 0.0016f;
         [SerializeField, Min(0f)] private float _idleNoiseFrequency = 0.55f;
 
         [Header("Inertie de visee")]
@@ -221,7 +221,7 @@ namespace UberBagarre.View
 
             return new HandPose(
                 new Vector3(x, y, z) * _idleNoiseAmplitude,
-                new Vector3(y, x, 0f) * _idleNoiseAmplitude * 120f);
+                new Vector3(y, x, 0f) * _idleNoiseAmplitude * 60f);
         }
 
         private HandPose Sway()

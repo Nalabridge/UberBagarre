@@ -267,3 +267,31 @@ gênant — ce n'est pas une contrainte d'architecture.
   sont le même fait physique, donc le moteur possède les deux. Le relevé vérifie qu'il y a la
   place au-dessus, en ignorant les colliders du joueur lui-même plutôt qu'en imposant un calque
   au projet.
+
+### Phase 3/4 — les coups
+- **Correction de géométrie de main** : la paume faisait 3,4 cm d'épaisseur pour 9 cm de long,
+  soit une planche ; les doigts repliés pendaient dessous et l'ensemble se lisait comme un pied.
+  Un poing est un bloc presque aussi épais que large. Ajout d'une crête d'articulations, qui
+  est aussi la surface de frappe.
+- **Poings poussés de 27 à 34 cm de l'œil** : à courte distance la perspective déforme tout.
+- **Bruit de repos divisé par trois** : le micro-mouvement « organique » se lisait comme un
+  tremblement.
+- **`AttackData` décrit tout un coup en données** : durée, fenêtre d'impact, dégâts, secousse,
+  et une liste de poses-clés par variante. Ajouter un coude ou un coup de pied ne demandera
+  aucune ligne de code.
+- **Poses écrites pour la main droite uniquement, mirrorées à gauche.** Deux fois moins de
+  réglages, et un crochet gauche reste le symétrique exact du droit par construction.
+- **La rotation du buste fait partie des données du coup.** C'est de là que vient le poids :
+  un direct tourne le corps de 12°, un crochet de 21°. La locomotion reste seule à écrire sur
+  la colonne et intègre ce que le combat lui demande (`CombatBodyEuler`), donc les deux systèmes
+  ne se marchent jamais dessus.
+- **La hitbox teste le SEGMENT parcouru depuis la frame précédente**, pas seulement la position
+  finale : un poing rapide franchit sa propre largeur en une frame et passerait au travers.
+- **Chaque cible n'est comptée qu'une fois par attaque** : sinon une fenêtre d'impact de six
+  frames infligerait six fois les dégâts.
+- **Recul de caméra à deux entrées séparées** (suivi de l'animation / à-coup d'impact) : les
+  mélanger empêcherait d'avoir un coup qui accompagne la caméra ET un choc sec au contact.
+- **Arrêt sur impact plafonné à 60 ms** : au-delà, le jeu paraît saccadé au lieu de puissant.
+- **Sac de frappe** plutôt que rien : sans cible, impossible de vérifier qu'une fenêtre
+  d'impact fonctionne. Pendule simple, sans Rigidbody, donc comportement identique à chaque
+  test — ce qu'on attend d'un banc d'essai.

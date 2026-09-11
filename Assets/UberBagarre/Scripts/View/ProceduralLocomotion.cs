@@ -119,6 +119,15 @@ namespace UberBagarre.View
         /// <summary>Intensité du déplacement, 0 à l'arrêt, 1 en course. Utile aux autres systèmes.</summary>
         public float MoveWeight { get { return _moveWeight; } }
 
+        /// <summary>
+        /// Rotation du buste demandée par le combat, en degrés. Additive par-dessus la marche.
+        ///
+        /// Passer par une propriété plutôt que d'écrire directement sur les os évite que la
+        /// locomotion et l'attaque se marchent dessus : ici, la locomotion reste seule à écrire
+        /// sur la colonne, et elle intègre ce que le combat lui demande.
+        /// </summary>
+        public Vector3 CombatBodyEuler { get; set; }
+
         private void Start()
         {
             if (_root == null) _root = transform;
@@ -276,20 +285,24 @@ namespace UberBagarre.View
             lean = Mathf.Lerp(lean, -_slideLean, _slideAmount);
             lean += _crouchAmount * 6f;
 
+            // Le buste encaisse la moitié de la rotation de combat, la poitrine l'autre moitié :
+            // la torsion se répartit le long de la colonne au lieu de casser à un seul endroit.
+            Vector3 combat = CombatBodyEuler * 0.5f;
+
             if (_rig.Spine != null)
             {
                 _rig.Spine.localRotation = _rig.SpineRestRotation * Quaternion.Euler(
-                    lean * 0.5f,
-                    Mathf.Sin(cycle) * _torsoCounterYaw * 0.5f * _moveWeight,
-                    0f);
+                    lean * 0.5f + combat.x,
+                    Mathf.Sin(cycle) * _torsoCounterYaw * 0.5f * _moveWeight + combat.y,
+                    combat.z);
             }
 
             if (_rig.Chest != null)
             {
                 _rig.Chest.localRotation = _rig.ChestRestRotation * Quaternion.Euler(
-                    lean * 0.5f,
-                    Mathf.Sin(cycle) * _torsoCounterYaw * 0.5f * _moveWeight,
-                    0f);
+                    lean * 0.5f + combat.x,
+                    Mathf.Sin(cycle) * _torsoCounterYaw * 0.5f * _moveWeight + combat.y,
+                    combat.z);
             }
         }
 

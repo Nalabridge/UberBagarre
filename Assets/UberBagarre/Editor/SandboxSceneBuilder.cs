@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using UberBagarre.Combat;
 using UberBagarre.Core;
 using UberBagarre.Player;
+using UberBagarre.Feedback;
 using UberBagarre.Sandbox;
 using UberBagarre.View;
 using UnityEditor;
@@ -91,6 +93,7 @@ namespace UberBagarre.EditorTools
             BuildEnvironment(materials);
 
             GameObject player = BuildPlayerRig(materials);
+            BuildPunchingBag(materials);
             SpawnPoint playerSpawn;
             SpawnPoint enemySpawn;
             BuildSpawnSystem(player, out playerSpawn, out enemySpawn);
@@ -107,7 +110,9 @@ namespace UberBagarre.EditorTools
             Debug.Log("[UberBagarre] Scene Combat Sandbox generee.\n" +
                       "  Render pipeline detecte : " + EditorBuildUtility.ActivePipelineName() + "\n" +
                       "  Scene : " + ScenePath + "\n" +
-                      "  Commandes : ZQSD/WASD = deplacement, souris = visee, Espace = saut, Echap = liberer le curseur.\n" +
+                      "  Commandes : ZQSD/WASD, souris = visee, Maj = sprint, C = accroupi / glissade.\n" +
+                      "  Combat : clic gauche = direct, Ctrl + clic = crochet, Alt + clic = uppercut.\n" +
+                      "  Echap libere le curseur.\n" +
                       "  Appuie sur Play.");
         }
 
@@ -318,7 +323,84 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(driver, "_hands", hands);
             SerializedWiring.SetObject(driver, "_locomotion", locomotion);
 
+            BuildCombat(playerGo, cameraPunch, bodyRig, hands, locomotion, input, motor);
+
             return playerGo;
+        }
+
+        // ------------------------------------------------------------------ combat
+
+        private static void BuildCombat(GameObject playerGo, GameObject cameraPunchNode, BodyRig bodyRig,
+            FirstPersonHands hands, ProceduralLocomotion locomotion, PlayerInputReader input, PlayerMotor motor)
+        {
+            Hitbox leftHitbox = bodyRig.LeftArm != null && bodyRig.LeftArm.End != null
+                ? bodyRig.LeftArm.End.GetComponent<Hitbox>() : null;
+            Hitbox rightHitbox = bodyRig.RightArm != null && bodyRig.RightArm.End != null
+                ? bodyRig.RightArm.End.GetComponent<Hitbox>() : null;
+
+            if (leftHitbox != null) SerializedWiring.SetObject(leftHitbox, "_owner", playerGo);
+            if (rightHitbox != null) SerializedWiring.SetObject(rightHitbox, "_owner", playerGo);
+
+            CameraPunch cameraPunch = cameraPunchNode.AddComponent<CameraPunch>();
+            HitStop hitStop = playerGo.AddComponent<HitStop>();
+
+            AttackExecutor executor = playerGo.AddComponent<AttackExecutor>();
+            SerializedWiring.SetObject(executor, "_hands", hands);
+            SerializedWiring.SetObject(executor, "_locomotion", locomotion);
+            SerializedWiring.SetObject(executor, "_cameraPunch", cameraPunch);
+            SerializedWiring.SetObject(executor, "_hitStop", hitStop);
+            SerializedWiring.SetObject(executor, "_leftHitbox", leftHitbox);
+            SerializedWiring.SetObject(executor, "_rightHitbox", rightHitbox);
+
+            AttackData straight, hook, uppercut;
+            AttackLibraryBuilder.BuildAll(false, out straight, out hook, out uppercut);
+
+            PlayerCombat combat = playerGo.AddComponent<PlayerCombat>();
+            SerializedWiring.SetObject(combat, "_input", input);
+            SerializedWiring.SetObject(combat, "_executor", executor);
+            SerializedWiring.SetObject(combat, "_motor", motor);
+            SerializedWiring.SetObject(combat, "_straight", straight);
+            SerializedWiring.SetObject(combat, "_hook", hook);
+            SerializedWiring.SetObject(combat, "_uppercut", uppercut);
+        }
+
+        // ------------------------------------------------------------------ cible d'entrainement
+
+        /// <summary>
+        /// Sac de frappe. Sans cible, impossible de savoir si la fenêtre d'impact fonctionne :
+        /// on frappe dans le vide. C'est le banc de test de tout le système de combat,
+        /// en attendant l'ennemi.
+        /// </summary>
+        private static void BuildPunchingBag(Materials materials)
+        {
+            GameObject root = new GameObject("SacDeFrappe");
+            root.transform.position = new Vector3(0f, 0f, SpawnDistance * 0.5f);
+
+            // Portique : un sac qui flotte sans attache ne se lit pas.
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Poteau", root.transform,
+                new Vector3(0.95f, 1.3f, 0f), new Vector3(0.09f, 1.3f, 0.09f), materials.Wall, true);
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Potence", root.transform,
+                new Vector3(0.48f, 2.55f, 0f), new Vector3(1.05f, 0.08f, 0.08f), materials.Wall, false);
+
+            GameObject pivot = EditorBuildUtility.CreateEmpty("Pivot", root.transform, new Vector3(0f, 2.5f, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Chaine", pivot.transform,
+                new Vector3(0f, -0.16f, 0f), new Vector3(0.03f, 0.16f, 0.03f), materials.Wall, false);
+
+            GameObject bag = EditorBuildUtility.CreatePrimitive(PrimitiveType.Capsule, "Sac", pivot.transform,
+                new Vector3(0f, -0.88f, 0f), new Vector3(0.34f, 0.56f, 0.34f), materials.Prop, true);
+
+            HealthSystem health = root.AddComponent<HealthSystem>();
+            SerializedWiring.SetFloat(health, "_maxHealth", 9999f);
+            SerializedWiring.SetBool(health, "_logDamage", true);
+
+            Hurtbox hurtbox = bag.AddComponent<Hurtbox>();
+            SerializedWiring.SetObject(hurtbox, "_health", health);
+            SerializedWiring.SetEnum(hurtbox, "_faction", (int)Faction.Enemy);
+            SerializedWiring.SetEnum(hurtbox, "_zone", (int)HitZone.Body);
+
+            PunchingBag swing = root.AddComponent<PunchingBag>();
+            SerializedWiring.SetObject(swing, "_health", health);
+            SerializedWiring.SetObject(swing, "_pivot", pivot.transform);
         }
 
         // ------------------------------------------------------------------ corps
@@ -386,7 +468,12 @@ namespace UberBagarre.EditorTools
 
             CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.058f, materials.Shirt);
             CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.047f, materials.Skin);
-            BuildHand(wrist.transform, side, materials);
+            Transform knuckles = BuildHand(wrist.transform, side, materials);
+
+            // La detection part des articulations, pas du poignet : c'est la surface qui frappe.
+            Hitbox hitbox = wrist.AddComponent<Hitbox>();
+            SerializedWiring.SetObject(hitbox, "_origin", knuckles);
+            SerializedWiring.SetEnum(hitbox, "_ownerFaction", (int)Faction.Player);
 
             IkLimb limb = shoulder.AddComponent<IkLimb>();
             SerializedWiring.SetObject(limb, "_upper", upperArm.transform);
@@ -457,22 +544,33 @@ namespace UberBagarre.EditorTools
         /// et aux temps de fermeture différents. Le poing est donc le résultat d'une vraie
         /// fermeture de doigts, et non un cube posé au bout du bras.
         /// </summary>
-        private static void BuildHand(Transform wrist, HandSide side, Materials materials)
+        private static Transform BuildHand(Transform wrist, HandSide side, Materials materials)
         {
             float sign = side == HandSide.Left ? -1f : 1f;
             string prefix = side == HandSide.Left ? "Left" : "Right";
 
-            GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.042f));
+            GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.040f));
+
+            // Un poing est un BLOC : presque aussi epais que large. Une paume fine donnait une
+            // planche, avec les doigts replies qui pendaient dessous comme des orteils.
             EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "PalmVisual", palm.transform,
-                Vector3.zero, new Vector3(0.086f, 0.034f, 0.092f), materials.Skin, false);
+                Vector3.zero, new Vector3(0.085f, 0.050f, 0.072f), materials.Skin, false);
+
+            // Crete des articulations : c'est ce qui fait lire la forme comme un poing,
+            // et c'est aussi la surface qui frappe.
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "KnuckleVisual", palm.transform,
+                new Vector3(0f, -0.002f, 0.040f), new Vector3(0.086f, 0.044f, 0.024f), materials.Skin, false);
+
+            GameObject knuckles = EditorBuildUtility.CreateEmpty(prefix + "Knuckles", palm.transform,
+                new Vector3(0f, -0.008f, 0.052f));
 
             FingerSpec[] specs = new FingerSpec[]
             {
-                MakeFinger("Index",   new Vector3(sign * 0.030f,  0.002f, 0.046f), Vector3.zero,        0.045f, 0.027f, 0.021f, 0.0105f, 80f,  95f, 60f, 0.15f, Vector3.right),
-                MakeFinger("Majeur",  new Vector3(sign * 0.010f,  0.004f, 0.048f), Vector3.zero,        0.050f, 0.031f, 0.022f, 0.0110f, 85f,  98f, 62f, 0.08f, Vector3.right),
-                MakeFinger("Annulaire", new Vector3(sign * -0.010f, 0.002f, 0.046f), Vector3.zero,      0.046f, 0.029f, 0.021f, 0.0100f, 88f, 100f, 64f, 0.03f, Vector3.right),
-                MakeFinger("Auriculaire", new Vector3(sign * -0.029f, -0.002f, 0.042f), Vector3.zero,   0.037f, 0.023f, 0.019f, 0.0088f, 92f, 102f, 66f, 0f,    Vector3.right),
-                MakeFinger("Pouce",   new Vector3(sign * 0.042f, -0.006f, 0.008f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.040f, 0.032f, 0.024f, 0.0130f, 42f, 48f, 32f, 0.35f, Vector3.right)
+                MakeFinger("Index",       new Vector3(sign * 0.029f, -0.010f, 0.034f), Vector3.zero, 0.038f, 0.024f, 0.018f, 0.0105f, 78f,  96f, 62f, 0.15f, Vector3.right),
+                MakeFinger("Majeur",      new Vector3(sign * 0.010f, -0.008f, 0.036f), Vector3.zero, 0.042f, 0.026f, 0.019f, 0.0110f, 82f,  98f, 64f, 0.08f, Vector3.right),
+                MakeFinger("Annulaire",   new Vector3(sign * -0.010f, -0.010f, 0.034f), Vector3.zero, 0.039f, 0.025f, 0.018f, 0.0100f, 85f, 100f, 66f, 0.03f, Vector3.right),
+                MakeFinger("Auriculaire", new Vector3(sign * -0.028f, -0.013f, 0.030f), Vector3.zero, 0.032f, 0.021f, 0.016f, 0.0088f, 88f, 102f, 68f, 0f,    Vector3.right),
+                MakeFinger("Pouce",       new Vector3(sign * 0.040f, -0.014f, 0.004f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.034f, 0.026f, 0.019f, 0.0125f, 42f, 48f, 32f, 0.35f, Vector3.right)
             };
 
             Transform[,] joints = new Transform[specs.Length, 3];
@@ -525,6 +623,8 @@ namespace UberBagarre.EditorTools
 
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
+
+            return knuckles.transform;
         }
 
         private static FingerSpec MakeFinger(string name, Vector3 basePosition, Vector3 baseEuler,
