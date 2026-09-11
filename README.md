@@ -15,9 +15,17 @@ pas d'économie, pas de ville.
 2. Unity Hub → **Add** → **Add project from disk** → sélectionne le dossier racine (celui qui contient `Assets/`).
 3. Ouvre-le avec ton Unity **6.x**.
 
-> `ProjectSettings/ProjectVersion.txt` indique `6000.0.23f1`. Si ta version installée est différente,
-> Unity Hub proposera simplement de l'ouvrir avec la tienne — accepte, ou édite cette ligne.
+> ⚠️ **Sélectionne bien le dossier RACINE** : celui qui contient `Assets/`, `Packages/` et `ProjectSettings/`.
+> Si tu sélectionnes un sous-dossier (`Docs/` par exemple), Unity en fera un projet vide et aucun script
+> ne sera chargé — symptôme : le menu `Uber Bagarre` n'apparaît pas et `Assets` est vide.
+>
+> `ProjectSettings/ProjectVersion.txt` cible `6000.6.0f1`. Si ta version installée diffère, Unity Hub
+> proposera de l'ouvrir avec la tienne — accepte, ou édite cette ligne.
 > Le premier import prend 1 à 3 minutes (Unity génère `Library/`, les `.meta` et les ProjectSettings manquants).
+>
+> Le `manifest.json` est volontairement minimal. Si tu veux l'intégration Visual Studio / Rider
+> (autocomplétion, ouverture des scripts) : **Window → Package Manager → Unity Registry →
+> `Visual Studio Editor` (ou `JetBrains Rider Editor`) → Install**.
 
 ### 2. Vérifier la configuration
 
