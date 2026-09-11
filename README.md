@@ -1,0 +1,109 @@
+# Über Bagarre — prototype de combat FPS
+
+Prototype de combat aux poings en vue première personne, qui servira plus tard de base au jeu
+« Über Bagarre » (commander un bagarreur comme on commande un Uber).
+**Pour l'instant, ce dépôt ne contient QUE le prototype de combat.** Pas d'app Uber, pas de missions,
+pas d'économie, pas de ville.
+
+---
+
+## Démarrage (5 minutes)
+
+### 1. Ouvrir le projet
+
+1. Clone ou mets à jour le dépôt, branche `claude/uber-bagarre-combat-fps-0n0m4w`.
+2. Unity Hub → **Add** → **Add project from disk** → sélectionne le dossier racine (celui qui contient `Assets/`).
+3. Ouvre-le avec ton Unity **6.x**.
+
+> `ProjectSettings/ProjectVersion.txt` indique `6000.0.23f1`. Si ta version installée est différente,
+> Unity Hub proposera simplement de l'ouvrir avec la tienne — accepte, ou édite cette ligne.
+> Le premier import prend 1 à 3 minutes (Unity génère `Library/`, les `.meta` et les ProjectSettings manquants).
+
+### 2. Vérifier la configuration
+
+Menu **Uber Bagarre → 1 - Verifier la configuration du projet**.
+
+Ça imprime dans la Console : version Unity, render pipeline détecté, shader utilisé, et surtout
+l'état du système d'input. Si aucun backend d'input n'est actif, l'outil te le dit et propose de corriger
+(c'est la panne n°1 sur un projet neuf : le joueur ne bouge pas, sans aucune erreur affichée).
+
+### 3. Construire la scène de test
+
+Menu **Uber Bagarre → 2 - Construire la scene Combat Sandbox**.
+
+Ça génère `Assets/UberBagarre/Scenes/CombatSandbox.unity` : arène, murs, lumières, rig joueur complet,
+points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
+
+> Cet outil est **re-jouable** : relance-le après chaque phase pour récupérer les nouveautés.
+> Il demande confirmation, car il **remplace** la scène (tes assets — matériaux, réglages, données
+> d'attaque — ne sont jamais touchés).
+
+---
+
+## Commandes
+
+| Touche | Action |
+|---|---|
+| **W A S D** (ou Z Q S D en AZERTY, selon ton clavier) | Déplacement |
+| **Souris** | Regarder |
+| **Espace** | Saut |
+| **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
+| Clic dans la vue | Recapturer le curseur |
+
+Toutes les touches sont dans un seul asset : `Assets/UberBagarre/Settings/InputBindings.asset`.
+Tu peux les changer sans toucher à une ligne de code.
+
+---
+
+## Avancement
+
+| Phase | Contenu | État |
+|---|---|---|
+| 1 | Structure du projet, scène sandbox, rig joueur, déplacement FPS, visée, spawn | ✅ fait |
+| 2 | Mains FPS temporaires, position de garde, respiration | ⬜ à venir |
+| 3 | Architecture de combat, données d'attaque, jab, hitbox, dégâts | ⬜ |
+| 4 | Crochets, uppercut, timings différenciés | ⬜ |
+| 5 | Variantes d'animation, mouvement du corps, retour en garde | ⬜ |
+| 6 | Système de vie, réactions aux dégâts, HUD | ⬜ |
+| 7 | Camera shake, vignette rouge, feedback d'impact, sons | ⬜ |
+| 8 | Esquive du joueur, stamina | ⬜ |
+| 9 | Ennemi, IA, attaques configurables | ⬜ |
+| 10 | Esquive ennemie, réactions, polish du ressenti | ⬜ |
+| 11 | Nettoyage, documentation, préparation des stats | ⬜ |
+
+---
+
+## Structure
+
+```
+Assets/UberBagarre/
+  Scripts/
+    Core/        input (backend-agnostique), interfaces partagées
+    Player/      déplacement, visée, curseur, head bob
+    Sandbox/     points de spawn, directeur de spawn
+  Editor/        outils de génération (scène, validation)  -- non inclus dans le build
+  Scenes/        CombatSandbox.unity  (généré)
+  Settings/      InputBindings.asset  (généré)
+  Art/           matériaux et textures placeholder (générés)
+Docs/
+  ARCHITECTURE.md   pourquoi le code est organisé comme ça + comment l'étendre
+```
+
+Voir **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** pour les décisions de conception.
+
+---
+
+## Choix assumés pour le prototype
+
+Ces choix existent pour que le projet **compile et tourne du premier coup dans un projet vierge**,
+sans dépendre d'un asset payant ni d'un package optionnel. Chacun est remplaçable plus tard sans
+réécrire le combat.
+
+| Choix | Pourquoi | Remplacement prévu |
+|---|---|---|
+| Aucun `asmdef` | Les scripts vivent dans `Assembly-CSharp`, qui référence automatiquement tous les packages. Zéro problème de référence manquante. | À ajouter quand le projet grossira |
+| Input abstrait derrière `IInputProvider` | Fonctionne avec l'ancien Input Manager **et** le nouveau Input System | Asset `.inputactions` si besoin de manettes/rebinding runtime |
+| Animations **procédurales** pilotées par données | Le projet n'a aucun clip ni rig : impossible de livrer de « vraies » animations. Les poses-clés sont éditables dans l'Inspector. | `ICombatAnimator` → implémentation Animator/Mecanim |
+| HUD et vignette en `OnGUI` | Pas de TextMeshPro, pas de police, pas de post-processing requis. Paramétrable dans l'Inspector. | Canvas uGUI / UI Toolkit |
+| Sons générés par code | Aucun fichier audio dans le projet | Vrais samples |
+| Primitives Unity pour les mains et l'ennemi | Aucun modèle 3D disponible | Vrais modèles, sans toucher à la logique |
