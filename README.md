@@ -68,6 +68,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **W A S D** (ou Z Q S D en AZERTY, selon ton clavier) | Déplacement |
 | **Souris** | Regarder |
 | **Maj gauche** (maintenu) | Sprint (uniquement vers l'avant) |
+| **Clic droit** (maintenu) | Garde serrée (les poings remontent vers le visage) |
 | **Espace** | Saut |
 | **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
 | Clic dans la vue | Recapturer le curseur |
@@ -82,7 +83,7 @@ Tu peux les changer sans toucher à une ligne de code.
 | Phase | Contenu | État |
 |---|---|---|
 | 1 | Structure du projet, scène sandbox, rig joueur, déplacement FPS, visée, spawn | ✅ fait |
-| 2 | Mains FPS temporaires, position de garde, respiration | ⬜ à venir |
+| 2 | Mains FPS temporaires, position de garde, respiration | ✅ fait |
 | 3 | Architecture de combat, données d'attaque, jab, hitbox, dégâts | ⬜ |
 | 4 | Crochets, uppercut, timings différenciés | ⬜ |
 | 5 | Variantes d'animation, mouvement du corps, retour en garde | ⬜ |
@@ -101,7 +102,8 @@ Tu peux les changer sans toucher à une ligne de code.
 Assets/UberBagarre/
   Scripts/
     Core/        input (backend-agnostique), interfaces partagées
-    Player/      déplacement, visée, curseur, head bob
+    Player/      déplacement, visée, curseur, head bob, pilotage des mains
+    View/        bras FPS, IK deux os, composition des poses de mains
     Sandbox/     points de spawn, directeur de spawn
   Editor/        outils de génération (scène, validation)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)

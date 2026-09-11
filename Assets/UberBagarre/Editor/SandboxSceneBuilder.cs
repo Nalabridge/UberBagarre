@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UberBagarre.Core;
 using UberBagarre.Player;
 using UberBagarre.Sandbox;
+using UberBagarre.View;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -38,6 +39,14 @@ namespace UberBagarre.EditorTools
         private const float PlayerRadius = 0.3f;
         private const float SpawnDistance = 4.5f;
 
+        // Proportions des bras premiere personne. Legerement raccourcis par rapport a de vrais
+        // bras (0.30 / 0.27) : c'est la convention FPS, sinon les poings paraissent trop loin.
+        private const float ShoulderOffsetX = 0.19f;
+        private const float ShoulderOffsetY = -0.27f;
+        private const float ShoulderOffsetZ = -0.09f;
+        private const float UpperArmLength = 0.28f;
+        private const float ForearmLength = 0.26f;
+
         [MenuItem("Uber Bagarre/2 - Construire la scene Combat Sandbox", false, 20)]
         public static void BuildFromMenu()
         {
@@ -73,7 +82,7 @@ namespace UberBagarre.EditorTools
             BuildLighting();
             BuildEnvironment(materials);
 
-            GameObject player = BuildPlayerRig();
+            GameObject player = BuildPlayerRig(materials);
             SpawnPoint playerSpawn;
             SpawnPoint enemySpawn;
             BuildSpawnSystem(player, out playerSpawn, out enemySpawn);
@@ -102,6 +111,8 @@ namespace UberBagarre.EditorTools
             public Material Wall;
             public Material Prop;
             public Material SpawnMarker;
+            public Material Skin;
+            public Material Sleeve;
         }
 
         private static Materials CreateMaterials()
@@ -123,6 +134,13 @@ namespace UberBagarre.EditorTools
 
             materials.SpawnMarker = EditorBuildUtility.CreateOrUpdateMaterial(
                 MaterialsFolder, "M_SpawnMarker", new Color(0.2f, 0.55f, 0.75f), 0.3f, 0f);
+
+            // Teintes sobres : le jeu vise un rendu credible, pas cartoon.
+            materials.Skin = EditorBuildUtility.CreateOrUpdateMaterial(
+                MaterialsFolder, "M_Skin", new Color(0.72f, 0.55f, 0.45f), 0.22f, 0f);
+
+            materials.Sleeve = EditorBuildUtility.CreateOrUpdateMaterial(
+                MaterialsFolder, "M_Sleeve", new Color(0.17f, 0.18f, 0.21f), 0.12f, 0f);
 
             return materials;
         }
@@ -208,7 +226,7 @@ namespace UberBagarre.EditorTools
         ///                  +- MainCamera
         ///                      +- HandsRig   mains FPS          (phase 2)
         /// </summary>
-        private static GameObject BuildPlayerRig()
+        private static GameObject BuildPlayerRig(Materials materials)
         {
             GameObject playerGo = new GameObject("Player");
             playerGo.transform.position = new Vector3(0f, 0f, -SpawnDistance * 0.5f);
@@ -237,9 +255,7 @@ namespace UberBagarre.EditorTools
             camera.farClipPlane = 300f;
             cameraGo.AddComponent<AudioListener>();
 
-            // Emplacement réservé aux mains FPS (phase 2) : la hiérarchie est déjà correcte,
-            // on n'aura donc pas à déplacer quoi que ce soit ensuite.
-            EditorBuildUtility.CreateEmpty("HandsRig", cameraGo.transform, Vector3.zero);
+            FirstPersonHands hands = BuildHands(cameraGo.transform, materials);
 
             InputBindings bindings = GetOrCreateInputBindings();
 
@@ -261,7 +277,103 @@ namespace UberBagarre.EditorTools
             HeadBob bob = cameraBob.AddComponent<HeadBob>();
             SerializedWiring.SetObject(bob, "_motor", motor);
 
+            PlayerHandsDriver handsDriver = playerGo.AddComponent<PlayerHandsDriver>();
+            SerializedWiring.SetObject(handsDriver, "_input", input);
+            SerializedWiring.SetObject(handsDriver, "_motor", motor);
+            SerializedWiring.SetObject(handsDriver, "_hands", hands);
+
             return playerGo;
+        }
+
+        // ------------------------------------------------------------------ mains FPS
+
+        /// <summary>
+        /// Construit les deux bras sous la caméra.
+        ///
+        /// Les modèles sont des primitives Unity, volontairement : le projet n'a aucun asset 3D.
+        /// Seuls les transforms d'os comptent pour l'animation — remplacer ces primitives par un
+        /// vrai modèle plus tard ne demandera que de réassigner ces transforms.
+        /// </summary>
+        private static FirstPersonHands BuildHands(Transform cameraTransform, Materials materials)
+        {
+            GameObject rig = EditorBuildUtility.CreateEmpty("HandsRig", cameraTransform, Vector3.zero);
+            FirstPersonHands hands = rig.AddComponent<FirstPersonHands>();
+
+            FirstPersonArm left = BuildArm(rig.transform, HandSide.Left, materials);
+            FirstPersonArm right = BuildArm(rig.transform, HandSide.Right, materials);
+
+            SerializedWiring.SetObject(hands, "_leftArm", left);
+            SerializedWiring.SetObject(hands, "_rightArm", right);
+
+            return hands;
+        }
+
+        private static FirstPersonArm BuildArm(Transform rig, HandSide side, Materials materials)
+        {
+            bool isLeft = side == HandSide.Left;
+            float sign = isLeft ? -1f : 1f;
+            string prefix = isLeft ? "Left" : "Right";
+
+            GameObject shoulder = EditorBuildUtility.CreateEmpty(prefix + "Shoulder", rig,
+                new Vector3(sign * ShoulderOffsetX, ShoulderOffsetY, ShoulderOffsetZ));
+
+            GameObject upperArm = EditorBuildUtility.CreateEmpty(prefix + "UpperArm", shoulder.transform, Vector3.zero);
+            GameObject forearm = EditorBuildUtility.CreateEmpty(prefix + "Forearm", upperArm.transform,
+                new Vector3(0f, 0f, UpperArmLength));
+            GameObject fist = EditorBuildUtility.CreateEmpty(prefix + "Fist", forearm.transform,
+                new Vector3(0f, 0f, ForearmLength));
+
+            CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.056f, materials.Sleeve);
+            CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.047f, materials.Skin);
+            CreateFistVisual(fist.transform, prefix + "FistVisual", materials.Skin);
+
+            FirstPersonArm arm = shoulder.AddComponent<FirstPersonArm>();
+            SerializedWiring.SetEnum(arm, "_side", isLeft ? 0 : 1);
+            SerializedWiring.SetObject(arm, "_upperArm", upperArm.transform);
+            SerializedWiring.SetObject(arm, "_forearm", forearm.transform);
+            SerializedWiring.SetObject(arm, "_fist", fist.transform);
+            SerializedWiring.SetFloat(arm, "_upperLength", UpperArmLength);
+            SerializedWiring.SetFloat(arm, "_forearmLength", ForearmLength);
+
+            // Coude vers le bas et vers l'exterieur : c'est ce qui donne la silhouette de garde.
+            SerializedWiring.SetVector3(arm, "_poleDirection", new Vector3(sign * 0.35f, -1f, -0.25f));
+
+            return arm;
+        }
+
+        /// <summary>
+        /// Segment d'os visuel. La capsule d'Unity est orientée sur son axe Y et mesure 2 unités :
+        /// on la couche sur +Z et on la met à l'échelle pour couvrir exactement la longueur de l'os.
+        /// </summary>
+        private static void CreateBoneVisual(Transform bone, string name, float length, float radius, Material material)
+        {
+            GameObject visual = EditorBuildUtility.CreatePrimitive(PrimitiveType.Capsule, name, bone,
+                new Vector3(0f, 0f, length * 0.5f),
+                new Vector3(radius * 2f, length * 0.5f, radius * 2f), material, false);
+
+            visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            DisableShadowCasting(visual);
+        }
+
+        private static void CreateFistVisual(Transform fist, string name, Material material)
+        {
+            GameObject visual = EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, fist,
+                new Vector3(0f, 0f, 0.045f), new Vector3(0.085f, 0.078f, 0.098f), material, false);
+
+            DisableShadowCasting(visual);
+        }
+
+        /// <summary>
+        /// Des bras FPS n'ont pas de corps : leur ombre portée trahirait immédiatement
+        /// qu'il s'agit de deux bras flottants. On les laisse en revanche recevoir les ombres.
+        /// </summary>
+        private static void DisableShadowCasting(GameObject visual)
+        {
+            MeshRenderer renderer = visual.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
         }
 
         private static InputBindings GetOrCreateInputBindings()

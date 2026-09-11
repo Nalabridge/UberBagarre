@@ -153,6 +153,48 @@ exactement comme un glisser-déposer manuel.
 
 ---
 
+## 7 bis. Les mains première personne (phase 2)
+
+```
+FirstPersonHands  (sur HandsRig, enfant de la caméra)
+   │  compose la pose des deux poings, en espace caméra
+   │
+   │  1. POSE DE BASE      garde normale → garde serrée → course (mélange par poids)
+   │  2. COUCHES ADDITIVES respiration + bruit organique + inertie de visée + déplacement
+   │  3. LISSAGE           donne du poids : une main ne se téléporte jamais
+   │  4. COUCHE D'ATTAQUE  appliquée APRÈS le lissage (phase 3)
+   ▼
+FirstPersonArm  ×2   reçoit « le poing va ici, orienté comme ça »
+   ▼
+ArmIkSolver          en déduit épaule, bras et coude
+   ▼
+Transforms d'os      UpperArm → Forearm → Fist
+```
+
+**Pourquoi une IK à deux os plutôt que des rotations posées à la main.** Le cahier des charges
+demande que l'épaule, le bras, l'avant-bras et la main bougent ensemble. Sans IK, chaque image-clé
+de chaque variante de chaque attaque devrait spécifier un angle d'épaule *et* un angle de coude
+cohérents entre eux — infaisable à régler à la main. Avec l'IK, une image-clé se résume à
+*« le poing est là »*, et le triangle épaule/coude/poing se résout tout seul par la loi des cosinus :
+pas d'itération, pas d'instabilité, même résultat à chaque frame.
+
+C'est aussi ce qui rend les attaques de la phase 3 réglables dans l'Inspector par quelqu'un qui
+n'est pas animateur.
+
+**Pourquoi l'attaque est appliquée après le lissage.** Le lissage exponentiel donne de la masse aux
+mains au repos. Appliqué à un jab, il en écraserait la vivacité. L'attaque impose donc sa position
+avec son propre timing, et seul son poids de mélange gère l'entrée et la sortie du coup.
+
+**Pourquoi `PlayerHandsDriver` est un composant à part.** `FirstPersonHands` ne lit aucune touche :
+il est piloté de l'extérieur. L'ennemi réutilisera le même système de bras, piloté par son IA.
+Si le composant d'affichage lisait le clavier, il serait inutilisable pour tout personnage non joueur.
+
+**Limite connue.** Les bras peuvent traverser un mur si le joueur se colle dessus. La correction
+habituelle (une seconde caméra dédiée aux mains, rendue par-dessus) sera ajoutée si ça devient
+gênant — ce n'est pas une contrainte d'architecture.
+
+---
+
 ## 8. Journal des décisions
 
 ### Phase 1
@@ -180,3 +222,18 @@ exactement comme un glisser-déposer manuel.
   du jour de sa création, donc changer une valeur par défaut dans le code ne met jamais à jour un
   asset déjà existant. Sans ce bouton, chaque changement de touche par défaut devrait être répercuté
   à la main.
+
+### Phase 2 — mains FPS
+- **IK analytique à deux os** (`ArmIkSolver`) plutôt que des rotations d'os posées à la main :
+  seule façon de rendre les attaques de la phase 3 configurables en données.
+- **Poses en espace caméra** (`HandPose`) : un type unique pour la garde, la respiration et,
+  demain, chaque image-clé d'attaque. Interpolable, additionnable, sérialisable.
+- **Trois poses de base** (garde, garde serrée, course) mélangées par des poids 0..1 plutôt
+  qu'une machine à états : ajouter une pose future (bloquer, encaisser, être étourdi) ne
+  demandera aucun changement de structure.
+- **Bruit de Perlin** pour le micro-mouvement au repos : un sinus se répère à l'œil au bout de
+  quelques secondes, et les mains « respirent » alors comme un métronome.
+- **Ombres portées désactivées sur les bras** : deux bras sans corps projetteraient une ombre
+  qui trahit immédiatement l'illusion. Ils continuent de recevoir les ombres.
+- **Primitives Unity** pour la géométrie : le projet n'a aucun modèle 3D. Seuls les transforms
+  d'os comptent pour l'animation, donc les remplacer par un vrai modèle ne touchera aucun script.
