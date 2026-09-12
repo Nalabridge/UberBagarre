@@ -58,21 +58,42 @@ namespace UberBagarre.Player
         /// </summary>
         private void Start()
         {
-            CheckAttack(_straight, "Direct");
-            CheckAttack(_hook, "Crochet");
-            CheckAttack(_uppercut, "Uppercut");
+            _straight = ResolveAttack(_straight, AttackData.StraightAsset, "Direct");
+            _hook = ResolveAttack(_hook, AttackData.HookAsset, "Crochet");
+            _uppercut = ResolveAttack(_uppercut, AttackData.UppercutAsset, "Uppercut");
 
             if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
             if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
         }
 
-        private void CheckAttack(AttackData attack, string label)
+        /// <summary>
+        /// Récupère un coup, et va le chercher dans Resources si la référence de scène est vide.
+        ///
+        /// Une référence manquante rendait tout le combat inerte sans rien casser d'autre :
+        /// le clic était bien lu, l'exécuteur bien appelé, et il refusait en silence. Le jeu
+        /// se répare donc lui-même, et dit clairement qu'il a dû le faire.
+        /// </summary>
+        private AttackData ResolveAttack(AttackData assigned, string resourceName, string label)
         {
+            AttackData attack = assigned;
+
             if (attack == null)
             {
-                Debug.LogError("[UberBagarre] PlayerCombat : le coup '" + label + "' n'est pas assigne. " +
-                               "Relance 'Uber Bagarre > 2 - Construire la scene'.", this);
-                return;
+                attack = AttackData.LoadFromResources(resourceName);
+
+                if (attack != null)
+                {
+                    Debug.LogWarning("[UberBagarre] Le coup '" + label + "' n'etait pas assigne dans la scene : " +
+                                     "recupere depuis Resources. Regenere la scene (Uber Bagarre > 2) pour " +
+                                     "retablir un cablage propre.", this);
+                }
+                else
+                {
+                    Debug.LogError("[UberBagarre] Le coup '" + label + "' est introuvable, ni dans la scene ni " +
+                                   "dans Resources/" + AttackData.ResourceFolder + ". Lance " +
+                                   "'Uber Bagarre > 4 - Regenerer les coups par defaut'.", this);
+                    return null;
+                }
             }
 
             string problem = attack.Diagnose();
@@ -87,6 +108,8 @@ namespace UberBagarre.Player
                 Debug.LogError("[UberBagarre] Coup '" + label + "' incomplet : " + problem +
                                ". Relance 'Uber Bagarre > 4 - Regenerer les coups par defaut'.", attack);
             }
+
+            return attack;
         }
 
         private void Update()

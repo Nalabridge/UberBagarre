@@ -281,6 +281,12 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(combat, "_hook", hook);
             SerializedWiring.SetObject(combat, "_uppercut", uppercut);
 
+            // Relecture immediate : si une de ces trois references est restee vide, le combat
+            // sera inerte au lancement. Autant le savoir maintenant.
+            SerializedWiring.Verify(combat, "_straight");
+            SerializedWiring.Verify(combat, "_hook");
+            SerializedWiring.Verify(combat, "_uppercut");
+
             // --- retours
             AudioSource audioSource = playerGo.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;

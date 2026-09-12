@@ -461,3 +461,44 @@ est maintenant une ruelle — bitume et brique générés par code, trottoirs, g
 lampadaires **avec de vraies lumières** (donc de vraies ombres portées, sans lesquelles les
 combattants semblent flotter), bennes, barils, caisses. Et un **cercle peint au sol** qui donne
 une référence de distance immédiate : à portée de poing, ou pas.
+
+---
+
+## 11. La panne des données d'attaque, et ce qu'elle a changé
+
+### Symptôme
+
+Impossible de frapper, aucune animation, rien en console. Diagnostic posé en une session
+grâce aux journaux ajoutés : les trois `AttackData` arrivaient **nulles** dans `PlayerCombat`.
+
+### Pourquoi c'était invisible
+
+Le clic était bien lu, `TryPlay` bien appelé, et il refusait sur `attack == null` **en
+retournant `false` sans rien écrire**. Un système qui échoue sans parler est indébogable à
+distance : le symptôme (« rien ne se passe ») est identique pour une touche non lue, un état
+bloqué, une endurance vide ou une donnée manquante.
+
+### Trois corrections, de la plus superficielle à la plus structurelle
+
+1. **Chaque refus dit sa cause** (`AttackExecutor.Refuse`), et `PlayerCombat` contrôle ses
+   coups au démarrage. Le symptôme devient un message.
+2. **Le câblage est relu après construction** (`SerializedWiring.Verify`). Une référence restée
+   vide se voit au moment de générer la scène, pas au lancement du jeu.
+3. **Les coups vivent dans `Resources`**, et le jeu va les y chercher si la référence de scène
+   est absente. C'est la correction qui compte : une référence de scène peut se perdre de
+   plusieurs façons (scène non régénérée après mise à jour, asset recréé, câblage échoué), et
+   aucune d'elles ne doit rendre le jeu muet. La référence de scène devient une commodité,
+   plus un point de rupture unique.
+
+L'ennemi bénéficie du même filet : un répertoire de coups vide est reconstitué depuis Resources.
+
+### Ce que je retiens
+
+Une dépendance critique qui ne peut être satisfaite que d'une seule manière est un point de
+rupture. Quand cette manière est un câblage d'éditeur — invisible, silencieux, détruit par une
+régénération — il faut un second chemin. Le coût est de quelques lignes ; l'absence de second
+chemin a coûté plusieurs allers-retours de test.
+
+Corollaire pratique : **tout `return false` dans un chemin critique mérite une raison
+journalisable.** Ce n'est pas du bruit, c'est ce qui rend un système diagnosticable sans y avoir
+les mains dedans.

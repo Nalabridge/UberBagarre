@@ -16,7 +16,19 @@ namespace UberBagarre.EditorTools
     /// </summary>
     public static class AttackLibraryBuilder
     {
-        public const string AttacksFolder = "Assets/UberBagarre/Combat";
+        /// <summary>
+        /// Les coups sont dans un dossier Resources, et c'est délibéré.
+        ///
+        /// Une référence de scène peut se perdre : scène non régénérée après une mise à jour,
+        /// câblage éditeur échoué, asset recréé avec un nouvel identifiant. Le symptôme est
+        /// alors un jeu silencieusement inerte. Depuis Resources, le jeu peut retrouver ses
+        /// coups tout seul à l'exécution — la référence de scène devient une optimisation,
+        /// plus un point de rupture.
+        /// </summary>
+        public const string AttacksFolder = "Assets/UberBagarre/Resources/Attaques";
+
+        /// <summary>Chemin de chargement à l'exécution, relatif au dossier Resources.</summary>
+        public const string ResourcePath = "Attaques";
 
         [MenuItem("Uber Bagarre/4 - Regenerer les coups par defaut", false, 40)]
         public static void RegenerateFromMenu()
@@ -32,17 +44,44 @@ namespace UberBagarre.EditorTools
             AttackData straight, hook, uppercut;
             BuildAll(true, out straight, out hook, out uppercut);
             AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
 
-            Debug.Log("[UberBagarre] Coups regeneres dans " + AttacksFolder);
+            Debug.Log("[UberBagarre] Coups regeneres dans " + AttacksFolder + "\n" +
+                      "  Direct   : " + Describe(straight) + "\n" +
+                      "  Crochet  : " + Describe(hook) + "\n" +
+                      "  Uppercut : " + Describe(uppercut));
         }
+
+        /// <summary>Emplacement historique des coups, avant leur passage dans Resources.</summary>
+        private const string LegacyAttacksFolder = "Assets/UberBagarre/Combat";
 
         public static void BuildAll(bool overwrite, out AttackData straight, out AttackData hook, out AttackData uppercut)
         {
+            RemoveLegacyFolder();
             EditorBuildUtility.EnsureFolder(AttacksFolder);
 
             straight = GetOrCreate("A_Direct", overwrite, ConfigureStraight);
             hook = GetOrCreate("A_Crochet", overwrite, ConfigureHook);
             uppercut = GetOrCreate("A_Uppercut", overwrite, ConfigureUppercut);
+        }
+
+        /// <summary>
+        /// Supprime l'ancien dossier d'attaques.
+        ///
+        /// Deux copies d'un même coup, c'est la garantie de régler l'une et de jouer l'autre.
+        /// Et supprimer les anciens assets fait tomber à zéro les références de scène qui
+        /// pointaient dessus, ce qui déclenche le rattrapage depuis Resources — le jeu se
+        /// répare donc même sans régénérer la scène.
+        /// </summary>
+        private static void RemoveLegacyFolder()
+        {
+            if (!AssetDatabase.IsValidFolder(LegacyAttacksFolder)) return;
+
+            if (AssetDatabase.DeleteAsset(LegacyAttacksFolder))
+            {
+                Debug.LogWarning("[UberBagarre] Ancien dossier d'attaques supprime (" + LegacyAttacksFolder +
+                                 "). Les coups vivent desormais dans " + AttacksFolder + ".");
+            }
         }
 
         private delegate void Configure(AttackData attack);
@@ -57,6 +96,12 @@ namespace UberBagarre.EditorTools
                 asset = ScriptableObject.CreateInstance<AttackData>();
                 configure(asset);
                 AssetDatabase.CreateAsset(asset, path);
+
+                if (asset == null)
+                {
+                    Debug.LogError("[UberBagarre] Impossible de creer l'asset " + path +
+                                   ". Verifie que le dossier existe et n'est pas en lecture seule.");
+                }
             }
             else if (overwrite || !string.IsNullOrEmpty(asset.Diagnose()))
             {
@@ -185,6 +230,18 @@ namespace UberBagarre.EditorTools
         }
 
         // ------------------------------------------------------------------ utilitaires
+
+        /// <summary>Résumé lisible d'un asset, pour que la console dise s'il est réellement exploitable.</summary>
+        private static string Describe(AttackData attack)
+        {
+            if (attack == null) return "ECHEC DE CREATION";
+
+            string problem = attack.Diagnose();
+            if (!string.IsNullOrEmpty(problem)) return "INCOMPLET (" + problem + ")";
+
+            return attack.variants.Count + " variante(s), " + attack.damage.ToString("0") + " degats, " +
+                   attack.duration.ToString("0.00") + " s";
+        }
 
         private static AnimationCurve DefaultWeightCurve()
         {

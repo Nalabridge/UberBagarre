@@ -75,6 +75,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Clic molette** | **Uppercut** |
 | **Ctrl gauche** (maintenu) | Garde serrée (les poings remontent vers le visage) |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
+| **Ctrl gauche** (maintenu) | Garde |
 | **Espace** | Saut |
 | **F1** | Overlay de debug (états, cooldowns, distances) |
 | **R** | Relancer le combat (tout le monde à plein, retour au spawn) |

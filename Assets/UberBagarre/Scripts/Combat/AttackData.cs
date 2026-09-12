@@ -107,6 +107,23 @@ namespace UberBagarre.Combat
         [Tooltip("Plusieurs variantes evitent que chaque coup soit rigoureusement identique.")]
         public List<AttackVariant> variants = new List<AttackVariant>();
 
+        /// <summary>Nom d'asset des coups de base, pour le chargement de secours depuis Resources.</summary>
+        public const string ResourceFolder = "Attaques";
+        public const string StraightAsset = "A_Direct";
+        public const string HookAsset = "A_Crochet";
+        public const string UppercutAsset = "A_Uppercut";
+
+        /// <summary>
+        /// Charge un coup depuis Resources. Renvoie null si l'asset n'existe pas.
+        ///
+        /// Sert de filet quand une référence de scène est vide : plutôt qu'un jeu inerte et
+        /// muet, on récupère le coup et on signale que la scène devrait être régénérée.
+        /// </summary>
+        public static AttackData LoadFromResources(string assetName)
+        {
+            return Resources.Load<AttackData>(ResourceFolder + "/" + assetName);
+        }
+
         /// <summary>Vrai si ce coup possède au moins une variante contenant des poses.</summary>
         public bool HasUsableAnimation
         {

@@ -102,6 +102,7 @@ namespace UberBagarre.Enemy
 
         private void Start()
         {
+            EnsureAttackRepertoire();
             _nextAttackTime = Time.time + Random.Range(_attackDelayMin, _attackDelayMax);
             _scriptedNextTime = Time.time + (_scriptedSequence.Count > 0 ? _scriptedSequence[0].delay : 1f);
         }
@@ -109,6 +110,45 @@ namespace UberBagarre.Enemy
         private void OnDisable()
         {
             UnsubscribeFromTarget();
+        }
+
+        /// <summary>
+        /// Garantit que l'ennemi a de quoi frapper.
+        ///
+        /// Un répertoire vide donne un ennemi qui s'approche, se place, et ne fait plus rien —
+        /// comportement impossible à distinguer d'une IA cassée. On reconstitue donc un
+        /// répertoire par défaut depuis Resources, en le signalant.
+        /// </summary>
+        private void EnsureAttackRepertoire()
+        {
+            for (int i = 0; i < _attacks.Count; i++)
+            {
+                if (_attacks[i] != null && _attacks[i].attack != null) return;
+            }
+
+            _attacks.Clear();
+            AddDefaultOption(AttackData.StraightAsset, 3f, 1.15f, 0.8f);
+            AddDefaultOption(AttackData.HookAsset, 1.4f, 1.05f, 2.2f);
+            AddDefaultOption(AttackData.UppercutAsset, 0.8f, 0.95f, 3.4f);
+
+            Debug.LogWarning("[UberBagarre] " + name + " n'avait aucun coup configure : repertoire par defaut " +
+                             "charge depuis Resources (" + _attacks.Count + " coups). Regenere la scene " +
+                             "(Uber Bagarre > 2) pour un cablage propre.", this);
+        }
+
+        private void AddDefaultOption(string assetName, float weight, float maxDistance, float cooldown)
+        {
+            AttackData attack = AttackData.LoadFromResources(assetName);
+            if (attack == null) return;
+
+            EnemyAttackOption option = new EnemyAttackOption();
+            option.attack = attack;
+            option.weight = weight;
+            option.minDistance = 0f;
+            option.maxDistance = maxDistance;
+            option.cooldown = cooldown;
+
+            _attacks.Add(option);
         }
 
         private void Update()

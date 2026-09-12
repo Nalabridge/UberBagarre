@@ -73,6 +73,29 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        /// <summary>
+        /// Vérifie qu'une référence a bien été posée, et crie sinon.
+        ///
+        /// Un câblage raté est muet : le champ reste vide et le problème n'apparaît qu'au
+        /// lancement du jeu, sous la forme d'un système qui ne fait rien. Le détecter au moment
+        /// de la construction évite de chercher ailleurs.
+        /// </summary>
+        public static bool Verify(Object target, string fieldName)
+        {
+            SerializedObject so = new SerializedObject(target);
+            SerializedProperty property = so.FindProperty(fieldName);
+
+            if (property != null && property.propertyType == SerializedPropertyType.ObjectReference &&
+                property.objectReferenceValue != null)
+            {
+                return true;
+            }
+
+            Debug.LogError("[UberBagarre] Cablage echoue : " + target.GetType().Name + "." + fieldName +
+                           " est reste vide apres construction.", target);
+            return false;
+        }
+
         /// <summary>Ouvre un SerializedObject pour les cas complexes (listes, structures imbriquées).</summary>
         public static SerializedObject Open(Object target)
         {
