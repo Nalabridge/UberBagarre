@@ -152,10 +152,42 @@ Le combat n'est pas « cliquer jusqu'à ce que la barre descende ». Chaque piè
 et c'est là tout l'intérêt :
 
 - **Les zones comptent.** La tête encaisse × 1,6, le corps × 1, les jambes × 0,55. Mais un coup
-  dans les jambes a une chance sur deux de **faire tomber** — et un adversaire au sol ne fait rien
+  dans les jambes a **70 % de chances de faire tomber** — et un adversaire au sol ne fait rien
   pendant plus de deux secondes. Frapper bas rapporte donc plus que ses dégâts.
-- **Le coup de pied bas est l'ouvre-boîte.** 11 dégâts seulement, mais 55 % de chances de chute,
-  cumulées avec la chance propre à la zone « jambes ». C'est le coup qui crée l'occasion.
+- **Le coup de pied bas est l'ouvre-boîte.** 11 dégâts seulement, mais c'est la façon la plus
+  fiable d'atteindre les jambes, donc d'enclencher ces 70 %.
+
+### Où part chaque coup, et comment viser les trois zones
+
+La hauteur du membre qui frappe décide de la zone. Un poing part de la tête, donc **debout, il ne
+peut pas atteindre les jambes** — c'est vrai dans la vie aussi. Les quatre moyens :
+
+| Ce que tu fais | Hauteur du membre | Zone touchée |
+|---|---|---|
+| Poing, regard droit devant | 1,57 m | **Tête** (× 1,6) |
+| Poing, regard vers le bas | 1,27 → 1,40 m | **Corps** (× 1,0) |
+| Poing **accroupi** (C) + regard vers le bas | 0,65 m | **Jambes** (× 0,55) |
+| **V** — coup de pied bas | 0,17 m | **Jambes**, toujours |
+| **F** — coup de pied de face | 0,99 m | **Corps**, toujours |
+
+La zone touchée est écrite sous le chiffre de dégâts (TETE / CORPS / JAMBES / BLOQUE), et **F1**
+affiche les trois zones de l'adversaire avec leur multiplicateur, plus la hauteur exacte de ton
+poing pendant le coup.
+
+### Les chances de chute, exactement
+
+Elles ne se cumulent pas : c'est la **plus haute** qui s'applique.
+
+| Situation | Chance |
+|---|---|
+| N'importe quel coup dans les **jambes** | 70 % |
+| Coup de pied bas (ailleurs que les jambes) | 55 % |
+| Coup de pied de face | 25 % |
+| Uppercut / crochet | 12 % / 6 % |
+| Coup lourd quand la vie est sous 35 % | 40 % |
+| Coup **bloqué** | jamais |
+
+Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève plus.
 - **La garde n'est pas gratuite.** Elle absorbe, mais chaque coup bloqué coûte 11 d'endurance.
   Garde vide = garde brisée, et un étourdissement de 0,7 s.
 - **La parade est la récompense du timing.** Lève la garde dans les 0,26 s avant l'impact : le

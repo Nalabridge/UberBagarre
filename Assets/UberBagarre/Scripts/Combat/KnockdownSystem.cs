@@ -85,12 +85,34 @@ namespace UberBagarre.Combat
         [SerializeField, Range(40f, 92f)] private float _fallAngle = 84f;
         [SerializeField, Min(0f)] private float _slideImpulse = 3.5f;
 
+        [Header("Releve")]
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part du releve passee a se ramasser avant de se redresser. C'est ce qui " +
+                 "distingue un releve d'une simple rotation inverse de la chute.")]
+        private float _gatherPhase = 0.38f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Bascule restante a la fin de la phase de ramassage : le torse a quitte le sol, " +
+                 "mais le corps est encore plie.")]
+        private float _gatherTilt = 0.42f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("De combien le bassin se plie au plus bas du releve. C'est la position accroupie " +
+                 "par laquelle on passe forcement pour se remettre debout.")]
+        private float _getUpPelvisDrop = 0.40f;
+
+        [SerializeField]
+        [Tooltip("Roulis ajoute au debut du releve : on se met d'abord sur le cote, on ne se " +
+                 "redresse pas a plat dos comme une planche.")]
+        private float _getUpRoll = 22f;
+
         private IImpulseReceiver _receiver;
         private Phase _phase;
         private float _timer;
         private float _cooldownTimer;
         private Vector3 _fallEuler;
         private float _weight;
+        private float _getUpProgress;
         private Quaternion _restRotation = Quaternion.identity;
         private Vector3 _cameraRestPosition;
         private Quaternion _cameraRestRotation = Quaternion.identity;
@@ -235,12 +257,24 @@ namespace UberBagarre.Combat
                     break;
 
                 case Phase.GettingUp:
-                    // Se relever est lent au debut puis franc : on se ramasse, puis on se redresse.
-                    float up = 1f - Mathf.Clamp01(_timer / _getUpDuration);
-                    _weight = 1f - (up * up * (3f - 2f * up));
+                    // Deux temps, et c'est tout l'interet.
+                    //
+                    // Une seule courbe qui ramene la bascule de 84 a 0 ne donne pas un releve :
+                    // ca donne la chute jouee a l'envers, ce qui se lit immediatement comme
+                    // faux. Un vrai releve se RAMASSE d'abord — le torse quitte le sol vite, le
+                    // corps reste plie — puis se DEPLIE. La bascule et le pliage du bassin
+                    // suivent donc deux courbes differentes, dephasees.
+                    _getUpProgress = 1f - Mathf.Clamp01(_timer / _getUpDuration);
+
+                    float gather = Mathf.Max(0.01f, _gatherPhase);
+
+                    _weight = _getUpProgress < gather
+                        ? Mathf.Lerp(1f, _gatherTilt, Smooth(_getUpProgress / gather))
+                        : Mathf.Lerp(_gatherTilt, 0f, Smooth((_getUpProgress - gather) / (1f - gather)));
                     break;
 
                 default:
+                    _getUpProgress = 0f;
                     _weight = Mathf.MoveTowards(_weight, 0f, Time.deltaTime * 4f);
                     break;
             }
@@ -250,7 +284,18 @@ namespace UberBagarre.Combat
                 ? Mathf.Sin(Time.time * 9f) * Mathf.Max(0f, _timer - _groundedDuration + 0.35f) * 6f
                 : 0f;
 
-            Quaternion tilt = Quaternion.Euler(_fallEuler * _weight + new Vector3(settle, 0f, settle * 0.4f));
+            // On se met sur le cote avant de se redresser : un corps qui se releve a plat dos,
+            // d'une seule piece, n'existe pas. Le roulis part du cote ou on est tombe.
+            float roll = 0f;
+
+            if (_phase == Phase.GettingUp && Mathf.Abs(_getUpRoll) > 0.01f)
+            {
+                float side = _fallEuler.z >= 0f ? 1f : -1f;
+                roll = Mathf.Sin(_getUpProgress * Mathf.PI) * _getUpRoll * side;
+            }
+
+            Quaternion tilt = Quaternion.Euler(
+                _fallEuler * _weight + new Vector3(settle, 0f, settle * 0.4f + roll));
 
             if (_bodyRoot != null) _bodyRoot.localRotation = _restRotation * tilt;
 
@@ -258,9 +303,27 @@ namespace UberBagarre.Combat
             // au sol doit etre au sol pour la detection aussi, sinon la chute n'est qu'un effet.
             if (_hurtboxRoot != null) _hurtboxRoot.localRotation = _hurtboxRestRotation * tilt;
 
-            if (_locomotion != null) _locomotion.KnockdownWeight = _weight;
+            if (_locomotion != null)
+            {
+                _locomotion.KnockdownWeight = _weight;
+
+                // Le bassin se plie au plus bas du releve : c'est la position accroupie par
+                // laquelle on passe forcement pour se remettre debout. Appliquee seulement
+                // pendant le releve — au sol, le corps est deja a plat, plier le bassin en
+                // plus ne voudrait rien dire.
+                _locomotion.ExtraPelvisDrop = _phase == Phase.GettingUp
+                    ? Mathf.Sin(_getUpProgress * Mathf.PI) * _getUpPelvisDrop
+                    : 0f;
+            }
 
             ApplyCameraPose();
+        }
+
+        /// <summary>Adoucissement aux extrémités, pour que chaque temps du relevé démarre et finisse sans à-coup.</summary>
+        private static float Smooth(float t)
+        {
+            t = Mathf.Clamp01(t);
+            return t * t * (3f - 2f * t);
         }
 
         private void ApplyCameraPose()
@@ -286,9 +349,16 @@ namespace UberBagarre.Combat
             _weight = 0f;
             _fallEuler = Vector3.zero;
 
+            _getUpProgress = 0f;
+
             if (_bodyRoot != null) _bodyRoot.localRotation = _restRotation;
             if (_hurtboxRoot != null) _hurtboxRoot.localRotation = _hurtboxRestRotation;
-            if (_locomotion != null) _locomotion.KnockdownWeight = 0f;
+
+            if (_locomotion != null)
+            {
+                _locomotion.KnockdownWeight = 0f;
+                _locomotion.ExtraPelvisDrop = 0f;
+            }
 
             if (_cameraRoot != null)
             {

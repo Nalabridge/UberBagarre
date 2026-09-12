@@ -683,3 +683,90 @@ fois écrire la grandeur finale : la distance parcourue, la hauteur d'impact com
 de zone, le coût réellement prélevé sur une partie. C'est la même leçon que la portée d'attaque en
 phase 9, et elle mérite d'être énoncée comme une règle : **une valeur de ressenti se calcule
 jusqu'à son unité observable avant d'être réglée à l'œil.**
+
+---
+
+## 13. Audit de la phase 12 : deux choses faites « sur le papier »
+
+Relecture de la demande mot par mot, une fois le code écrit. Onze points sur treize tenaient.
+Les deux autres relevaient du même défaut, et c'est devenu le défaut signature de ce projet : le
+système existe, il est correct, et il ne produit rien d'observable.
+
+### 13.1 « Une animation pour quand il se relève »
+
+Ce qui était codé : la bascule du corps repassait de 84° à 0° avec un lissage. Autrement dit **la
+chute jouée à l'envers**. Ça se lit immédiatement comme faux, parce que personne ne se relève en
+décrivant exactement la trajectoire de sa chute.
+
+Un relevé humain a deux temps, pas un : on se **ramasse** (le torse quitte le sol vite, le corps
+reste plié, on passe par un appui sur le côté), puis on se **déplie**. Les deux temps suivent donc
+maintenant deux courbes déphasées :
+
+- la bascule tombe de 84° à 35° sur les 38 premiers pourcents, puis de 35° à 0° sur le reste ;
+- le bassin se plie en cloche (`sin`), maximum au milieu du relevé : c'est la position accroupie
+  par laquelle on passe forcément ;
+- un roulis de 22° s'ajoute au début, du côté où on est tombé : on se met sur le côté, on ne se
+  redresse pas à plat dos d'une seule pièce.
+
+Le pliage du bassin passe par une nouvelle propriété `ProceduralLocomotion.ExtraPelvisDrop`, pas
+par un accès direct à l'os. Même règle que partout ailleurs : **la locomotion est seule à écrire
+sur le bassin.** Deux systèmes qui écrivent sur le même transform, c'est le dernier exécuté qui
+gagne, et l'ordre d'exécution n'est pas quelque chose sur quoi on veut parier.
+
+Ce qui reste absent, et je le note plutôt que de le laisser croire : les **mains ne poussent pas
+sur le sol** pendant le relevé. Les bras sont pilotés par l'IK dans le repère de visée ; leur faire
+chercher le sol demanderait un canal de pose supplémentaire, et le risque de conflit avec
+l'exécuteur de coups est réel pour un gain moindre que les trois éléments ci-dessus.
+
+### 13.2 « Je veux le torse, tête et jambe »
+
+Les trois zones existaient, avec trois multiplicateurs, et **rien à l'écran ne disait laquelle
+venait d'être touchée.** Le joueur voyait donc des chiffres qui varient sans pouvoir relier la
+variation à son geste — c'est-à-dire sans pouvoir apprendre à viser. Un système de zones qu'on ne
+peut pas lire n'est pas un système de zones, c'est du bruit dans les dégâts.
+
+Trois ajouts, tous du côté affichage :
+
+1. **La zone est écrite sous le chiffre** (TETE / CORPS / JAMBES), avec une couleur par zone.
+2. **« BLOQUE » est écrit** quand la garde a absorbé. Sans ce mot, un coup réduit de 72 %
+   ressemble exactement à un coup mal placé, et le joueur conclurait que ses dégâts sont
+   aléatoires.
+3. **F1 affiche les trois zones de l'adversaire** avec leur multiplicateur, et la **hauteur exacte
+   du membre qui frappe** pendant le coup.
+
+Ce troisième point a d'ailleurs révélé un fait qu'aucune lecture de code n'aurait donné. La
+hauteur du poing se calcule :
+
+```
+hauteur = hauteur_des_yeux + (y_pose · cos θ − z_pose · sin θ)      θ = tangage × 0,45
+```
+
+Avec la pose d'extension du direct (y = −0,055 ; z = 0,500) et un tangage maximal de 85° :
+
+| Posture | Regard | Hauteur du poing | Zone atteinte |
+|---|---|---|---|
+| Debout (yeux 1,62 m) | droit devant | 1,57 m | Tête |
+| Debout | au sol (θ = 38°) | **1,27 m** | Corps |
+| Accroupi (yeux 1,00 m) | au sol | 0,65 m | Jambes |
+
+**Debout, le poing ne peut pas descendre sous 1,27 m** — même avec une influence du tangage de
+100 %, il plafonnerait à 1,07 m, car la descente est bornée par la longueur du bras. La zone
+« jambes » s'arrêtant à 0,92 m, elle est **géométriquement inatteignable au poing en position
+debout**. Ce n'est pas un bug, c'est juste vrai : on ne frappe pas la cuisse de quelqu'un au poing
+sans se baisser. Mais sans ce calcul écrit noir sur blanc, le symptôme aurait été « les coups aux
+jambes ne marchent pas » et j'aurais cherché le problème dans la détection.
+
+La zone jambes a donc exactement deux accès : **s'accroupir** (C) en regardant vers le bas, ou le
+**coup de pied bas** (V). Ce dernier devient par construction le coup qui ouvre les chutes, ce qui
+lui donne enfin une raison d'exister au-delà de ses 11 dégâts.
+
+### 13.3 Une erreur dans ma propre documentation
+
+J'avais écrit que le coup de pied bas cumulait ses 55 % de chance de chute avec les 70 % de la
+zone « jambes ». C'est faux : le code prend le **maximum** des chances applicables, pas leur
+somme. Un coup de pied bas dans les jambes fait donc tomber à 70 %, pas à 86 %. Corrigé dans le
+README, avec le tableau complet.
+
+La leçon n'est pas sur le chiffre : c'est qu'**une documentation écrite de mémoire juste après
+avoir codé est aussi peu fiable qu'une estimation à l'œil.** Elle se relit sur le code, comme
+tout le reste.

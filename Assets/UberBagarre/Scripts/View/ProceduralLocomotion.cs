@@ -175,6 +175,16 @@ namespace UberBagarre.View
         /// </summary>
         public float KnockdownWeight { get; set; }
 
+        /// <summary>
+        /// Abaissement supplémentaire du bassin, en mètres. Utilisé par le relevé.
+        ///
+        /// Il passe par ici et pas par un accès direct à l'os pour la même raison que tout le
+        /// reste : la locomotion est seule à écrire sur le bassin. Deux systèmes qui écrivent sur
+        /// le même transform, c'est celui qui passe en dernier qui gagne — et l'ordre d'exécution
+        /// n'est pas quelque chose sur quoi on veut parier.
+        /// </summary>
+        public float ExtraPelvisDrop { get; set; }
+
         private void Start()
         {
             if (_root == null) _root = transform;
@@ -346,7 +356,7 @@ namespace UberBagarre.View
             float bob = -_pelvisBob * (0.5f - 0.5f * Mathf.Cos(cycle * 2f)) * _moveWeight;
             float sway = Mathf.Sin(cycle) * _pelvisSway * _moveWeight;
 
-            float drop = _crouchPelvisDrop * _crouchAmount + _slidePelvisDrop * _slideAmount;
+            float drop = _crouchPelvisDrop * _crouchAmount + _slidePelvisDrop * _slideAmount + ExtraPelvisDrop;
 
             pelvis.localPosition = _rig.PelvisRestPosition + new Vector3(sway, bob - drop, 0f);
             pelvis.localRotation = _rig.PelvisRestRotation * Quaternion.Euler(

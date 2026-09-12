@@ -52,6 +52,14 @@ namespace UberBagarre.UI
         private float _kickFlash;
         private float _lowKickFlash;
         private float _guardFlash;
+        private Hurtbox[] _enemyZones;
+
+        private void Start()
+        {
+            // Collectees une fois : chercher les composants a chaque image d'OnGUI allouerait
+            // un tableau par frame, et OnGUI est appele plusieurs fois par frame.
+            if (_enemy != null) _enemyZones = _enemy.GetComponentsInChildren<Hurtbox>(true);
+        }
 
         private void Update()
         {
@@ -92,7 +100,57 @@ namespace UberBagarre.UI
 
             DrawInputLamps(panel);
             DrawTestButton(panel);
+            DrawZoneMarkers();
             DrawReachMarkers();
+        }
+
+        /// <summary>
+        /// Marque les trois zones touchables de l'adversaire, avec leur multiplicateur.
+        ///
+        /// Sans ça, les zones sont une règle invisible : le joueur voit des dégâts qui varient
+        /// sans savoir où se trouve la frontière entre le torse et les jambes, donc sans jamais
+        /// pouvoir apprendre à viser. C'est aussi la façon de vérifier d'un coup d'œil qu'une
+        /// zone n'est pas placée n'importe où après un changement de proportions.
+        /// </summary>
+        private void DrawZoneMarkers()
+        {
+            if (_enemyZones == null) return;
+
+            Camera camera = Camera.main;
+            if (camera == null) return;
+
+            for (int i = 0; i < _enemyZones.Length; i++)
+            {
+                Hurtbox zone = _enemyZones[i];
+                if (zone == null) continue;
+
+                Vector2 gui;
+                if (!GuiKit.WorldToGui(camera, zone.transform.position, out gui)) continue;
+
+                Marker(gui, 22f, ZoneColor(zone.Zone),
+                    ZoneName(zone.Zone) + "  x" + zone.DamageMultiplier.ToString("0.00"));
+            }
+        }
+
+        private static Color ZoneColor(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return new Color(1f, 0.45f, 0.35f, 0.85f);
+                case HitZone.Leg: return new Color(0.55f, 0.85f, 1f, 0.85f);
+                default: return new Color(0.95f, 0.9f, 0.6f, 0.85f);
+            }
+        }
+
+        private static string ZoneName(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return "TETE";
+                case HitZone.Leg: return "JAMBES";
+                case HitZone.Arm: return "BRAS";
+                default: return "CORPS";
+            }
         }
 
         /// <summary>
@@ -107,19 +165,18 @@ namespace UberBagarre.UI
             if (camera == null || _playerExecutor == null || !_playerExecutor.IsAttacking) return;
 
             Vector2 fist;
-            if (GuiKit.WorldToGui(camera, _playerExecutor.ActiveFistPosition, out fist))
-            {
-                Color color = _playerExecutor.IsHitWindowOpen ? _alert : new Color(1f, 1f, 1f, 0.35f);
-                Marker(fist, 26f, color, _playerExecutor.IsHitWindowOpen ? "POING (impact)" : "poing");
-            }
+            if (!GuiKit.WorldToGui(camera, _playerExecutor.ActiveFistPosition, out fist)) return;
 
-            if (_enemy == null) return;
+            bool open = _playerExecutor.IsHitWindowOpen;
+            Color color = open ? _alert : new Color(1f, 1f, 1f, 0.35f);
 
-            Vector2 target;
-            if (GuiKit.WorldToGui(camera, _enemy.AimPosition, out target))
-            {
-                Marker(target, 34f, new Color(0.4f, 0.85f, 1f, 0.8f), "cible");
-            }
+            // La HAUTEUR du membre qui frappe est ce qui decide de la zone touchee. L'afficher
+            // rend la regle verifiable : si le poing est a 1,27 m, il ne peut pas toucher une
+            // zone qui s'arrete a 0,92 m, et le savoir evite de chercher un bug ailleurs.
+            string label = (open ? "IMPACT  " : "") +
+                           _playerExecutor.ActiveFistPosition.y.ToString("0.00") + " m";
+
+            Marker(fist, 26f, color, label);
         }
 
         private void Marker(Vector2 centre, float size, Color color, string label)

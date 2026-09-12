@@ -13,6 +13,12 @@ namespace UberBagarre.UI
     ///
     /// Les coups à la tête et les coups lourds sont écrits plus gros et d'une autre couleur :
     /// l'information « tu as bien placé ce coup » doit se lire sans lire le chiffre.
+    ///
+    /// La ZONE touchée est écrite sous le chiffre, et ce n'est pas de la décoration. Trois zones
+    /// avec trois multiplicateurs différents ne servent à rien si le joueur ne peut pas savoir
+    /// laquelle il vient d'atteindre : il verrait seulement des chiffres qui varient sans
+    /// comprendre pourquoi, et ne pourrait donc jamais apprendre à viser. Même raison pour
+    /// « BLOQUE » : sans ce mot, un coup absorbé à 72 % ressemble à un coup mal placé.
     /// </summary>
     public class FloatingCombatText : MonoBehaviour
     {
@@ -23,6 +29,8 @@ namespace UberBagarre.UI
             public float Age;
             public bool Heavy;
             public bool Head;
+            public bool Blocked;
+            public HitZone Zone;
             public float HorizontalDrift;
         }
 
@@ -40,6 +48,13 @@ namespace UberBagarre.UI
         [SerializeField] private Color _normalColor = new Color(1f, 0.96f, 0.85f);
         [SerializeField] private Color _heavyColor = new Color(1f, 0.72f, 0.20f);
         [SerializeField] private Color _headColor = new Color(1f, 0.42f, 0.32f);
+        [SerializeField] private Color _legColor = new Color(0.62f, 0.88f, 1f);
+        [SerializeField] private Color _blockedColor = new Color(0.65f, 0.72f, 0.80f);
+
+        [SerializeField]
+        [Tooltip("Ecrit la zone touchee sous le chiffre. A laisser actif : sans ca, trois zones " +
+                 "de degats differents sont indistinguables en jouant.")]
+        private bool _showZoneLabel = true;
 
         [Header("Combo")]
         [SerializeField] private bool _showCombo = true;
@@ -79,6 +94,8 @@ namespace UberBagarre.UI
             entry.Amount = info.Amount;
             entry.Heavy = info.IsHeavy;
             entry.Head = info.Zone == HitZone.Head;
+            entry.Blocked = info.Blocked;
+            entry.Zone = info.Zone;
             entry.HorizontalDrift = Random.Range(-38f, 38f);
 
             _entries.Add(entry);
@@ -132,18 +149,51 @@ namespace UberBagarre.UI
                 // Sursaut initial : le chiffre depasse sa taille puis revient. Sans ce pic,
                 // un chiffre qui apparait a taille fixe passe inapercu.
                 float pop = 1f + Mathf.Max(0f, 1f - t * 6f) * 0.5f;
-                int size = Mathf.RoundToInt((entry.Heavy ? _heavyFontSize : _baseFontSize) * pop);
 
-                Color color = entry.Head ? _headColor : entry.Heavy ? _heavyColor : _normalColor;
-                color.a = Mathf.Clamp01(1f - Mathf.InverseLerp(0.55f, 1f, t));
+                // Un coup bloque n'a pas droit au gros chiffre : il ne doit pas se lire comme
+                // une reussite.
+                bool big = entry.Heavy && !entry.Blocked;
+                int size = Mathf.RoundToInt((big ? _heavyFontSize : _baseFontSize) * pop);
+
+                Color color = ZoneColor(entry);
+                float alpha = Mathf.Clamp01(1f - Mathf.InverseLerp(0.55f, 1f, t));
+                color.a = alpha;
 
                 GUIStyle style = GuiKit.Style(size, FontStyle.Bold, TextAnchor.MiddleCenter);
                 Rect rect = new Rect(gui.x - 100f, gui.y - 26f, 200f, 52f);
 
                 string text = Mathf.RoundToInt(entry.Amount).ToString();
-                if (entry.Head) text += "!";
+                if (entry.Head && !entry.Blocked) text += "!";
 
-                GuiKit.OutlinedLabel(rect, text, style, color, new Color(0f, 0f, 0f, color.a * 0.9f), 2f);
+                GuiKit.OutlinedLabel(rect, text, style, color, new Color(0f, 0f, 0f, alpha * 0.9f), 2f);
+
+                if (!_showZoneLabel) continue;
+
+                GUIStyle small = GuiKit.Style(Mathf.RoundToInt(13f * pop), FontStyle.Bold, TextAnchor.MiddleCenter);
+                Color labelColor = new Color(color.r, color.g, color.b, alpha * 0.9f);
+
+                GuiKit.OutlinedLabel(new Rect(gui.x - 100f, gui.y + 14f, 200f, 20f),
+                    entry.Blocked ? "BLOQUE" : ZoneName(entry.Zone), small,
+                    labelColor, new Color(0f, 0f, 0f, alpha * 0.9f), 1.5f);
+            }
+        }
+
+        private Color ZoneColor(Entry entry)
+        {
+            if (entry.Blocked) return _blockedColor;
+            if (entry.Zone == HitZone.Head) return _headColor;
+            if (entry.Zone == HitZone.Leg) return _legColor;
+            return entry.Heavy ? _heavyColor : _normalColor;
+        }
+
+        private static string ZoneName(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return "TETE";
+                case HitZone.Leg: return "JAMBES";
+                case HitZone.Arm: return "BRAS";
+                default: return "CORPS";
             }
         }
 
