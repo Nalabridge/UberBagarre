@@ -125,7 +125,7 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
-            if (_camera == null) _camera = Camera.main;
+            _camera = GuiKit.ActiveCamera(_camera);
 
             DrawDamageNumbers();
             DrawCombo();

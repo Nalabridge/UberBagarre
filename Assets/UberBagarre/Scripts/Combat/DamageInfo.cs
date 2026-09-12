@@ -50,6 +50,20 @@ namespace UberBagarre.Combat
         /// </summary>
         public bool Blocked;
 
+        /// <summary>Niveau de charge du coup, 0 à 1. Sert aux retours d'impact et à la chute.</summary>
+        public float ChargeLevel;
+
+        /// <summary>Vrai si ce coup est une riposte, placée juste après une parade réussie.</summary>
+        public bool IsRiposte;
+
+        /// <summary>
+        /// Chance de chute ajoutée par les circonstances du coup (charge, contexte).
+        ///
+        /// Séparée de celle de l'attaque : la même attaque chargée à fond ou relâchée aussitôt ne
+        /// doit pas avoir la même conséquence, et ça ne peut donc pas vivre dans l'asset.
+        /// </summary>
+        public float BonusKnockdownChance;
+
         public bool IsHeavy
         {
             get { return Attack != null && Attack.isHeavy; }

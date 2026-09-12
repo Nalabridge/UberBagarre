@@ -67,6 +67,9 @@ namespace UberBagarre.Combat
         /// </summary>
         public static event Action<Combatant, DamageInfo> AnyDamaged;
 
+        /// <summary>Émis à la mort de N'IMPORTE quel combattant. Même raison que AnyDamaged.</summary>
+        public static event Action<Combatant, DamageInfo> AnyDied;
+
         private void Awake()
         {
             if (_health == null) _health = GetComponent<HealthSystem>();
@@ -167,6 +170,9 @@ namespace UberBagarre.Combat
 
             Action<Combatant> died = Died;
             if (died != null) died(this);
+
+            Action<Combatant, DamageInfo> anyDied = AnyDied;
+            if (anyDied != null) anyDied(this, info);
         }
     }
 }

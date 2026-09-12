@@ -95,6 +95,11 @@ namespace UberBagarre.EditorTools
                       "  Pieds        : F = coup de pied de face, V = coup de pied bas (fait tomber)\n" +
                       "  Defense      : Ctrl gauche = garde (les 0,26 premieres secondes PARENT le coup),\n" +
                       "                 Alt gauche = esquive (direction = WASD)\n" +
+                      "  Contextuel   : en sprintant = charge d'epaule, en l'air = coup plongeant,\n" +
+                      "                 en glissade = balayage, cible au sol + pied = coup de grace\n" +
+                      "  Charge       : maintenir uppercut / coup de pied arme le coup (jusqu'a x2,2)\n" +
+                      "  Outils       : TAB = menu (PV, degats, profils, vagues, statistiques),\n" +
+                      "                 F3 = camera d'observation (+ / - pour le zoom)\n" +
                       "  Debug        : F1 = overlay, R = relancer le combat, Echap = liberer le curseur\n" +
                       "  Appuie sur Play.");
         }
@@ -258,6 +263,19 @@ namespace UberBagarre.EditorTools
             camera.farClipPlane = 300f;
             cameraGo.AddComponent<AudioListener>();
 
+            // Camera d'observation : hors du rig du joueur, pour qu'elle ne herite ni du head bob
+            // ni des secousses. Elle porte le MEME tag MainCamera, afin que Camera.main suive le
+            // point de vue reellement allume — sinon tous les affichages du monde (barres de vie,
+            // chiffres de degats) projetteraient depuis une camera eteinte.
+            GameObject observerGo = EditorBuildUtility.CreateEmpty("CameraObservation", null, Vector3.zero);
+            observerGo.tag = "MainCamera";
+
+            Camera observerCamera = observerGo.AddComponent<Camera>();
+            observerCamera.fieldOfView = 60f;
+            observerCamera.nearClipPlane = 0.05f;
+            observerCamera.farClipPlane = 300f;
+            observerCamera.enabled = false;
+
             // Tout ce qui doit se coucher quand le joueur tombe vit sous ce noeud.
             GameObject tilt = EditorBuildUtility.CreateEmpty("Inclinaison", playerGo.transform, Vector3.zero);
 
@@ -300,6 +318,14 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hands, "_rightHand", body.Rig.RightHand);
             SerializedWiring.SetObject(hands, "_locomotion", body.Locomotion);
 
+            ObserverCamera observer = playerGo.AddComponent<ObserverCamera>();
+            SerializedWiring.SetObject(observer, "_input", input);
+            SerializedWiring.SetObject(observer, "_look", look);
+            SerializedWiring.SetObject(observer, "_gameCamera", camera);
+            SerializedWiring.SetObject(observer, "_observerCamera", observerCamera);
+            SerializedWiring.SetObject(observer, "_target", head.transform);
+            SerializedWiring.Verify(observer, "_observerCamera");
+
             PlayerAvatarDriver driver = playerGo.AddComponent<PlayerAvatarDriver>();
             SerializedWiring.SetObject(driver, "_input", input);
             SerializedWiring.SetObject(driver, "_motor", motor);
@@ -327,6 +353,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
             SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
             SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
+            SerializedWiring.SetObject(executor, "_guard", guard);
+
+            AddStunMeter(playerGo, combatant, executor);
 
             DodgeSystem dodge = playerGo.AddComponent<DodgeSystem>();
             SerializedWiring.SetObject(dodge, "_combatant", combatant);
@@ -357,6 +386,10 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(combat, "_uppercut", attacks.Uppercut);
             SerializedWiring.SetObject(combat, "_kick", attacks.Kick);
             SerializedWiring.SetObject(combat, "_lowKick", attacks.LowKick);
+            SerializedWiring.SetObject(combat, "_shoulderCharge", attacks.Charge);
+            SerializedWiring.SetObject(combat, "_dive", attacks.Dive);
+            SerializedWiring.SetObject(combat, "_sweep", attacks.Sweep);
+            SerializedWiring.SetObject(combat, "_stomp", attacks.Stomp);
 
             SerializedWiring.SetObject(driver, "_guard", guard);
 
@@ -367,6 +400,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.Verify(combat, "_uppercut");
             SerializedWiring.Verify(combat, "_kick");
             SerializedWiring.Verify(combat, "_lowKick");
+            SerializedWiring.Verify(combat, "_sweep");
+            SerializedWiring.Verify(combat, "_stomp");
 
             // --- retours
             AudioSource audioSource = playerGo.AddComponent<AudioSource>();
@@ -458,6 +493,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
             SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
             SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
+            SerializedWiring.SetObject(executor, "_guard", guard);
+
+            StunMeter stun = AddStunMeter(enemyGo, combatant, executor);
 
             DodgeSystem dodge = enemyGo.AddComponent<DodgeSystem>();
             SerializedWiring.SetObject(dodge, "_combatant", combatant);
@@ -500,6 +538,7 @@ namespace UberBagarre.EditorTools
 
             WorldHealthBar bar = enemyGo.AddComponent<WorldHealthBar>();
             SerializedWiring.SetObject(bar, "_combatant", combatant);
+            SerializedWiring.SetObject(bar, "_stun", stun);
 
             AddBruises(enemyGo, combatant, body, materials);
 
@@ -513,7 +552,7 @@ namespace UberBagarre.EditorTools
 
             SetComponentArray(ragdoll, "_disableOnDeath",
                 body.Locomotion, arms, avatarDriver, brain, motor, executor, reaction, dodge,
-                enemyGo.GetComponent<KnockdownSystem>(), guard);
+                enemyGo.GetComponent<KnockdownSystem>(), guard, stun);
 
             return enemyGo;
         }
@@ -708,6 +747,18 @@ namespace UberBagarre.EditorTools
             return knockdown;
         }
 
+        /// <summary>
+        /// Jauge d'étourdissement. Elle crée un second axe à côté des points de vie : la pression.
+        /// </summary>
+        private static StunMeter AddStunMeter(GameObject go, Combatant combatant, AttackExecutor executor)
+        {
+            StunMeter stun = go.AddComponent<StunMeter>();
+            SerializedWiring.SetObject(stun, "_combatant", combatant);
+            SerializedWiring.SetObject(stun, "_health", combatant.Health);
+            SerializedWiring.SetObject(stun, "_executor", executor);
+            return stun;
+        }
+
         private static BruiseSystem AddBruises(GameObject go, Combatant combatant,
             FighterBuilder.Result body, BuildMaterials materials)
         {
@@ -730,6 +781,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hud, "_guard", player.GetComponent<GuardSystem>());
             SerializedWiring.SetObject(hud, "_relay", player.GetComponent<CombatFeedbackRelay>());
             SerializedWiring.SetObject(hud, "_combat", player.GetComponent<PlayerCombat>());
+            SerializedWiring.SetObject(hud, "_stun", player.GetComponent<StunMeter>());
+            SerializedWiring.SetObject(hud, "_executor", player.GetComponent<AttackExecutor>());
 
             CombatDebugOverlay overlay = player.AddComponent<CombatDebugOverlay>();
             SerializedWiring.SetObject(overlay, "_input", player.GetComponent<PlayerInputReader>());
@@ -821,6 +874,16 @@ namespace UberBagarre.EditorTools
 
             // Le menu de reglage vit avec les systemes, pas sur le joueur : il regle la scene
             // entiere, et supprimer le joueur ne doit pas emporter l'outil qui sert a le regler.
+            WaveDirector waves = directorGo.AddComponent<WaveDirector>();
+            SerializedWiring.SetObject(waves, "_enemyTemplate", enemy);
+            SerializedWiring.SetObject(waves, "_player", player.GetComponent<Combatant>());
+
+            CombatStatistics statistics = directorGo.AddComponent<CombatStatistics>();
+            SerializedWiring.SetObject(statistics, "_player", player.GetComponent<Combatant>());
+            SerializedWiring.SetObject(statistics, "_executor", player.GetComponent<AttackExecutor>());
+            SerializedWiring.SetObject(statistics, "_guard", player.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(statistics, "_combo", player.GetComponent<ComboTracker>());
+
             SandboxMenu menu = directorGo.AddComponent<SandboxMenu>();
             SerializedWiring.SetObject(menu, "_input", player.GetComponent<PlayerInputReader>());
             SerializedWiring.SetObject(menu, "_player", player.GetComponent<Combatant>());
@@ -829,6 +892,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(menu, "_spawnDirector", director);
             SerializedWiring.SetObject(menu, "_playerCombat", player.GetComponent<PlayerCombat>());
             SerializedWiring.SetObject(menu, "_hitStop", player.GetComponent<HitStop>());
+            SerializedWiring.SetObject(menu, "_waves", waves);
+            SerializedWiring.SetObject(menu, "_statistics", statistics);
 
             SerializedWiring.Verify(menu, "_enemyTemplate");
             SerializedWiring.Verify(menu, "_cursor");

@@ -35,6 +35,14 @@ namespace UberBagarre.UI
         [Tooltip("Optionnel. Sert a prevenir a l'ecran quand les donnees de coups sont perimees.")]
         private PlayerCombat _combat;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Affiche la jauge d'etourdissement du joueur.")]
+        private StunMeter _stun;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Affiche la charge en cours et la fenetre de riposte.")]
+        private AttackExecutor _executor;
+
         [Header("Affichage")]
         [SerializeField] private bool _visible = true;
         [SerializeField, Min(0f)] private float _margin = 30f;
@@ -129,8 +137,61 @@ namespace UberBagarre.UI
             DrawCrosshair();
             DrawAimedZone();
             DrawGuard();
+            DrawCharge();
+            DrawRiposte();
             DrawPlayerPanel();
             DrawOutdatedWarning();
+        }
+
+        /// <summary>
+        /// Arc de charge autour du réticule.
+        ///
+        /// Une charge sans retour visuel est injouable : le joueur relâche au hasard, ne voit pas
+        /// la différence, et conclut que la mécanique ne sert à rien. L'arc se remplit, puis
+        /// devient blanc et pulse à charge pleine — c'est le signal « lâche maintenant ».
+        /// </summary>
+        private void DrawCharge()
+        {
+            if (_executor == null || !_executor.IsCharging) return;
+
+            float level = _executor.ChargeProgress;
+            float cx = Screen.width * 0.5f;
+            float cy = Screen.height * 0.5f;
+
+            bool full = level >= 0.999f;
+            float pulse = full ? 0.7f + 0.3f * Mathf.Sin(Time.unscaledTime * 14f) : 1f;
+
+            Color color = full
+                ? new Color(1f, 1f, 1f, pulse)
+                : Color.Lerp(new Color(1f, 0.72f, 0.25f, 0.85f), new Color(1f, 0.35f, 0.2f, 0.95f), level);
+
+            // Barre horizontale sous le reticule : lisible sans masquer la cible.
+            float width = 86f;
+            Rect rail = new Rect(cx - width * 0.5f, cy + 40f, width, 5f);
+
+            GuiKit.Fill(rail, new Color(0f, 0f, 0f, 0.65f));
+            GuiKit.Fill(new Rect(rail.x, rail.y, rail.width * level, rail.height), color);
+
+            if (!full) return;
+
+            GuiKit.OutlinedLabel(new Rect(cx - 80f, cy + 48f, 160f, 18f), "CHARGE PLEINE",
+                GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleCenter),
+                new Color(1f, 1f, 1f, pulse), new Color(0f, 0f, 0f, 0.9f), 1f);
+        }
+
+        /// <summary>Fenêtre de riposte, juste après une parade réussie. Elle dure moins d'une seconde : elle doit sauter aux yeux.</summary>
+        private void DrawRiposte()
+        {
+            if (_guard == null || !_guard.RiposteReady) return;
+
+            float cx = Screen.width * 0.5f;
+            float cy = Screen.height * 0.5f;
+            float pulse = 0.65f + 0.35f * Mathf.Sin(Time.unscaledTime * 16f);
+
+            GuiKit.OutlinedLabel(new Rect(cx - 140f, cy - 120f, 280f, 26f),
+                "RIPOSTE  x" + _guard.RiposteDamageMultiplier.ToString("0.0"),
+                GuiKit.Style(19, FontStyle.Bold, TextAnchor.MiddleCenter),
+                new Color(1f, 0.95f, 0.55f, pulse), new Color(0f, 0f, 0f, 0.9f), 2f);
         }
 
         /// <summary>
@@ -338,6 +399,18 @@ namespace UberBagarre.UI
                     small,
                     empty ? new Color(1f, 0.45f, 0.38f, blink) : new Color(1f, 1f, 1f, 0.5f),
                     new Color(0f, 0f, 0f, 0.8f), 1f);
+            }
+
+            // Jauge d'etourdissement du joueur : fine, sous les autres. Savoir qu'on est sur le
+            // point d'etre sonne est ce qui permet de decider de rompre le combat.
+            if (_stun != null && _stun.Normalized > 0.005f)
+            {
+                Rect stunRect = new Rect(barX, panel.y + 96f, barWidth * 0.86f, 5f);
+                GuiKit.Fill(stunRect, new Color(0f, 0f, 0f, 0.7f));
+
+                float value = _stun.Normalized;
+                GuiKit.Fill(new Rect(stunRect.x, stunRect.y, stunRect.width * value, stunRect.height),
+                    Color.Lerp(new Color(1f, 0.82f, 0.3f), Color.white, value * value));
             }
 
             GUI.matrix = previousMatrix;

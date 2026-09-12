@@ -175,8 +175,24 @@ namespace UberBagarre.Enemy
             _attacks.Add(option);
         }
 
+        /// <summary>
+        /// Reporte la vitesse de déplacement des statistiques sur le moteur.
+        ///
+        /// <see cref="StatType.MoveSpeed"/> existait depuis la phase 6 et rien ne la lisait — même
+        /// cas que AttackSpeed. C'est elle qui permet à un archétype rapide d'être réellement
+        /// rapide, au lieu de l'être seulement sur le papier.
+        /// </summary>
+        private void ApplyMoveSpeed()
+        {
+            if (_motor == null || _self == null || _self.Stats == null) return;
+
+            _motor.SpeedMultiplier = Mathf.Max(0.1f, _self.Stats.Get(StatType.MoveSpeed));
+        }
+
         private void Update()
         {
+            ApplyMoveSpeed();
+
             if (_self == null || !_self.IsAlive)
             {
                 UnsubscribeFromTarget();

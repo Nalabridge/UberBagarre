@@ -56,6 +56,15 @@ namespace UberBagarre.Core
         [Tooltip("Ouvre / ferme le menu de bac a sable : PV, degats, apparition d'adversaires.")]
         public InputBinding toggleSandboxMenu = InputBinding.FromKey(KeyCode.Tab);
 
+        [Tooltip("Camera d'observation : tourne autour du joueur. Le combat continue pendant ce temps.")]
+        public InputBinding toggleObserver = InputBinding.FromKey(KeyCode.F3);
+
+        [Tooltip("Rapproche la camera d'observation.")]
+        public InputBinding observerZoomIn = InputBinding.FromKey(KeyCode.Equals);
+
+        [Tooltip("Eloigne la camera d'observation.")]
+        public InputBinding observerZoomOut = InputBinding.FromKey(KeyCode.Minus);
+
         [Tooltip("Relance le combat : tout le monde revient a plein et retourne a son spawn.")]
         public InputBinding restartFight = InputBinding.FromKey(KeyCode.R);
 

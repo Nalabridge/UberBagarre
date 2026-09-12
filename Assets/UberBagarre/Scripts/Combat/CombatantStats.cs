@@ -100,6 +100,13 @@ namespace UberBagarre.Combat
             return value * (1f + percent);
         }
 
+        /// <summary>Remplace l'archétype de base. Les overrides et modificateurs continuent de s'appliquer.</summary>
+        public void SetBaseStats(CombatantStatsData data)
+        {
+            _baseStats = data;
+            Raise();
+        }
+
         /// <summary>Remplace la valeur de base d'une stat. Les modificateurs continuent de s'y ajouter.</summary>
         public void SetOverride(StatType stat, float value)
         {

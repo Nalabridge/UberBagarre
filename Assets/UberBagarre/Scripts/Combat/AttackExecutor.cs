@@ -40,6 +40,10 @@ namespace UberBagarre.Combat
         [SerializeField] private Hitbox _leftFootHitbox;
         [SerializeField] private Hitbox _rightFootHitbox;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Fournit la riposte : le coup qui suit une parade reussie est renforce.")]
+        private GuardSystem _guard;
+
         [Header("Debug")]
         [SerializeField] private bool _logAttacks;
 
@@ -56,6 +60,11 @@ namespace UberBagarre.Combat
         private float _cooldown;
         private bool _hitWindowOpen;
         private bool _lastHandWasLead;
+        private float _charge;
+        private float _riposteMultiplier = 1f;
+
+        private AttackData _charging;
+        private float _chargeTime;
 
         public event Action<AttackData, HandSide> AttackStarted;
         public event Action<AttackData> AttackEnded;
@@ -63,6 +72,22 @@ namespace UberBagarre.Combat
 
         /// <summary>Raison du dernier refus. Affichée par l'overlay de debug.</summary>
         public string LastRefusal { get; private set; }
+
+        /// <summary>Niveau de charge du coup en cours, 0 à 1.</summary>
+        public float Charge { get { return _charge; } }
+
+        /// <summary>Niveau de charge en train d'être accumulé, 0 à 1. Sert à l'affichage.</summary>
+        public float ChargeProgress
+        {
+            get
+            {
+                if (_charging == null) return 0f;
+                return Mathf.Clamp01(_chargeTime / Mathf.Max(0.05f, _charging.maxChargeTime));
+            }
+        }
+
+        public bool IsCharging { get { return _charging != null; } }
+        public AttackData ChargingAttack { get { return _charging; } }
 
         public bool IsAttacking { get { return _attack != null; } }
 
@@ -153,7 +178,94 @@ namespace UberBagarre.Combat
             else hitbox.Hit -= OnHitboxHit;
         }
 
+        /// <summary>
+        /// Maintient une charge. À appeler chaque frame tant que la touche est tenue.
+        ///
+        /// La charge est gérée ici et pas dans le lecteur d'entrées parce que c'est l'exécuteur qui
+        /// sait si un coup peut partir : charger alors qu'on est étourdi ou déjà engagé n'aurait
+        /// aucun sens, et la charge doit s'annuler dans ce cas plutôt que s'accumuler dans le vide.
+        /// </summary>
+        public void HoldCharge(AttackData attack)
+        {
+            if (attack == null || !attack.chargeable)
+            {
+                _charging = null;
+                return;
+            }
+
+            // On ne charge pas pendant un coup ni dans un etat qui interdit d'agir : sinon la
+            // charge se remplirait en silence et partirait a un moment que le joueur n'a pas choisi.
+            if (_attack != null || (_combatant != null && !_combatant.CanAct))
+            {
+                _charging = null;
+                _chargeTime = 0f;
+                return;
+            }
+
+            if (_charging != attack)
+            {
+                _charging = attack;
+                _chargeTime = 0f;
+            }
+
+            _chargeTime += Time.deltaTime;
+
+            if (_hands == null) return;
+
+            // Pose d'armement tenue, avec un tremblement croissant : la charge doit se VOIR, sinon
+            // le joueur ne sait pas ou il en est et relache au hasard.
+            float level = ChargeProgress;
+            HandSide side = attack.hand == AttackHand.Lead ? HandSide.Left : HandSide.Right;
+
+            AttackPoseKey key = attack.Sample(0, attack.hitWindowStart * 0.45f);
+            HandPose pose = AttackData.Mirror(key.handPosition, key.handEuler, side == HandSide.Left);
+
+            float shake = level * level * 0.006f;
+            pose = new HandPose(
+                pose.position + new Vector3(
+                    (Mathf.PerlinNoise(Time.time * 38f, 0f) - 0.5f) * shake,
+                    (Mathf.PerlinNoise(0f, Time.time * 41f) - 0.5f) * shake,
+                    0f),
+                pose.euler);
+
+            if (attack.limb == AttackLimb.Foot) return;
+            _hands.SetAttackPose(side, pose, level, Mathf.Lerp(0.5f, 1f, level));
+        }
+
+        /// <summary>Abandonne la charge en cours sans jouer de coup.</summary>
+        public void CancelCharge()
+        {
+            if (_charging == null) return;
+
+            if (_hands != null && _charging.limb != AttackLimb.Foot)
+            {
+                _hands.ClearAttackPose(_charging.hand == AttackHand.Lead ? HandSide.Left : HandSide.Right);
+            }
+
+            _charging = null;
+            _chargeTime = 0f;
+        }
+
+        /// <summary>Relâche la charge accumulée et joue le coup. Renvoie vrai s'il est parti.</summary>
+        public bool ReleaseCharge()
+        {
+            if (_charging == null) return false;
+
+            AttackData attack = _charging;
+            float level = ChargeProgress;
+
+            _charging = null;
+            _chargeTime = 0f;
+
+            return TryPlay(attack, level);
+        }
+
         public bool TryPlay(AttackData attack)
+        {
+            return TryPlay(attack, 0f);
+        }
+
+        public bool TryPlay(AttackData attack, float charge)
         {
             if (attack == null) return Refuse("aucune donnee d'attaque assignee (champ vide dans PlayerCombat ?)", true);
             if (_hands == null) return Refuse("pas de FirstPersonHands assigne sur l'executeur", true);
@@ -200,6 +312,11 @@ namespace UberBagarre.Combat
             if (chaining) EndCurrent(false);
 
             _attack = attack;
+            _charge = attack.chargeable ? Mathf.Clamp01(charge) : 0f;
+
+            // La riposte est consommee a l'engagement du coup, pas a l'impact : le joueur a pris
+            // sa decision en lancant, et un coup qui rate a bien depense sa riposte.
+            _riposteMultiplier = _guard != null ? _guard.ConsumeRiposte() : 1f;
 
             // L'etat dure exactement le coup, vitesse comprise : un coup accelere qui laisserait
             // l'etat Attacking courir a l'ancienne duree bloquerait tout juste apres sa fin.
@@ -447,13 +564,19 @@ namespace UberBagarre.Combat
             Hitbox hitbox = ActiveHitbox();
             if (hitbox == null) return;
 
+            float chargeDamage = Mathf.Lerp(1f, _attack.chargeDamageMultiplier, _charge);
+            float chargeImpact = Mathf.Lerp(1f, _attack.chargeImpactMultiplier, _charge);
+
             DamageInfo template = new DamageInfo();
-            template.Amount = _combatant != null
+            template.Amount = (_combatant != null
                 ? DamageCalculator.ComputeOutgoing(_attack, _combatant.Stats)
-                : _attack.damage;
-            template.ImpactForce = _attack.impactForce;
+                : _attack.damage) * chargeDamage * _riposteMultiplier;
+            template.ImpactForce = _attack.impactForce * chargeImpact;
             template.Direction = transform.forward;
             template.Attack = _attack;
+            template.ChargeLevel = _charge;
+            template.IsRiposte = _riposteMultiplier > 1.01f;
+            template.BonusKnockdownChance = _attack.chargeKnockdownBonus * _charge;
 
             // La zone visee est resolue A L'OUVERTURE du coup, pas a l'impact : c'est ce que le
             // joueur visait quand il a engage son poing qui doit compter, pas ce qui se trouve

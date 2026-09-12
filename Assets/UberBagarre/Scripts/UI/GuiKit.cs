@@ -166,6 +166,22 @@ namespace UberBagarre.UI
             return style;
         }
 
+        /// <summary>
+        /// La caméra à utiliser pour projeter : celle qu'on préfère si elle est allumée, sinon
+        /// celle du jeu.
+        ///
+        /// Indispensable dès qu'il existe plus d'un point de vue. Les affichages du monde — barres
+        /// de vie, chiffres de dégâts, marqueurs — gardent une référence câblée vers la caméra
+        /// première personne ; basculer en caméra d'observation les laisserait projeter depuis une
+        /// caméra éteinte, et tout se retrouverait au mauvais endroit de l'écran sans qu'aucune
+        /// erreur n'apparaisse.
+        /// </summary>
+        public static Camera ActiveCamera(Camera preferred)
+        {
+            if (preferred != null && preferred.isActiveAndEnabled) return preferred;
+            return Camera.main;
+        }
+
         /// <summary>Convertit une position monde en coordonnées GUI. Renvoie faux si c'est derrière la caméra.</summary>
         public static bool WorldToGui(Camera camera, Vector3 worldPosition, out Vector2 guiPosition)
         {

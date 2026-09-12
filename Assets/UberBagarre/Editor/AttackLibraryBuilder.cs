@@ -48,10 +48,16 @@ namespace UberBagarre.EditorTools
             public AttackData Kick;
             public AttackData LowKick;
 
+            /// <summary>Coups contextuels : ils remplacent le coup de base dans une situation donnée.</summary>
+            public AttackData Charge;
+            public AttackData Dive;
+            public AttackData Sweep;
+            public AttackData Stomp;
+
             /// <summary>Tous les coups, dans l'ordre d'apprentissage.</summary>
             public AttackData[] All
             {
-                get { return new[] { Straight, Hook, Uppercut, Kick, LowKick }; }
+                get { return new[] { Straight, Hook, Uppercut, Kick, LowKick, Charge, Dive, Sweep, Stomp }; }
             }
         }
 
@@ -96,6 +102,11 @@ namespace UberBagarre.EditorTools
             library.Uppercut = GetOrCreate(AttackData.UppercutAsset, overwrite, ConfigureUppercut);
             library.Kick = GetOrCreate(AttackData.KickAsset, overwrite, ConfigureKick);
             library.LowKick = GetOrCreate(AttackData.LowKickAsset, overwrite, ConfigureLowKick);
+
+            library.Charge = GetOrCreate(AttackData.ChargeAsset, overwrite, ConfigureShoulderCharge);
+            library.Dive = GetOrCreate(AttackData.DiveAsset, overwrite, ConfigureDive);
+            library.Sweep = GetOrCreate(AttackData.SweepAsset, overwrite, ConfigureSweep);
+            library.Stomp = GetOrCreate(AttackData.StompAsset, overwrite, ConfigureStomp);
 
             return library;
         }
@@ -350,6 +361,11 @@ namespace UberBagarre.EditorTools
         private static void ConfigureUppercut(AttackData a)
         {
             a.displayName = "Uppercut";
+            a.chargeable = true;
+            a.maxChargeTime = 0.70f;
+            a.chargeDamageMultiplier = 2.2f;
+            a.chargeImpactMultiplier = 2.6f;
+            a.chargeKnockdownBonus = 0.45f;
             a.limb = AttackLimb.Hand;
             a.hand = AttackHand.Alternate;
             a.isHeavy = true;
@@ -415,6 +431,11 @@ namespace UberBagarre.EditorTools
         private static void ConfigureKick(AttackData a)
         {
             a.displayName = "Coup de pied";
+            a.chargeable = true;
+            a.maxChargeTime = 0.80f;
+            a.chargeDamageMultiplier = 2.0f;
+            a.chargeImpactMultiplier = 2.8f;
+            a.chargeKnockdownBonus = 0.40f;
             a.limb = AttackLimb.Foot;
             a.hand = AttackHand.Alternate;
             a.isHeavy = true;
@@ -483,6 +504,11 @@ namespace UberBagarre.EditorTools
         private static void ConfigureLowKick(AttackData a)
         {
             a.displayName = "Coup de pied bas";
+            a.chargeable = true;
+            a.maxChargeTime = 0.60f;
+            a.chargeDamageMultiplier = 1.7f;
+            a.chargeImpactMultiplier = 2.0f;
+            a.chargeKnockdownBonus = 0.30f;
             a.limb = AttackLimb.Foot;
             a.hand = AttackHand.Alternate;
             a.isHeavy = false;
@@ -538,6 +564,195 @@ namespace UberBagarre.EditorTools
             };
         }
 
+        // ------------------------------------------------------------------ coups contextuels
+
+        /// <summary>
+        /// Charge d'épaule, en sprintant. Peu de dégâts, énormément de recul.
+        ///
+        /// Ces quatre coups ne consomment AUCUNE touche nouvelle : ils remplacent le coup de base
+        /// quand la situation s'y prête. C'est la façon la moins chère d'ajouter de la variété,
+        /// et la plus naturelle — sprinter et frapper n'est pas frapper, et le joueur n'a rien à
+        /// apprendre pour le découvrir.
+        /// </summary>
+        private static void ConfigureShoulderCharge(AttackData a)
+        {
+            a.displayName = "Charge d'epaule";
+            a.context = AttackContext.Sprinting;
+            a.limb = AttackLimb.Hand;
+            a.hand = AttackHand.Alternate;
+            a.isHeavy = true;
+            a.knockdownChance = 0.45f;
+            a.duration = 0.40f;
+            a.cooldown = 0.22f;
+            a.hitWindowStart = 0.24f;
+            a.hitWindowEnd = 0.62f;
+            a.comboCancelAt = 0.78f;
+            a.hitRadius = 0.26f;
+            a.damage = 13f;
+            a.impactForce = 14f;
+            a.staminaCost = 18f;
+            a.shakeIntensity = 0.13f;
+            a.shakeDuration = 0.22f;
+            a.hitStopDuration = 0.032f;
+            a.weightCurve = PunchWeightCurve();
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01",
+                    Rest(0.00f),
+                    // L'epaule part en avant : les deux bras se replient, ce n'est pas un coup
+                    // de poing mais un choc de tout le corps.
+                    Key(0.20f, new Vector3(0.118f, -0.205f, 0.330f), new Vector3(6f, -30f, -14f), 1f,
+                        new Vector3(6f, 24f, -6f), new Vector3(0.012f, -0.014f, 0.030f), new Vector3(2.2f, 4.5f, -3f),
+                        new Vector3(-0.112f, -0.198f, 0.318f), new Vector3(6f, 34f, 14f)),
+                    Key(0.40f, new Vector3(0.098f, -0.188f, 0.352f), new Vector3(8f, -34f, -16f), 1f,
+                        new Vector3(9f, 28f, -7f), new Vector3(0.015f, -0.016f, 0.038f), new Vector3(2.8f, 5.5f, -3.6f),
+                        new Vector3(-0.098f, -0.186f, 0.330f), new Vector3(8f, 38f, 16f)),
+                    Key(0.70f, new Vector3(0.132f, -0.190f, 0.300f), new Vector3(2f, -24f, -10f), 1f,
+                        new Vector3(3f, 14f, -3f), new Vector3(0.006f, -0.006f, 0.012f), Vector3.zero,
+                        new Vector3(-0.130f, -0.180f, 0.310f), new Vector3(2f, 28f, 10f)),
+                    Rest(1.00f))
+            };
+        }
+
+        /// <summary>Coup plongeant, en l'air. Lent à sortir, mais il fait tomber presque à coup sûr.</summary>
+        private static void ConfigureDive(AttackData a)
+        {
+            a.displayName = "Coup plongeant";
+            a.context = AttackContext.Airborne;
+            a.limb = AttackLimb.Hand;
+            a.hand = AttackHand.Rear;
+            a.isHeavy = true;
+            a.knockdownChance = 0.75f;
+            a.duration = 0.42f;
+            a.cooldown = 0.26f;
+            a.hitWindowStart = 0.30f;
+            a.hitWindowEnd = 0.70f;
+            a.comboCancelAt = 0.85f;
+            a.hitRadius = 0.22f;
+            a.damage = 24f;
+            a.impactForce = 11f;
+            a.staminaCost = 24f;
+            a.shakeIntensity = 0.15f;
+            a.shakeDuration = 0.26f;
+            a.hitStopDuration = 0.032f;
+            a.weightCurve = PunchWeightCurve();
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01",
+                    Rest(0.00f),
+                    // Le poing part tres haut puis s'abat : la trajectoire descendante est ce qui
+                    // fait lire "de haut en bas" sans qu'on voie le corps du joueur.
+                    Key(0.18f, new Vector3(0.182f, 0.270f, 0.212f), new Vector3(-62f, -12f, -6f), 0.55f,
+                        new Vector3(-14f, 8f, 0f), new Vector3(0f, 0.024f, -0.010f), new Vector3(-4.5f, 0f, 0f),
+                        new Vector3(-0.126f, -0.092f, 0.302f), new Vector3(-13f, 27f, 10f)),
+                    Key(0.46f, new Vector3(0.092f, -0.176f, 0.452f), new Vector3(44f, -4f, 2f), 1f,
+                        new Vector3(16f, -10f, 1f), new Vector3(0f, -0.026f, 0.020f), new Vector3(6f, 1.4f, 0f),
+                        CoverLeft, CoverLeftEuler),
+                    Key(0.58f, new Vector3(0.074f, -0.238f, 0.470f), new Vector3(56f, -2f, 3f), 1f,
+                        new Vector3(20f, -12f, 2f), new Vector3(0f, -0.032f, 0.024f), new Vector3(7.5f, 1.8f, 0f),
+                        CoverLeft, CoverLeftEuler),
+                    Key(0.80f, new Vector3(0.118f, -0.176f, 0.340f), new Vector3(20f, -10f, -3f), 0.95f,
+                        new Vector3(6f, -5f, 0f), new Vector3(0f, -0.008f, 0.004f), Vector3.zero,
+                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                    Rest(1.00f))
+            };
+        }
+
+        /// <summary>Balayage, en glissade. La jambe part au ras du sol : c'est le faucheur.</summary>
+        private static void ConfigureSweep(AttackData a)
+        {
+            a.displayName = "Balayage";
+            a.context = AttackContext.Sliding;
+            a.limb = AttackLimb.Foot;
+            a.hand = AttackHand.Alternate;
+            a.isHeavy = false;
+            a.knockdownChance = 0.85f;
+            a.duration = 0.32f;
+            a.cooldown = 0.14f;
+            a.hitWindowStart = 0.24f;
+            a.hitWindowEnd = 0.62f;
+            a.comboCancelAt = 0.74f;
+            a.hitRadius = 0.24f;
+            a.damage = 9f;
+            a.impactForce = 8f;
+            a.staminaCost = 10f;
+            a.shakeIntensity = 0.075f;
+            a.shakeDuration = 0.16f;
+            a.hitStopDuration = 0.026f;
+            a.weightCurve = FootWeightCurve();
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01",
+                    FootRest(0.00f),
+                    Key(0.18f, new Vector3(0.260f, 0.110f, -0.060f), new Vector3(0f, 26f, 0f), 1f,
+                        new Vector3(0f, 14f, -3f), new Vector3(0.010f, -0.004f, -0.004f), new Vector3(0.6f, 2.6f, -1.2f),
+                        new Vector3(-0.140f, -0.120f, 0.312f), new Vector3(-7f, 24f, 8f)),
+                    Key(0.44f, new Vector3(0.020f, 0.120f, 0.420f), new Vector3(0f, -34f, 0f), 1f,
+                        new Vector3(0f, -19f, 4f), new Vector3(-0.008f, -0.002f, 0.012f), new Vector3(0.8f, 2.6f, -1.2f),
+                        new Vector3(-0.182f, -0.164f, 0.262f), new Vector3(-1f, 31f, 12f)),
+                    Key(0.56f, new Vector3(-0.180f, 0.125f, 0.340f), new Vector3(0f, -52f, 0f), 1f,
+                        new Vector3(0f, -24f, 5f), new Vector3(-0.014f, -0.002f, 0.008f), new Vector3(1.2f, 3.4f, -1.8f),
+                        new Vector3(-0.196f, -0.176f, 0.244f), new Vector3(1f, 34f, 14f)),
+                    Key(0.78f, new Vector3(0.060f, 0.110f, 0.140f), new Vector3(0f, -14f, 0f), 1f,
+                        new Vector3(0f, -8f, 1f), Vector3.zero, Vector3.zero,
+                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 9f)),
+                    FootRest(1.00f))
+            };
+        }
+
+        /// <summary>
+        /// Coup de grâce sur un adversaire au sol.
+        ///
+        /// Il n'existe que dans cette situation, et c'est ce qui donne un sens à la chute : sans
+        /// lui, mettre quelqu'un par terre ne rapporte qu'un temps d'attente. Avec lui, la chute
+        /// devient une ouverture.
+        /// </summary>
+        private static void ConfigureStomp(AttackData a)
+        {
+            a.displayName = "Coup de grace";
+            a.context = AttackContext.TargetDown;
+            a.limb = AttackLimb.Foot;
+            a.hand = AttackHand.Rear;
+            a.isHeavy = true;
+            a.knockdownChance = 0f;
+            a.duration = 0.46f;
+            a.cooldown = 0.30f;
+            a.hitWindowStart = 0.34f;
+            a.hitWindowEnd = 0.66f;
+            a.comboCancelAt = 0.88f;
+            a.hitRadius = 0.26f;
+            a.damage = 28f;
+            a.impactForce = 6f;
+            a.staminaCost = 22f;
+            a.shakeIntensity = 0.17f;
+            a.shakeDuration = 0.28f;
+            a.hitStopDuration = 0.032f;
+            a.weightCurve = FootWeightCurve();
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01",
+                    FootRest(0.00f),
+                    // Le pied monte haut puis s'abat au sol, devant soi.
+                    Key(0.24f, new Vector3(0.150f, 0.620f, 0.200f), new Vector3(-40f, 0f, 0f), 1f,
+                        new Vector3(-6f, 3f, 0f), new Vector3(0f, -0.018f, -0.006f), new Vector3(-3.2f, 0f, 0f),
+                        new Vector3(-0.220f, -0.200f, 0.220f), new Vector3(4f, 32f, 13f)),
+                    Key(0.50f, new Vector3(0.140f, 0.110f, 0.470f), new Vector3(14f, 0f, 0f), 1f,
+                        new Vector3(12f, -2f, 0f), new Vector3(0f, -0.030f, 0.018f), new Vector3(6.5f, 0.8f, 0f),
+                        new Vector3(-0.190f, -0.172f, 0.252f), new Vector3(0f, 32f, 13f)),
+                    Key(0.62f, new Vector3(0.138f, 0.085f, 0.480f), new Vector3(18f, 0f, 0f), 1f,
+                        new Vector3(14f, -3f, 0f), new Vector3(0f, -0.034f, 0.020f), new Vector3(7.5f, 1f, 0f),
+                        new Vector3(-0.192f, -0.174f, 0.250f), new Vector3(0f, 33f, 13f)),
+                    Key(0.84f, new Vector3(0.150f, 0.220f, 0.230f), new Vector3(4f, 0f, 0f), 1f,
+                        new Vector3(4f, -1f, 0f), new Vector3(0f, -0.008f, 0.004f), Vector3.zero,
+                        new Vector3(-0.166f, -0.146f, 0.292f), new Vector3(-4f, 27f, 10f)),
+                    FootRest(1.00f))
+            };
+        }
+
         // ------------------------------------------------------------------ utilitaires
 
         /// <summary>Résumé lisible d'un asset, pour que la console dise s'il est réellement exploitable.</summary>
@@ -550,7 +765,9 @@ namespace UberBagarre.EditorTools
 
             return attack.variants.Count + " variante(s), " + attack.damage.ToString("0") + " degats, " +
                    attack.duration.ToString("0.00") + " s, " +
-                   (attack.limb == AttackLimb.Foot ? "pied" : "poing");
+                   (attack.limb == AttackLimb.Foot ? "pied" : "poing") +
+                   (attack.chargeable ? ", chargeable" : "") +
+                   (attack.context != AttackContext.Any ? ", contexte " + attack.context : "");
         }
 
         /// <summary>

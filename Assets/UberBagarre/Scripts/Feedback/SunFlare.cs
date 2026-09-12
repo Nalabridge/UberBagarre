@@ -63,7 +63,7 @@ namespace UberBagarre.Feedback
 
         private void Update()
         {
-            if (_camera == null) _camera = Camera.main;
+            _camera = GuiKit.ActiveCamera(_camera);
 
             float target = ComputeTargetVisibility();
             _visibility = Mathf.MoveTowards(_visibility, target, _fadeSpeed * Time.unscaledDeltaTime);

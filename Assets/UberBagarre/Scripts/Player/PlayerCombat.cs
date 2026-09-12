@@ -41,6 +41,27 @@ namespace UberBagarre.Player
         [SerializeField] private AttackData _kick;
         [SerializeField] private AttackData _lowKick;
 
+        [Header("Coups contextuels")]
+        [SerializeField]
+        [Tooltip("Remplace le direct quand on sprinte.")]
+        private AttackData _shoulderCharge;
+
+        [SerializeField]
+        [Tooltip("Remplace le direct quand on est en l'air.")]
+        private AttackData _dive;
+
+        [SerializeField]
+        [Tooltip("Remplace le coup de pied bas pendant une glissade.")]
+        private AttackData _sweep;
+
+        [SerializeField]
+        [Tooltip("Remplace le coup de pied quand la cible est au sol.")]
+        private AttackData _stomp;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Sert a savoir si la cible visee est au sol, pour le coup de grace.")]
+        private Combatant _target;
+
         [Header("Reactivite")]
         [SerializeField, Min(0f)]
         [Tooltip("Duree pendant laquelle une touche d'attaque reste MEMORISEE si le coup ne peut " +
@@ -140,6 +161,10 @@ namespace UberBagarre.Player
             _uppercut = ResolveAttack(_uppercut, AttackData.UppercutAsset, "Uppercut");
             _kick = ResolveAttack(_kick, AttackData.KickAsset, "Coup de pied");
             _lowKick = ResolveAttack(_lowKick, AttackData.LowKickAsset, "Coup de pied bas");
+            _shoulderCharge = ResolveAttack(_shoulderCharge, AttackData.ChargeAsset, "Charge d'epaule");
+            _dive = ResolveAttack(_dive, AttackData.DiveAsset, "Coup plongeant");
+            _sweep = ResolveAttack(_sweep, AttackData.SweepAsset, "Balayage");
+            _stomp = ResolveAttack(_stomp, AttackData.StompAsset, "Coup de grace");
 
             if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
             if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
@@ -195,7 +220,11 @@ namespace UberBagarre.Player
 
         private void CountOutdatedAttacks()
         {
-            AttackData[] attacks = { _straight, _hook, _uppercut, _kick, _lowKick };
+            AttackData[] attacks =
+            {
+                _straight, _hook, _uppercut, _kick, _lowKick,
+                _shoulderCharge, _dive, _sweep, _stomp
+            };
             OutdatedAttacks = 0;
 
             for (int i = 0; i < attacks.Length; i++)
@@ -228,6 +257,7 @@ namespace UberBagarre.Player
                 // La garde tombe explicitement : sans cette ligne, elle garderait sa derniere
                 // valeur et un combattant couche continuerait de bloquer les coups.
                 if (_guard != null) _guard.SetGuard(false);
+                _executor.CancelCharge();
                 _buffered = null;
                 return;
             }
@@ -255,6 +285,8 @@ namespace UberBagarre.Player
         /// </summary>
         private void UpdateAttacks()
         {
+            if (UpdateCharging()) return;
+
             AttackData requested = ReadAttackIntent();
 
             if (requested != null)
@@ -277,6 +309,44 @@ namespace UberBagarre.Player
         }
 
         /// <summary>
+        /// Gère les coups qui se CHARGENT. Renvoie vrai si une charge occupe la frame.
+        ///
+        /// Les coups lourds se chargent, les coups rapides se répètent, et ce partage n'est pas
+        /// arbitraire : l'intérêt d'un direct est de partir tout de suite, donc le maintenir doit
+        /// l'enchaîner. L'intérêt d'un uppercut est son poids, donc le maintenir doit l'armer.
+        /// Chaque touche garde ainsi un comportement qui découle du coup lui-même.
+        /// </summary>
+        private bool UpdateCharging()
+        {
+            AttackData held = ReadChargeableHeld();
+
+            if (held != null)
+            {
+                _executor.HoldCharge(held);
+                return true;
+            }
+
+            // Touche relachee : le coup part avec la charge accumulee.
+            if (_executor.IsCharging) return _executor.ReleaseCharge();
+
+            return false;
+        }
+
+        /// <summary>Le coup chargeable dont la touche est actuellement maintenue, s'il y en a un.</summary>
+        private AttackData ReadChargeableHeld()
+        {
+            if (_input.LowKickHeld) return Chargeable(Resolve(_lowKick));
+            if (_input.KickHeld) return Chargeable(Resolve(_kick));
+            if (_input.UppercutHeld) return Chargeable(Resolve(_uppercut));
+            return null;
+        }
+
+        private static AttackData Chargeable(AttackData attack)
+        {
+            return attack != null && attack.chargeable ? attack : null;
+        }
+
+        /// <summary>
         /// Quel coup le joueur demande. Les pressions gagnent toujours sur les maintiens : appuyer
         /// sur le coup de pied pendant qu'on tient le clic gauche doit sortir le coup de pied.
         /// </summary>
@@ -285,21 +355,64 @@ namespace UberBagarre.Player
             // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches pressees
             // dans la meme image doivent donner un resultat previsible, pas le coup qui se trouve
             // en premier dans le code.
-            if (_input.LowKickPressed) return _lowKick;
-            if (_input.KickPressed) return _kick;
-            if (_input.UppercutPressed) return _uppercut;
-            if (_input.HookPressed) return _hook;
-            if (_input.StraightPressed) return _straight;
+            if (_input.LowKickPressed) return Resolve(_lowKick);
+            if (_input.KickPressed) return Resolve(_kick);
+            if (_input.UppercutPressed) return Resolve(_uppercut);
+            if (_input.HookPressed) return Resolve(_hook);
+            if (_input.StraightPressed) return Resolve(_straight);
 
             if (!_repeatWhileHeld) return null;
 
-            if (_input.LowKickHeld) return _lowKick;
-            if (_input.KickHeld) return _kick;
-            if (_input.UppercutHeld) return _uppercut;
-            if (_input.HookHeld) return _hook;
-            if (_input.StraightHeld) return _straight;
+            if (_input.HookHeld) return Resolve(_hook);
+            if (_input.StraightHeld) return Resolve(_straight);
 
             return null;
+        }
+
+        /// <summary>
+        /// Substitue au coup demandé celui que la SITUATION impose, s'il y en a un.
+        ///
+        /// Sprinter, être en l'air, glisser ou avoir un adversaire au sol transforment le même
+        /// ordre en un coup différent. C'est quatre attaques de plus sans une seule touche de plus,
+        /// et surtout rien à apprendre : le joueur les découvre en jouant normalement.
+        ///
+        /// L'ordre des tests est une priorité : être en l'air l'emporte sur tout le reste, parce
+        /// qu'aucun autre coup n'a de sens les pieds décollés.
+        /// </summary>
+        private AttackData Resolve(AttackData requested)
+        {
+            if (requested == null || _motor == null) return requested;
+
+            if (!_motor.IsGrounded && _dive != null) return _dive;
+            if (_motor.IsSliding && _sweep != null) return _sweep;
+
+            // Le coup de grace ne remplace que les coups de PIED : achever quelqu'un au sol d'un
+            // crochet demanderait de se pencher, ce que le corps ne sait pas faire.
+            if (requested.limb == AttackLimb.Foot && _stomp != null && IsTargetDown()) return _stomp;
+
+            if (_motor.IsSprinting && _shoulderCharge != null && requested.limb == AttackLimb.Hand)
+            {
+                return _shoulderCharge;
+            }
+
+            return requested;
+        }
+
+        /// <summary>Vrai si la cible visée est au sol. Sert au coup de grâce.</summary>
+        private bool IsTargetDown()
+        {
+            Combatant target = _target;
+
+            if (target == null && _combatant != null)
+            {
+                Hurtbox aimed = AimResolver.Resolve(_combatant);
+                if (aimed != null) target = aimed.GetComponentInParent<Combatant>();
+            }
+
+            if (target == null) return false;
+
+            KnockdownSystem knockdown = target.GetComponent<KnockdownSystem>();
+            return knockdown != null && knockdown.IsDown;
         }
 
         /// <summary>

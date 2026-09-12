@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UberBagarre.Combat;
+using UberBagarre.Feedback;
 using UberBagarre.Player;
 using UberBagarre.UI;
 using UnityEngine;
@@ -7,25 +8,45 @@ using UnityEngine;
 namespace UberBagarre.Sandbox
 {
     /// <summary>
-    /// Menu de réglage en jeu (Tab) : faire apparaître des adversaires, choisir leurs PV et leurs
-    /// dégâts, et les siens.
+    /// Le tableau de bord du bac à sable (Tab) : tout ce qui se règle pendant qu'on joue.
     ///
-    /// Pourquoi ça vaut plus que ça en a l'air : équilibrer un combat en modifiant des valeurs
-    /// dans l'Inspector demande de sortir du mode Play, donc de perdre la situation qu'on voulait
-    /// justement tester. On règle alors à l'aveugle, une valeur à la fois, dix secondes de
-    /// rechargement à chaque essai. Ici, tout se règle PENDANT le combat, et l'effet se voit au
-    /// coup suivant.
+    /// Pourquoi ça vaut largement son code : équilibrer un combat depuis l'Inspector demande de
+    /// sortir du mode Play, donc de perdre la situation qu'on voulait tester. On règle alors à
+    /// l'aveugle, une valeur à la fois, avec dix secondes de rechargement par essai. Ici tout se
+    /// règle PENDANT le combat et l'effet se voit au coup suivant.
     ///
-    /// Les adversaires sont des COPIES de celui de la scène. Aucun prefab à maintenir, donc aucun
-    /// risque que le prefab et la scène divergent : ce qu'on fait apparaître est, par
-    /// construction, exactement l'adversaire qu'on vient d'affronter.
-    ///
-    /// Les valeurs passent par <see cref="CombatantStats.SetOverride"/>, donc par le même chemin
-    /// que n'importe quelle amélioration future — le menu ne contourne pas le système de
-    /// statistiques, il s'en sert.
+    /// Les réglages passent par <see cref="CombatantStats.SetOverride"/>, donc par le même chemin
+    /// que n'importe quelle amélioration future : le menu se sert du système de statistiques, il ne
+    /// le contourne pas. Et ils sont SAUVEGARDÉS, parce qu'un réglage trouvé après dix minutes
+    /// d'essais et perdu au redémarrage ne vaut rien.
     /// </summary>
     public class SandboxMenu : MonoBehaviour
     {
+        private enum Tab
+        {
+            Combat = 0,
+            Waves = 1,
+            Stats = 2,
+            Help = 3
+        }
+
+        /// <summary>
+        /// Profils d'adversaire.
+        ///
+        /// Quatre profils très écartés plutôt que des variations molles : un adversaire qui diffère
+        /// de 10 % du précédent ne se joue pas différemment, donc il n'apprend rien. Un boxeur qui
+        /// frappe deux fois plus vite mais tombe en trois coups demande une autre approche qu'une
+        /// brute qui encaisse tout — et c'est cette différence d'approche qui révèle si les
+        /// mécaniques tiennent.
+        /// </summary>
+        private enum Archetype
+        {
+            Voyou = 0,
+            Boxeur = 1,
+            Cogneur = 2,
+            Brute = 3
+        }
+
         [Header("References")]
         [SerializeField] private PlayerInputReader _input;
         [SerializeField] private Combatant _player;
@@ -39,18 +60,17 @@ namespace UberBagarre.Sandbox
         private CursorLockController _cursor;
 
         [SerializeField] private SpawnDirector _spawnDirector;
+        [SerializeField] private WaveDirector _waves;
+        [SerializeField] private CombatStatistics _statistics;
 
         [SerializeField]
         [Tooltip("Optionnel. Permet de regler la nervosite du combat en jouant.")]
         private PlayerCombat _playerCombat;
 
-        [SerializeField] private UberBagarre.Feedback.HitStop _hitStop;
+        [SerializeField] private HitStop _hitStop;
 
         [Header("Apparition")]
-        [SerializeField, Min(1f)]
-        [Tooltip("Distance a laquelle les adversaires apparaissent autour du joueur.")]
-        private float _spawnDistance = 4.5f;
-
+        [SerializeField, Min(1f)] private float _spawnDistance = 4.5f;
         [SerializeField, Min(1)] private int _maxEnemies = 12;
 
         [Header("Bornes des reglages")]
@@ -66,9 +86,14 @@ namespace UberBagarre.Sandbox
         [SerializeField] private Color _playerAccent = new Color(0.42f, 0.82f, 1f);
         [SerializeField] private Color _enemyAccent = new Color(1f, 0.46f, 0.38f);
 
+        private const string PrefsPrefix = "UberBagarre.Sandbox.";
+
         private readonly List<GameObject> _spawned = new List<GameObject>();
 
+        private Tab _tab = Tab.Combat;
         private bool _open;
+        private bool _initialised;
+
         private float _playerHealth = 100f;
         private float _playerDamage = 1f;
         private float _enemyHealth = 90f;
@@ -76,13 +101,14 @@ namespace UberBagarre.Sandbox
         private float _attackSpeed = 1f;
         private float _hitStopStrength = 0.25f;
         private float _inputBufferSeconds = 0.22f;
-        private bool _initialised;
+        private Archetype _archetype = Archetype.Voyou;
 
         public bool IsOpen { get { return _open; } }
 
         private void Start()
         {
             ReadCurrentValues();
+            LoadPreferences();
             _initialised = true;
         }
 
@@ -95,9 +121,13 @@ namespace UberBagarre.Sandbox
         private void ReadCurrentValues()
         {
             if (_player != null && _player.Health != null) _playerHealth = _player.Health.MaxHealth;
-            if (_player != null && _player.Stats != null) _playerDamage = ToMultiplier(_player.Stats.Get(StatType.Strength));
 
-            if (_player != null && _player.Stats != null) _attackSpeed = _player.Stats.Get(StatType.AttackSpeed);
+            if (_player != null && _player.Stats != null)
+            {
+                _playerDamage = ToMultiplier(_player.Stats.Get(StatType.Strength));
+                _attackSpeed = _player.Stats.Get(StatType.AttackSpeed);
+            }
+
             if (_hitStop != null) _hitStopStrength = _hitStop.SlowTimeScale;
             if (_playerCombat != null) _inputBufferSeconds = _playerCombat.InputBuffer;
 
@@ -106,6 +136,55 @@ namespace UberBagarre.Sandbox
 
             if (enemy.Health != null) _enemyHealth = enemy.Health.MaxHealth;
             if (enemy.Stats != null) _enemyDamage = ToMultiplier(enemy.Stats.Get(StatType.Strength));
+        }
+
+        // ------------------------------------------------------------------ persistance
+
+        /// <summary>
+        /// Relit les réglages d'une session précédente.
+        ///
+        /// Un réglage de ressenti se trouve par essais successifs, parfois longs. Le perdre au
+        /// redémarrage oblige à tout refaire, ce qui est exactement la friction que ce menu existe
+        /// pour supprimer.
+        /// </summary>
+        private void LoadPreferences()
+        {
+            if (!PlayerPrefs.HasKey(PrefsPrefix + "saved")) return;
+
+            _playerHealth = PlayerPrefs.GetFloat(PrefsPrefix + "playerHealth", _playerHealth);
+            _playerDamage = PlayerPrefs.GetFloat(PrefsPrefix + "playerDamage", _playerDamage);
+            _enemyHealth = PlayerPrefs.GetFloat(PrefsPrefix + "enemyHealth", _enemyHealth);
+            _enemyDamage = PlayerPrefs.GetFloat(PrefsPrefix + "enemyDamage", _enemyDamage);
+            _attackSpeed = PlayerPrefs.GetFloat(PrefsPrefix + "attackSpeed", _attackSpeed);
+            _hitStopStrength = PlayerPrefs.GetFloat(PrefsPrefix + "hitStop", _hitStopStrength);
+            _inputBufferSeconds = PlayerPrefs.GetFloat(PrefsPrefix + "inputBuffer", _inputBufferSeconds);
+            _archetype = (Archetype)PlayerPrefs.GetInt(PrefsPrefix + "archetype", (int)_archetype);
+
+            ApplyPlayer();
+            ApplyEnemies();
+            ApplyFeel();
+
+            Debug.Log("[UberBagarre] Reglages du bac a sable restaures (Tab pour les revoir).", this);
+        }
+
+        private void SavePreferences()
+        {
+            PlayerPrefs.SetInt(PrefsPrefix + "saved", 1);
+            PlayerPrefs.SetFloat(PrefsPrefix + "playerHealth", _playerHealth);
+            PlayerPrefs.SetFloat(PrefsPrefix + "playerDamage", _playerDamage);
+            PlayerPrefs.SetFloat(PrefsPrefix + "enemyHealth", _enemyHealth);
+            PlayerPrefs.SetFloat(PrefsPrefix + "enemyDamage", _enemyDamage);
+            PlayerPrefs.SetFloat(PrefsPrefix + "attackSpeed", _attackSpeed);
+            PlayerPrefs.SetFloat(PrefsPrefix + "hitStop", _hitStopStrength);
+            PlayerPrefs.SetFloat(PrefsPrefix + "inputBuffer", _inputBufferSeconds);
+            PlayerPrefs.SetInt(PrefsPrefix + "archetype", (int)_archetype);
+            PlayerPrefs.Save();
+        }
+
+        private void ForgetPreferences()
+        {
+            PlayerPrefs.DeleteKey(PrefsPrefix + "saved");
+            PlayerPrefs.Save();
         }
 
         private void Update()
@@ -118,6 +197,7 @@ namespace UberBagarre.Sandbox
         {
             _open = open;
 
+            if (!open) SavePreferences();
             if (_cursor == null) return;
 
             // Le controleur de curseur est SUSPENDU pendant le menu, pas seulement deverrouille :
@@ -149,24 +229,12 @@ namespace UberBagarre.Sandbox
                 _player.Stats.SetOverride(StatType.Strength, ToStrength(_playerDamage));
             }
 
-            // ApplyStats reporte MaxHealth sur la vie. On ne remplit PAS a bloc : changer son
-            // maximum en plein combat ne doit pas etre un soin gratuit.
+            // On ne remplit PAS a bloc : changer son maximum en plein combat ne doit pas etre un
+            // soin gratuit.
             if (_player.Health != null) _player.Health.SetMaxHealth(_playerHealth, false);
             _player.ApplyStats();
         }
 
-        /// <summary>
-        /// Applique les réglages de NERVOSITÉ.
-        ///
-        /// Ils sont dans ce menu pour une raison simple : « ce n'est pas assez nerveux » n'est pas
-        /// corrigeable à distance. Cinq choses interviennent en même temps — la durée des coups, le
-        /// ralenti d'impact, le tampon d'entrée, l'endurance et la vitesse de déplacement — et rien
-        /// ne dit laquelle domine pour un joueur donné. Les régler en jouant prend trois minutes ;
-        /// les deviner prend un aller-retour de test par essai.
-        ///
-        /// « Vitesse des coups » passe par StatType.AttackSpeed, donc par le système de stats, et
-        /// s'appliquera aussi bien a une future amélioration de personnage.
-        /// </summary>
         private void ApplyFeel()
         {
             if (_player != null && _player.Stats != null)
@@ -190,24 +258,76 @@ namespace UberBagarre.Sandbox
                 ApplyEnemyStats(combatant);
             }
 
-            // Le modele aussi, meme s'il est desactive : sinon les prochaines copies repartiraient
-            // des anciennes valeurs.
+            // Le modele aussi : sinon les prochaines copies repartiraient des anciennes valeurs.
             if (_enemyTemplate == null) return;
 
             Combatant template = _enemyTemplate.GetComponent<Combatant>();
             if (template != null) ApplyEnemyStats(template);
         }
 
+        /// <summary>
+        /// Applique profil ET réglages manuels à un adversaire.
+        ///
+        /// L'ordre compte : le profil pose d'abord une base cohérente (un boxeur est rapide,
+        /// fragile et mobile), puis les curseurs de vie et de dégâts l'emportent. Le joueur peut
+        /// donc prendre un boxeur et lui donner 300 points de vie sans perdre sa vitesse.
+        /// </summary>
         private void ApplyEnemyStats(Combatant combatant)
         {
-            if (combatant.Stats != null)
+            if (combatant.Stats == null)
             {
-                combatant.Stats.SetOverride(StatType.MaxHealth, _enemyHealth);
-                combatant.Stats.SetOverride(StatType.Strength, ToStrength(_enemyDamage));
+                if (combatant.Health != null) combatant.Health.SetMaxHealth(_enemyHealth, false);
+                return;
             }
+
+            ApplyArchetype(combatant.Stats);
+
+            combatant.Stats.SetOverride(StatType.MaxHealth, _enemyHealth);
+            combatant.Stats.SetOverride(StatType.Strength, ToStrength(_enemyDamage));
 
             if (combatant.Health != null) combatant.Health.SetMaxHealth(_enemyHealth, false);
             combatant.ApplyStats();
+        }
+
+        private void ApplyArchetype(CombatantStats stats)
+        {
+            switch (_archetype)
+            {
+                case Archetype.Boxeur:
+                    Profile(stats, 6f, 1.55f, 1.30f);
+                    break;
+
+                case Archetype.Cogneur:
+                    Profile(stats, 20f, 0.72f, 0.82f);
+                    break;
+
+                case Archetype.Brute:
+                    Profile(stats, 30f, 0.58f, 0.68f);
+                    break;
+
+                default:
+                    Profile(stats, 10f, 1f, 1f);
+                    break;
+            }
+        }
+
+        private static void Profile(CombatantStats stats, float defence, float attackSpeed, float moveSpeed)
+        {
+            stats.SetOverride(StatType.Defense, defence);
+            stats.SetOverride(StatType.AttackSpeed, attackSpeed);
+            stats.SetOverride(StatType.MoveSpeed, moveSpeed);
+        }
+
+        /// <summary>Vie suggérée par le profil. Le curseur peut toujours l'écraser ensuite.</summary>
+        private float ArchetypeHealth()
+        {
+            switch (_archetype)
+            {
+                case Archetype.Boxeur: return 70f;
+                case Archetype.Cogneur: return 170f;
+                case Archetype.Brute: return 280f;
+                default: return 90f;
+            }
         }
 
         // ------------------------------------------------------------------ apparition
@@ -242,22 +362,20 @@ namespace UberBagarre.Sandbox
         {
             if (_enemyTemplate == null)
             {
-                Debug.LogWarning("[UberBagarre] SandboxMenu : aucun modele d'adversaire assigne, " +
-                                 "impossible d'en faire apparaitre.", this);
+                Debug.LogWarning("[UberBagarre] SandboxMenu : aucun modele d'adversaire assigne.", this);
                 return;
             }
 
             if (_spawned.Count >= _maxEnemies)
             {
-                Debug.LogWarning("[UberBagarre] SandboxMenu : limite de " + _maxEnemies +
-                                 " adversaires ajoutes atteinte.", this);
+                Debug.LogWarning("[UberBagarre] SandboxMenu : limite de " + _maxEnemies + " adversaires.", this);
                 return;
             }
 
             Vector3 centre = _player != null ? _player.transform.position : transform.position;
 
-            // Repartis en cercle, et non tous au meme endroit : deux adversaires qui apparaissent
-            // dans la meme capsule se repoussent violemment des la premiere image.
+            // Repartis selon l'angle d'or, et non tous au meme endroit : deux adversaires qui
+            // apparaissent dans la meme capsule se repoussent violemment des la premiere image.
             float angle = _spawned.Count * 137.5f * Mathf.Deg2Rad;
             Vector3 offset = new Vector3(Mathf.Sin(angle), 0f, Mathf.Cos(angle)) * _spawnDistance;
 
@@ -294,196 +412,6 @@ namespace UberBagarre.Sandbox
             if (_spawnDirector != null) _spawnDirector.SpawnAll();
         }
 
-        // ------------------------------------------------------------------ interface
-
-        private void OnGUI()
-        {
-            if (!_open || !_initialised) return;
-
-            float width = Mathf.Min(790f, Screen.width - 40f);
-            float height = Mathf.Min(580f, Screen.height - 40f);
-
-            Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
-
-            GuiKit.Fill(new Rect(panel.x + 6f, panel.y + 7f, panel.width, panel.height), new Color(0f, 0f, 0f, 0.45f));
-            GuiKit.Fill(panel, _panelColor);
-            GuiKit.Outline(panel, 3f, _accent);
-
-            GuiKit.Fill(new Rect(panel.x, panel.y, panel.width, 34f), new Color(1f, 1f, 1f, 0.07f));
-
-            GuiKit.OutlinedLabel(new Rect(panel.x + 16f, panel.y + 4f, panel.width - 32f, 26f),
-                "BAC A SABLE", GuiKit.Style(17, FontStyle.Bold, TextAnchor.MiddleLeft),
-                _accent, new Color(0f, 0f, 0f, 0.9f), 1.5f);
-
-            GuiKit.OutlinedLabel(new Rect(panel.x + 16f, panel.y + 4f, panel.width - 32f, 26f),
-                "TAB pour fermer", GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleRight),
-                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
-
-            float y = panel.y + 46f;
-            float left = panel.x + 18f;
-
-            // Deux colonnes : les reglages a gauche, les commandes a droite. Les commandes vivent
-            // ici et pas dans le HUD parce qu'elles ne servent qu'une fois — un rappel permanent a
-            // l'ecran est du bruit des qu'on les connait, mais les chercher dans un README en
-            // pleine partie est pire.
-            float helpWidth = panel.width > 600f ? 300f : 0f;
-            float innerWidth = panel.width - 36f - (helpWidth > 0f ? helpWidth + 18f : 0f);
-
-            if (helpWidth > 0f) DrawHelp(new Rect(panel.xMax - helpWidth - 18f, y, helpWidth, height - 64f));
-
-            y = Section(left, y, innerWidth, "TOI", _playerAccent);
-
-            float newPlayerHealth = Row(left, ref y, innerWidth, "Points de vie",
-                _playerHealth, _healthRange, "0", _playerAccent);
-
-            float newPlayerDamage = Row(left, ref y, innerWidth, "Degats infliges",
-                _playerDamage, _damageMultiplierRange, "x0.00", _playerAccent);
-
-            if (!Mathf.Approximately(newPlayerHealth, _playerHealth) ||
-                !Mathf.Approximately(newPlayerDamage, _playerDamage))
-            {
-                _playerHealth = newPlayerHealth;
-                _playerDamage = newPlayerDamage;
-                ApplyPlayer();
-            }
-
-            y += 10f;
-            y = Section(left, y, innerWidth, "ADVERSAIRES", _enemyAccent);
-
-            float newEnemyHealth = Row(left, ref y, innerWidth, "Points de vie",
-                _enemyHealth, _healthRange, "0", _enemyAccent);
-
-            float newEnemyDamage = Row(left, ref y, innerWidth, "Degats infliges",
-                _enemyDamage, _damageMultiplierRange, "x0.00", _enemyAccent);
-
-            if (!Mathf.Approximately(newEnemyHealth, _enemyHealth) ||
-                !Mathf.Approximately(newEnemyDamage, _enemyDamage))
-            {
-                _enemyHealth = newEnemyHealth;
-                _enemyDamage = newEnemyDamage;
-                ApplyEnemies();
-            }
-
-            y += 10f;
-            y = Section(left, y, innerWidth, "NERVOSITE", _accent);
-
-            float newSpeed = Row(left, ref y, innerWidth, "Vitesse des coups",
-                _attackSpeed, _attackSpeedRange, "x0.00", _accent);
-
-            float newHitStop = Row(left, ref y, innerWidth, "Ralenti d'impact",
-                _hitStopStrength, _hitStopRange, "0.00", _accent);
-
-            float newBuffer = Row(left, ref y, innerWidth, "Tampon de touche",
-                _inputBufferSeconds, _inputBufferRange, "0.00 s", _accent);
-
-            if (!Mathf.Approximately(newSpeed, _attackSpeed))
-            {
-                _attackSpeed = newSpeed;
-                ApplyFeel();
-            }
-
-            if (!Mathf.Approximately(newHitStop, _hitStopStrength))
-            {
-                _hitStopStrength = newHitStop;
-                ApplyFeel();
-            }
-
-            if (!Mathf.Approximately(newBuffer, _inputBufferSeconds))
-            {
-                _inputBufferSeconds = newBuffer;
-                ApplyFeel();
-            }
-
-            y += 12f;
-
-            GUIStyle info = GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft);
-            GuiKit.OutlinedLabel(new Rect(left, y, innerWidth, 18f),
-                "Sur le terrain : " + LiveEnemies() + " debout,  " + _spawned.Count + " ajoutes",
-                info, new Color(1f, 1f, 1f, 0.65f), new Color(0f, 0f, 0f, 0.8f), 1f);
-
-            y += 24f;
-
-            float half = (innerWidth - 10f) * 0.5f;
-
-            if (Button(new Rect(left, y, half, 32f), "+ UN ADVERSAIRE", _enemyAccent)) SpawnEnemy();
-            if (Button(new Rect(left + half + 10f, y, half, 32f), "RETIRER LES AJOUTS", _accent)) RemoveSpawned();
-
-            y += 40f;
-
-            if (Button(new Rect(left, y, half, 32f), "TOUT REMETTRE A NEUF", _playerAccent)) ReviveEverybody();
-            if (Button(new Rect(left + half + 10f, y, half, 32f), "VALEURS D'ORIGINE", _accent)) ResetToDefaults();
-
-            y += 46f;
-
-            GUIStyle hint = GuiKit.Style(11, FontStyle.Normal, TextAnchor.UpperLeft);
-            GuiKit.OutlinedLabel(new Rect(left, y, innerWidth, 58f),
-                "Les reglages s'appliquent immediatement, y compris aux adversaires deja\n" +
-                "sur le terrain. Changer un maximum de vie ne soigne pas : c'est un\n" +
-                "reglage, pas un bonus.",
-                hint, new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.75f), 1f);
-        }
-
-        /// <summary>Rappel des commandes. Utile une fois, mais cette fois-là, indispensable.</summary>
-        private void DrawHelp(Rect rect)
-        {
-            GuiKit.Fill(rect, new Color(0f, 0f, 0f, 0.30f));
-            GuiKit.Outline(rect, 1f, new Color(1f, 1f, 1f, 0.12f));
-
-            GuiKit.OutlinedLabel(new Rect(rect.x + 12f, rect.y + 6f, rect.width - 24f, 20f),
-                "COMMANDES", GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleLeft),
-                _accent, new Color(0f, 0f, 0f, 0.85f), 1f);
-
-            string[,] rows =
-            {
-                { "WASD / ZQSD", "Se deplacer" },
-                { "Maj", "Courir  (13 end./s)" },
-                { "C", "S'accroupir" },
-                { "C en courant", "Glissade  (18 end.)" },
-                { "Espace", "Sauter" },
-                { "", "" },
-                { "Clic gauche", "Direct" },
-                { "Clic droit", "Crochet" },
-                { "Clic molette", "Uppercut" },
-                { "F", "Coup de pied de face" },
-                { "V", "Coup de pied bas" },
-                { "", "" },
-                { "Ctrl maintenu", "Garde  (-72 %)" },
-                { "Ctrl au bon moment", "PARADE  (0,26 s)" },
-                { "Alt", "Esquive" },
-                { "", "" },
-                { "F1", "Overlay de diagnostic" },
-                { "R", "Relancer le combat" },
-                { "Echap", "Liberer le curseur" }
-            };
-
-            GUIStyle key = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
-            GUIStyle action = GuiKit.Style(11, FontStyle.Normal, TextAnchor.MiddleLeft);
-
-            float y = rect.y + 28f;
-
-            for (int i = 0; i < rows.GetLength(0); i++)
-            {
-                if (string.IsNullOrEmpty(rows[i, 0]))
-                {
-                    y += 7f;
-                    continue;
-                }
-
-                GuiKit.OutlinedLabel(new Rect(rect.x + 12f, y, 122f, 16f), rows[i, 0], key,
-                    new Color(1f, 1f, 1f, 0.85f), new Color(0f, 0f, 0f, 0.8f), 1f);
-
-                GuiKit.OutlinedLabel(new Rect(rect.x + 138f, y, rect.width - 150f, 16f), rows[i, 1], action,
-                    new Color(1f, 1f, 1f, 0.58f), new Color(0f, 0f, 0f, 0.8f), 1f);
-
-                y += 16f;
-            }
-
-            GuiKit.OutlinedLabel(new Rect(rect.x + 12f, rect.yMax - 44f, rect.width - 24f, 38f),
-                "Viser decide la ZONE touchee. Le reticule\nannonce laquelle, avant de frapper.",
-                GuiKit.Style(11, FontStyle.Italic, TextAnchor.UpperLeft),
-                new Color(_accent.r, _accent.g, _accent.b, 0.75f), new Color(0f, 0f, 0f, 0.8f), 1f);
-        }
-
         private void ResetToDefaults()
         {
             IReadOnlyList<Combatant> all = Combatant.All;
@@ -511,7 +439,411 @@ namespace UberBagarre.Sandbox
                 all[i].ApplyStats();
             }
 
+            _archetype = Archetype.Voyou;
+            ForgetPreferences();
             ReadCurrentValues();
+        }
+
+        // ------------------------------------------------------------------ interface
+
+        private void OnGUI()
+        {
+            if (!_open || !_initialised) return;
+
+            float width = Mathf.Min(800f, Screen.width - 40f);
+            float height = Mathf.Min(600f, Screen.height - 40f);
+
+            Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
+
+            GuiKit.Fill(new Rect(panel.x + 6f, panel.y + 7f, panel.width, panel.height), new Color(0f, 0f, 0f, 0.45f));
+            GuiKit.Fill(panel, _panelColor);
+            GuiKit.Outline(panel, 3f, _accent);
+
+            GuiKit.Fill(new Rect(panel.x, panel.y, panel.width, 34f), new Color(1f, 1f, 1f, 0.07f));
+
+            GuiKit.OutlinedLabel(new Rect(panel.x + 16f, panel.y + 4f, 260f, 26f),
+                "UBER BAGARRE  —  BAC A SABLE", GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleLeft),
+                _accent, new Color(0f, 0f, 0f, 0.9f), 1.5f);
+
+            GuiKit.OutlinedLabel(new Rect(panel.xMax - 180f, panel.y + 4f, 164f, 26f),
+                "TAB pour fermer", GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleRight),
+                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            DrawTabs(new Rect(panel.x + 14f, panel.y + 40f, panel.width - 28f, 26f));
+
+            Rect content = new Rect(panel.x + 18f, panel.y + 76f, panel.width - 36f, panel.height - 94f);
+
+            switch (_tab)
+            {
+                case Tab.Waves: DrawWavesTab(content); break;
+                case Tab.Stats: DrawStatsTab(content); break;
+                case Tab.Help: DrawHelpTab(content); break;
+                default: DrawCombatTab(content); break;
+            }
+        }
+
+        private void DrawTabs(Rect rect)
+        {
+            string[] names = { "COMBAT", "VAGUES", "STATISTIQUES", "COMMANDES" };
+            float width = rect.width / names.Length;
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                Rect tab = new Rect(rect.x + i * width, rect.y, width - 4f, rect.height);
+                bool active = (int)_tab == i;
+
+                GuiKit.Fill(tab, active ? new Color(_accent.r * 0.28f, _accent.g * 0.24f, _accent.b * 0.12f, 1f)
+                                        : new Color(0f, 0f, 0f, 0.35f));
+
+                if (active) GuiKit.Fill(new Rect(tab.x, tab.yMax - 2f, tab.width, 2f), _accent);
+
+                GuiKit.OutlinedLabel(tab, names[i], GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter),
+                    active ? _accent : new Color(1f, 1f, 1f, 0.55f), new Color(0f, 0f, 0f, 0.85f), 1f);
+
+                if (GUI.Button(tab, GUIContent.none, GUIStyle.none)) _tab = (Tab)i;
+            }
+        }
+
+        // ------------------------------------------------------------------ onglet combat
+
+        private void DrawCombatTab(Rect rect)
+        {
+            float column = (rect.width - 20f) * 0.5f;
+            float y = rect.y;
+            float left = rect.x;
+
+            y = Section(left, y, column, "TOI", _playerAccent);
+
+            float newPlayerHealth = Row(left, ref y, column, "Points de vie", _playerHealth, _healthRange, "0", _playerAccent);
+            float newPlayerDamage = Row(left, ref y, column, "Degats infliges", _playerDamage, _damageMultiplierRange, "x0.00", _playerAccent);
+
+            if (Changed(newPlayerHealth, _playerHealth) || Changed(newPlayerDamage, _playerDamage))
+            {
+                _playerHealth = newPlayerHealth;
+                _playerDamage = newPlayerDamage;
+                ApplyPlayer();
+            }
+
+            y += 10f;
+            y = Section(left, y, column, "NERVOSITE", _accent);
+
+            float newSpeed = Row(left, ref y, column, "Vitesse des coups", _attackSpeed, _attackSpeedRange, "x0.00", _accent);
+            float newHitStop = Row(left, ref y, column, "Ralenti d'impact", _hitStopStrength, _hitStopRange, "0.00", _accent);
+            float newBuffer = Row(left, ref y, column, "Tampon de touche", _inputBufferSeconds, _inputBufferRange, "0.00 s", _accent);
+
+            if (Changed(newSpeed, _attackSpeed) || Changed(newHitStop, _hitStopStrength) || Changed(newBuffer, _inputBufferSeconds))
+            {
+                _attackSpeed = newSpeed;
+                _hitStopStrength = newHitStop;
+                _inputBufferSeconds = newBuffer;
+                ApplyFeel();
+            }
+
+            // ----- colonne de droite
+            float right = rect.x + column + 20f;
+            float ry = rect.y;
+
+            ry = Section(right, ry, column, "ADVERSAIRES", _enemyAccent);
+
+            float newEnemyHealth = Row(right, ref ry, column, "Points de vie", _enemyHealth, _healthRange, "0", _enemyAccent);
+            float newEnemyDamage = Row(right, ref ry, column, "Degats infliges", _enemyDamage, _damageMultiplierRange, "x0.00", _enemyAccent);
+
+            bool enemyChanged = Changed(newEnemyHealth, _enemyHealth) || Changed(newEnemyDamage, _enemyDamage);
+
+            _enemyHealth = newEnemyHealth;
+            _enemyDamage = newEnemyDamage;
+
+            ry += 6f;
+            ry = Section(right, ry, column, "PROFIL", _enemyAccent);
+
+            if (DrawArchetypes(new Rect(right, ry, column, 28f)))
+            {
+                _enemyHealth = ArchetypeHealth();
+                enemyChanged = true;
+            }
+
+            ry += 36f;
+
+            GUIStyle hint = GuiKit.Style(11, FontStyle.Italic, TextAnchor.UpperLeft);
+            GuiKit.OutlinedLabel(new Rect(right, ry, column, 30f), ArchetypeDescription(), hint,
+                new Color(1f, 1f, 1f, 0.55f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            ry += 34f;
+
+            if (enemyChanged) ApplyEnemies();
+
+            GuiKit.OutlinedLabel(new Rect(right, ry, column, 18f),
+                "Sur le terrain : " + LiveEnemies() + " debout,  " + _spawned.Count + " ajoutes",
+                GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft),
+                new Color(1f, 1f, 1f, 0.65f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            ry += 26f;
+
+            float half = (column - 10f) * 0.5f;
+
+            if (Button(new Rect(right, ry, half, 30f), "+ ADVERSAIRE", _enemyAccent)) SpawnEnemy();
+            if (Button(new Rect(right + half + 10f, ry, half, 30f), "RETIRER", _accent)) RemoveSpawned();
+
+            ry += 38f;
+
+            if (Button(new Rect(right, ry, half, 30f), "TOUT A NEUF", _playerAccent)) ReviveEverybody();
+            if (Button(new Rect(right + half + 10f, ry, half, 30f), "D'ORIGINE", _accent)) ResetToDefaults();
+        }
+
+        private bool DrawArchetypes(Rect rect)
+        {
+            string[] names = { "Voyou", "Boxeur", "Cogneur", "Brute" };
+            float width = (rect.width - 18f) / names.Length;
+            bool changed = false;
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                Rect slot = new Rect(rect.x + i * (width + 6f), rect.y, width, rect.height);
+                bool active = (int)_archetype == i;
+
+                GuiKit.Fill(slot, active ? new Color(_enemyAccent.r * 0.30f, _enemyAccent.g * 0.18f, _enemyAccent.b * 0.16f, 1f)
+                                         : new Color(0.12f, 0.13f, 0.16f, 1f));
+                GuiKit.Outline(slot, 2f, new Color(_enemyAccent.r, _enemyAccent.g, _enemyAccent.b, active ? 1f : 0.45f));
+
+                GuiKit.OutlinedLabel(slot, names[i], GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleCenter),
+                    active ? Color.white : new Color(1f, 1f, 1f, 0.6f), new Color(0f, 0f, 0f, 0.85f), 1f);
+
+                if (!GUI.Button(slot, GUIContent.none, GUIStyle.none)) continue;
+                if ((int)_archetype == i) continue;
+
+                _archetype = (Archetype)i;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private string ArchetypeDescription()
+        {
+            switch (_archetype)
+            {
+                case Archetype.Boxeur: return "Rapide et mobile, mais fragile. Punit l'hesitation.";
+                case Archetype.Cogneur: return "Lent et solide. Il faut le faire tomber pour l'ouvrir.";
+                case Archetype.Brute: return "Tres lente, tres dure. Le balayage est la seule reponse.";
+                default: return "Equilibre. La reference pour regler le reste.";
+            }
+        }
+
+        // ------------------------------------------------------------------ onglet vagues
+
+        private void DrawWavesTab(Rect rect)
+        {
+            float y = rect.y;
+            y = Section(rect.x, y, rect.width, "MODE VAGUES", _accent);
+
+            if (_waves == null)
+            {
+                GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 22f),
+                    "Aucun WaveDirector dans la scene. Regenere la scene (Uber Bagarre > 2).",
+                    GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft),
+                    new Color(1f, 0.6f, 0.5f), new Color(0f, 0f, 0f, 0.85f), 1f);
+                return;
+            }
+
+            GUIStyle big = GuiKit.Style(40, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GuiKit.OutlinedLabel(new Rect(rect.x, y, 260f, 50f),
+                _waves.Running ? "VAGUE " + _waves.Wave : "A L'ARRET", big,
+                _waves.Running ? _accent : new Color(1f, 1f, 1f, 0.45f), new Color(0f, 0f, 0f, 0.9f), 2.5f);
+
+            y += 56f;
+
+            GUIStyle info = GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft);
+
+            GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 20f),
+                "Adversaires debout : " + _waves.AliveCount, info,
+                new Color(1f, 1f, 1f, 0.8f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            y += 24f;
+
+            float wait = _waves.NextWaveIn;
+            GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 20f),
+                _waves.Running
+                    ? (wait > 0f ? "Prochaine vague dans " + wait.ToString("0.0") + " s" : "Vague en cours")
+                    : "Lance les vagues pour te battre a un contre plusieurs.",
+                info, new Color(1f, 1f, 1f, 0.65f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            y += 34f;
+
+            float half = (rect.width - 14f) * 0.5f;
+
+            if (!_waves.Running)
+            {
+                if (Button(new Rect(rect.x, y, half, 34f), "LANCER LES VAGUES", _enemyAccent)) _waves.StartWaves();
+            }
+            else if (Button(new Rect(rect.x, y, half, 34f), "ARRETER", _accent))
+            {
+                _waves.Stop();
+            }
+
+            if (Button(new Rect(rect.x + half + 14f, y, half, 34f), "VIDER LE TERRAIN", _accent))
+            {
+                _waves.Clear();
+                RemoveSpawned();
+            }
+
+            y += 48f;
+
+            GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 76f),
+                "Chaque vague ajoute des adversaires ET les renforce : plus de vie, plus de degats,\n" +
+                "des coups plus rapides. Multiplier les adversaires sans les renforcer rendrait les\n" +
+                "vagues plus longues, pas plus dures — et allonger un test n'apprend rien.\n" +
+                "Le profil choisi dans l'onglet COMBAT s'applique aussi aux vagues.",
+                GuiKit.Style(12, FontStyle.Italic, TextAnchor.UpperLeft),
+                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+        }
+
+        // ------------------------------------------------------------------ onglet statistiques
+
+        private void DrawStatsTab(Rect rect)
+        {
+            float y = rect.y;
+            y = Section(rect.x, y, rect.width, "CE COMBAT", _playerAccent);
+
+            if (_statistics == null)
+            {
+                GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 22f),
+                    "Aucun CombatStatistics dans la scene. Regenere la scene (Uber Bagarre > 2).",
+                    GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft),
+                    new Color(1f, 0.6f, 0.5f), new Color(0f, 0f, 0f, 0.85f), 1f);
+                return;
+            }
+
+            float column = (rect.width - 20f) * 0.5f;
+            float ly = y;
+            float ry = y;
+
+            Stat(rect.x, ref ly, column, "Coups lances", _statistics.AttacksThrown.ToString(), _playerAccent);
+            Stat(rect.x, ref ly, column, "Coups au but", _statistics.AttacksLanded.ToString(), _playerAccent);
+            Stat(rect.x, ref ly, column, "Reussite", (_statistics.Accuracy * 100f).ToString("0") + " %", _accent);
+            Stat(rect.x, ref ly, column, "Meilleur combo", _statistics.BestCombo.ToString(), _accent);
+            Stat(rect.x, ref ly, column, "Plus gros coup", _statistics.HighestHit.ToString("0"), _accent);
+            Stat(rect.x, ref ly, column, "Parades", _statistics.Parries.ToString(), _playerAccent);
+            Stat(rect.x, ref ly, column, "Blocages", _statistics.Blocks.ToString(), _playerAccent);
+
+            float right = rect.x + column + 20f;
+
+            Stat(right, ref ry, column, "Degats infliges", _statistics.DamageDealt.ToString("0"), _playerAccent);
+            Stat(right, ref ry, column, "Degats encaisses", _statistics.DamageTaken.ToString("0"), _enemyAccent);
+            Stat(right, ref ry, column, "Rapport", _statistics.DamageRatio.ToString("0.00"), _accent);
+            Stat(right, ref ry, column, "Chutes provoquees", _statistics.KnockdownsCaused.ToString(), _playerAccent);
+            Stat(right, ref ry, column, "Chutes subies", _statistics.KnockdownsSuffered.ToString(), _enemyAccent);
+            Stat(right, ref ry, column, "K.O. infliges", _statistics.Knockouts.ToString(), _playerAccent);
+            Stat(right, ref ry, column, "Fois mis K.O.", _statistics.Deaths.ToString(), _enemyAccent);
+
+            float bottom = Mathf.Max(ly, ry) + 12f;
+
+            if (Button(new Rect(rect.x, bottom, 200f, 30f), "REMETTRE A ZERO", _accent))
+            {
+                _statistics.ResetStatistics();
+            }
+
+            bottom += 40f;
+
+            GuiKit.OutlinedLabel(new Rect(rect.x, bottom, rect.width, 54f),
+                "La REUSSITE est le chiffre le plus utile : un joueur qui rate la moitie de ses coups\n" +
+                "a l'impression que l'adversaire encaisse trop, alors que le probleme est sa precision.\n" +
+                "Le RAPPORT au-dessus de 1 veut dire que l'echange tourne a ton avantage.",
+                GuiKit.Style(12, FontStyle.Italic, TextAnchor.UpperLeft),
+                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+        }
+
+        private void Stat(float x, ref float y, float width, string label, string value, Color color)
+        {
+            GuiKit.Fill(new Rect(x, y, width, 22f), new Color(1f, 1f, 1f, 0.035f));
+
+            GuiKit.OutlinedLabel(new Rect(x + 8f, y, width - 80f, 22f), label,
+                GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft),
+                new Color(1f, 1f, 1f, 0.75f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            GuiKit.OutlinedLabel(new Rect(x + width - 78f, y, 70f, 22f), value,
+                GuiKit.Style(13, FontStyle.Bold, TextAnchor.MiddleRight),
+                color, new Color(0f, 0f, 0f, 0.85f), 1f);
+
+            y += 26f;
+        }
+
+        // ------------------------------------------------------------------ onglet commandes
+
+        private void DrawHelpTab(Rect rect)
+        {
+            float column = (rect.width - 20f) * 0.5f;
+
+            string[,] moves =
+            {
+                { "WASD / ZQSD", "Se deplacer" },
+                { "Maj", "Courir" },
+                { "C", "S'accroupir" },
+                { "C en courant", "Glissade" },
+                { "Espace", "Sauter" },
+                { "Alt", "Esquive" },
+                { "", "" },
+                { "Ctrl maintenu", "Garde  (-72 %)" },
+                { "Ctrl au bon moment", "PARADE, puis RIPOSTE x2,2" },
+                { "", "" },
+                { "Tab", "Ce menu" },
+                { "F1", "Diagnostic" },
+                { "F3", "Camera d'observation" },
+                { "+ / -", "Zoom de l'observation" },
+                { "R", "Relancer le combat" },
+                { "Echap", "Liberer le curseur" }
+            };
+
+            string[,] attacks =
+            {
+                { "Clic gauche", "Direct" },
+                { "Clic droit", "Crochet" },
+                { "Clic molette", "Uppercut  (chargeable)" },
+                { "F", "Coup de pied  (chargeable)" },
+                { "V", "Coup de pied bas  (chargeable)" },
+                { "", "" },
+                { "Maintenir un coup lourd", "CHARGE : jusqu'a x2,2 degats" },
+                { "Maintenir un coup rapide", "Enchaine tout seul" },
+                { "", "" },
+                { "En sprintant", "Charge d'epaule" },
+                { "En l'air", "Coup plongeant" },
+                { "En glissade", "Balayage  (85 % de chute)" },
+                { "Cible au sol + pied", "COUP DE GRACE  (28 degats)" }
+            };
+
+            DrawKeyList(new Rect(rect.x, rect.y, column, rect.height), "DEPLACEMENT ET DEFENSE", moves);
+            DrawKeyList(new Rect(rect.x + column + 20f, rect.y, column, rect.height), "ATTAQUES", attacks);
+        }
+
+        private void DrawKeyList(Rect rect, string title, string[,] rows)
+        {
+            float y = Section(rect.x, rect.y, rect.width, title, _accent);
+
+            GUIStyle key = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GUIStyle action = GuiKit.Style(11, FontStyle.Normal, TextAnchor.MiddleLeft);
+
+            for (int i = 0; i < rows.GetLength(0); i++)
+            {
+                if (string.IsNullOrEmpty(rows[i, 0]))
+                {
+                    y += 8f;
+                    continue;
+                }
+
+                GuiKit.OutlinedLabel(new Rect(rect.x, y, 146f, 17f), rows[i, 0], key,
+                    new Color(1f, 1f, 1f, 0.88f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+                GuiKit.OutlinedLabel(new Rect(rect.x + 150f, y, rect.width - 150f, 17f), rows[i, 1], action,
+                    new Color(1f, 1f, 1f, 0.58f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+                y += 17f;
+            }
+        }
+
+        // ------------------------------------------------------------------ primitives
+
+        private static bool Changed(float a, float b)
+        {
+            return !Mathf.Approximately(a, b);
         }
 
         private float Section(float x, float y, float width, string title, Color color)
@@ -519,7 +851,7 @@ namespace UberBagarre.Sandbox
             GuiKit.Fill(new Rect(x, y + 8f, width, 2f), new Color(color.r, color.g, color.b, 0.35f));
 
             GUIStyle style = GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleLeft);
-            float labelWidth = 8f + title.Length * 8f;
+            float labelWidth = 10f + title.Length * 8f;
 
             GuiKit.Fill(new Rect(x, y, labelWidth, 18f), _panelColor);
             GuiKit.OutlinedLabel(new Rect(x, y, labelWidth, 18f), title, style,
@@ -532,12 +864,15 @@ namespace UberBagarre.Sandbox
         private float Row(float x, ref float y, float width, string label, float value,
             Vector2 range, string format, Color color)
         {
-            GUIStyle name = GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft);
-            GuiKit.OutlinedLabel(new Rect(x, y, 150f, 22f), label, name,
+            float labelWidth = Mathf.Min(138f, width * 0.42f);
+            float valueWidth = 58f;
+
+            GuiKit.OutlinedLabel(new Rect(x, y, labelWidth, 22f), label,
+                GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft),
                 new Color(1f, 1f, 1f, 0.9f), new Color(0f, 0f, 0f, 0.8f), 1f);
 
-            float sliderX = x + 150f;
-            float sliderWidth = width - 150f - 62f;
+            float sliderX = x + labelWidth + 4f;
+            float sliderWidth = Mathf.Max(30f, width - labelWidth - valueWidth - 8f);
 
             // Rail dessine a la main puis curseur invisible par-dessus : le curseur par defaut
             // d'IMGUI depend du skin de l'editeur et jure avec le reste de l'interface.
@@ -553,8 +888,8 @@ namespace UberBagarre.Sandbox
             float result = GUI.HorizontalSlider(new Rect(sliderX, y + 2f, sliderWidth, 20f), value, range.x, range.y);
             GUI.color = previous;
 
-            GUIStyle valueStyle = GuiKit.Style(13, FontStyle.Bold, TextAnchor.MiddleRight);
-            GuiKit.OutlinedLabel(new Rect(x + width - 58f, y, 58f, 22f), value.ToString(format), valueStyle,
+            GuiKit.OutlinedLabel(new Rect(x + width - valueWidth, y, valueWidth, 22f), value.ToString(format),
+                GuiKit.Style(13, FontStyle.Bold, TextAnchor.MiddleRight),
                 color, new Color(0f, 0f, 0f, 0.85f), 1f);
 
             y += 28f;

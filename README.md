@@ -81,12 +81,20 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Clic molette** | **Uppercut** |
 | **F** | **Coup de pied de face** — lourd, lent, il repousse franchement |
 | **V** | **Coup de pied bas** — peu de dégâts, mais c'est lui qui fait **tomber** |
+| **Maintenir** molette / F / V | **CHARGE** le coup lourd : jusqu'à ×2,2 dégâts, ×2,8 recul, +45 % de chute |
+| **Maintenir** clic gauche / droit | Enchaîne tout seul — les coups rapides se répètent, les lourds se chargent |
+| **En sprintant** + attaque | **Charge d'épaule** — 14 de force d'impact, 45 % de chute |
+| **En l'air** + attaque | **Coup plongeant** — 24 dégâts, 75 % de chute |
+| **En glissade** + attaque | **Balayage** — 85 % de chute |
+| **Cible au sol** + coup de pied | **COUP DE GRÂCE** — 28 dégâts |
 | **Ctrl gauche** (maintenu) | **Garde** : absorbe 72 % des dégâts, coûte de l'endurance à chaque coup |
 | **Ctrl gauche** (tapé au bon moment) | **Parade** : les 0,26 s qui suivent la levée de garde annulent le coup *et* déséquilibrent l'attaquant |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
-| **Tab** | **Menu de bac à sable** : PV et dégâts (les tiens et les leurs), faire apparaître des adversaires, tout remettre à neuf — et le rappel des commandes |
-| **F1** | Overlay de debug (états, zones, cooldowns, distances) |
+| **Tab** | **Menu de bac à sable**, 4 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, Commandes |
+| **F1** | Overlay de debug (états, zones, cadence réelle en coups/s, tampon d'entrée, distances) |
+| **F3** | **Caméra d'observation** — orbite autour de toi, et le combat continue |
+| **+** / **-** | Zoom de la caméra d'observation |
 | **R** | Relancer le combat (tout le monde à plein, retour au spawn) |
 | **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
 | Clic dans la vue | Recapturer le curseur |
@@ -117,7 +125,9 @@ Tu peux les changer sans toucher à une ligne de code.
 | 13 | Soleil chaud + reflets d'objectif, antialiasing, vignette progressive, maillages affinés | ✅ |
 | 14 | Zone décidée par la visée, enchaînements, ragdoll à la mort, tête en un seul maillage | ✅ |
 | 15 | Menu de bac à sable (PV / dégâts / apparitions), matières texturées, refonte audio | ✅ |
-| 16 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 16 | Charge, 4 coups contextuels, riposte, jauge d'étourdissement, caméra d'observation | ✅ |
+| 17 | Mode vagues, profils d'adversaire, statistiques de combat, réglages sauvegardés | ✅ |
+| 18 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -206,6 +216,18 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 - **La parade est la récompense du timing.** Lève la garde dans les 0,26 s avant l'impact : le
   coup est annulé, l'attaquant est étourdi 0,6 s et repoussé, et tu récupères 16 d'endurance.
   Les crochets autour du réticule se resserrent pendant la fenêtre, et un « PARADE ! » confirme.
+- **Et la parade ouvre une RIPOSTE.** Ton coup suivant, dans la seconde, fait **×2,2**. Sans ça,
+  parer ne ferait que ne pas perdre de vie : la récompense resterait passive, et risquer une
+  fenêtre de 0,26 s n'en vaudrait pas la peine.
+- **Matraquer finit par sonner.** Une jauge d'étourdissement se remplit sous la barre de vie — deux
+  fois plus vite sur un coup à la tête. Pleine, l'adversaire est sonné 1,7 s : une ouverture que tu
+  as construite, pas un coup de chance. Elle se vide après un répit, donc elle punit le matraquage
+  continu sans punir le combat normal.
+- **Le sol n'est pas qu'un temps d'attente.** Un adversaire à terre prend un **coup de grâce** à
+  28 dégâts. C'est ce qui donne une raison de le faire tomber.
+- **Charger change le coup.** Maintiens un coup lourd : jusqu'à ×2,2 dégâts et ×2,8 de recul. Les
+  coups rapides, eux, se répètent au maintien — chaque touche garde le comportement qui découle du
+  coup lui-même.
 - **Tout coûte de l'endurance** : les coups, le sprint (13/s), la glissade (18 par départ).
   La glissade ne se spamme plus — sans endurance, elle est refusée avant de partir.
 - **L'adversaire se défend aussi.** Il esquive, et sinon il **bloque** : ses poings se collent au
@@ -218,6 +240,41 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
   touchée, donc aucune mort ne ressemble à la précédente sans une seule animation.
 - **Ta vie se voit aussi** : plus elle descend, plus les bords de l'écran se referment. À 20 % de
   vie, tu ne vois plus que le centre.
+
+---
+
+## Les outils de réglage
+
+Tout se règle **pendant** le combat, parce que sortir du mode Play fait perdre la situation qu'on
+voulait tester.
+
+**Tab — Combat.** Tes PV et tes dégâts, ceux des adversaires, et trois réglages de **nervosité** :
+vitesse des coups, force du ralenti d'impact, durée du tampon de touche. Quatre **profils**
+d'adversaire volontairement très écartés — Voyou (référence), Boxeur (rapide, fragile, mobile),
+Cogneur (lent, solide), Brute (très lente, très dure). Un adversaire qui diffère de 10 % du
+précédent ne se joue pas différemment, donc il n'apprend rien.
+
+**Tab — Vagues.** Des adversaires de plus en plus nombreux **et** de plus en plus solides. À
+plusieurs, le combat pose des questions que le duel ne pose pas : se replacer, ne pas se faire
+encercler, choisir qui mettre au sol d'abord, garder de l'endurance pour sortir d'une mauvaise
+position.
+
+**Tab — Statistiques.** Coups lancés / au but, **réussite**, meilleur combo, plus gros coup,
+parades, blocages, dégâts infligés et encaissés, rapport, chutes, K.O. La réussite est le chiffre le
+plus utile : un joueur qui rate la moitié de ses coups a l'impression que l'adversaire encaisse
+trop, alors que le problème est sa précision.
+
+**F3 — Caméra d'observation.** Elle orbite autour de toi **et le combat continue** : tu peux
+marcher, courir, frapper, te faire toucher et tomber pendant que tu regardes. C'est le seul moyen de
+voir ton propre personnage — un FPS a cet angle mort énorme, et tout le travail d'animation, de
+matière et de marques de coup porte sur un corps que le joueur ne regarde jamais.
+
+**F1 — Diagnostic.** Cadence réelle en coups/s, écart en ms entre tes deux derniers coups, échelle
+de temps courante, état du tampon d'entrée, et les trois zones de l'adversaire avec leur
+multiplicateur.
+
+Les réglages sont **sauvegardés** : un réglage trouvé après dix minutes d'essais et perdu au
+redémarrage ne vaut rien.
 
 ---
 

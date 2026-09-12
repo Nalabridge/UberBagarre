@@ -17,6 +17,24 @@ namespace UberBagarre.Combat
         Foot = 1
     }
 
+    /// <summary>
+    /// Situation dans laquelle un coup remplace le coup de base.
+    ///
+    /// C'est ce qui donne de la variété sans ajouter une seule touche : la même commande produit
+    /// un coup différent selon ce que le joueur est en train de faire. Sprinter et frapper n'est
+    /// pas frapper, et sauter et frapper encore moins.
+    /// </summary>
+    public enum AttackContext
+    {
+        Any = 0,
+        Sprinting = 1,
+        Airborne = 2,
+        Sliding = 3,
+
+        /// <summary>La cible est au sol. Permet un coup de finition.</summary>
+        TargetDown = 4
+    }
+
     /// <summary>Quelle main porte le coup.</summary>
     public enum AttackHand
     {
@@ -108,6 +126,30 @@ namespace UberBagarre.Combat
         [Tooltip("Temps mort avant de pouvoir relancer un coup, apres la fin de celui-ci.")]
         [Min(0f)] public float cooldown = 0.04f;
 
+        [Header("Charge")]
+        [Tooltip("Maintenir la touche arme le coup au lieu de le relancer. Reserve aux coups " +
+                 "LOURDS : sur un coup rapide, charger n'a pas de sens puisque sa valeur est " +
+                 "justement de partir tout de suite.")]
+        public bool chargeable;
+
+        [Min(0.05f)]
+        [Tooltip("Duree de maintien pour une charge complete.")]
+        public float maxChargeTime = 0.75f;
+
+        [Min(1f)]
+        [Tooltip("Multiplicateur de degats a charge pleine.")]
+        public float chargeDamageMultiplier = 2.1f;
+
+        [Min(1f)] public float chargeImpactMultiplier = 2.4f;
+
+        [Range(0f, 1f)]
+        [Tooltip("Chance de chute ajoutee a charge pleine.")]
+        public float chargeKnockdownBonus = 0.35f;
+
+        [Header("Conditions de declenchement")]
+        [Tooltip("Ce coup remplace le coup normal dans une situation precise. Aucun = coup de base.")]
+        public AttackContext context = AttackContext.Any;
+
         [Header("Enchainement")]
         [Range(0.3f, 1f)]
         [Tooltip("A partir de quelle fraction du coup un AUTRE coup peut l'interrompre. " +
@@ -153,7 +195,7 @@ namespace UberBagarre.Combat
         /// version, le générateur sait distinguer « asset réglé par l'utilisateur » de « asset
         /// créé par une version antérieure du code ».
         /// </summary>
-        public const int CurrentVersion = 3;
+        public const int CurrentVersion = 4;
 
         [HideInInspector]
         public int dataVersion;
@@ -171,6 +213,10 @@ namespace UberBagarre.Combat
         public const string UppercutAsset = "A_Uppercut";
         public const string KickAsset = "A_CoupDePied";
         public const string LowKickAsset = "A_CoupDePiedBas";
+        public const string ChargeAsset = "A_ChargeEpaule";
+        public const string DiveAsset = "A_CoupPlongeant";
+        public const string SweepAsset = "A_Balayage";
+        public const string StompAsset = "A_CoupDeGrace";
 
         /// <summary>
         /// Charge un coup depuis Resources. Renvoie null si l'asset n'existe pas.

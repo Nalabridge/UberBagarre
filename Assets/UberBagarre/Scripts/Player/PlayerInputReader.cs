@@ -64,6 +64,9 @@ namespace UberBagarre.Player
         public bool ReleaseCursorPressed { get; private set; }
         public bool ToggleDebugOverlayPressed { get; private set; }
         public bool ToggleSandboxMenuPressed { get; private set; }
+        public bool ToggleObserverPressed { get; private set; }
+        public bool ObserverZoomInHeld { get; private set; }
+        public bool ObserverZoomOutHeld { get; private set; }
         public bool RestartFightPressed { get; private set; }
 
         public InputBindings Bindings
@@ -101,6 +104,9 @@ namespace UberBagarre.Player
             ReleaseCursorPressed = _provider.GetPressedThisFrame(_bindings.releaseCursor);
             ToggleDebugOverlayPressed = _provider.GetPressedThisFrame(_bindings.toggleDebugOverlay);
             ToggleSandboxMenuPressed = _provider.GetPressedThisFrame(_bindings.toggleSandboxMenu);
+            ToggleObserverPressed = _provider.GetPressedThisFrame(_bindings.toggleObserver);
+            ObserverZoomInHeld = _provider.GetHeld(_bindings.observerZoomIn);
+            ObserverZoomOutHeld = _provider.GetHeld(_bindings.observerZoomOut);
             RestartFightPressed = _provider.GetPressedThisFrame(_bindings.restartFight);
 
             if (!_gameplayInputEnabled)

@@ -128,6 +128,9 @@ namespace UberBagarre.Combat
         public event Action KnockedDown;
         public event Action GotUp;
 
+        /// <summary>Émis pour N'IMPORTE quelle chute. Sert au décompte des statistiques.</summary>
+        public static event Action<KnockdownSystem> AnyKnockedDown;
+
         private void Awake()
         {
             if (_combatant == null) _combatant = GetComponent<Combatant>();
@@ -205,6 +208,7 @@ namespace UberBagarre.Combat
 
             if (info.Zone == HitZone.Leg) chance = Mathf.Max(chance, _legHitChance);
             if (info.Attack != null) chance = Mathf.Max(chance, info.Attack.knockdownChance);
+            if (info.BonusKnockdownChance > 0f) chance = Mathf.Max(chance, info.BonusKnockdownChance);
 
             bool lowHealth = _health != null && _health.Normalized <= _lowHealthThreshold;
             if (info.IsHeavy && lowHealth) chance = Mathf.Max(chance, _heavyHitLowHealthChance);
@@ -236,6 +240,9 @@ namespace UberBagarre.Combat
 
             Action knocked = KnockedDown;
             if (knocked != null) knocked();
+
+            Action<KnockdownSystem> anyKnocked = AnyKnockedDown;
+            if (anyKnocked != null) anyKnocked(this);
         }
 
         private void Update()

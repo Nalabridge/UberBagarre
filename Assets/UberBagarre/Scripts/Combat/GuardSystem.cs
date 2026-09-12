@@ -47,16 +47,51 @@ namespace UberBagarre.Combat
         [SerializeField, Min(0f)] private float _parryPushback = 4.5f;
         [SerializeField, Min(0f)] private float _parryStaminaRefund = 16f;
 
+        [Header("Riposte")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Duree pendant laquelle le prochain coup porte est une RIPOSTE. Sans elle, parer " +
+                 "ne fait que ne pas perdre de vie : la recompense reste passive, et prendre le " +
+                 "risque d'une fenetre de 0,26 s n'en vaut pas la peine.")]
+        private float _riposteWindow = 0.9f;
+
+        [SerializeField, Min(1f)]
+        [Tooltip("Multiplicateur de degats du coup de riposte.")]
+        private float _riposteDamageMultiplier = 2.2f;
+
         [Header("Debug")]
         [SerializeField] private bool _logGuard;
 
         private float _guardHeldTime;
         private bool _guarding;
+        private float _riposteUntil = -1f;
 
         public bool IsGuarding { get { return _guarding; } }
 
         /// <summary>Vrai pendant la fenêtre de parade, juste après la levée de garde.</summary>
         public bool InParryWindow { get { return _guarding && _guardHeldTime <= _parryWindow; } }
+
+        /// <summary>Vrai quand une riposte est disponible, juste après une parade réussie.</summary>
+        public bool RiposteReady { get { return Time.time <= _riposteUntil; } }
+
+        public float RiposteDamageMultiplier { get { return _riposteDamageMultiplier; } }
+
+        /// <summary>Temps restant de la fenêtre de riposte. Affiché par l'interface.</summary>
+        public float RiposteRemaining { get { return Mathf.Max(0f, _riposteUntil - Time.time); } }
+
+        /// <summary>
+        /// Consomme la riposte et renvoie son multiplicateur, ou 1 s'il n'y en a pas.
+        ///
+        /// Consommée et non simplement lue : une parade ouvre UN coup renforcé, pas une seconde
+        /// entière de dégâts doublés. Sans ça, parer une fois permettrait de placer quatre coups
+        /// à 220 % et la parade cesserait d'être un échange pour devenir la seule ouverture utile.
+        /// </summary>
+        public float ConsumeRiposte()
+        {
+            if (!RiposteReady) return 1f;
+
+            _riposteUntil = -1f;
+            return _riposteDamageMultiplier;
+        }
 
         /// <summary>Émis quand un coup est paré. Les retours visuels et sonores s'y branchent.</summary>
         public event Action<DamageInfo> Parried;
@@ -135,6 +170,7 @@ namespace UberBagarre.Combat
         private void OnParried(DamageInfo info)
         {
             if (_stamina != null) _stamina.Refill(_parryStaminaRefund);
+            _riposteUntil = Time.time + _riposteWindow;
 
             // L'attaquant paie sa tentative : c'est la recompense du timing.
             if (info.Attacker != null)

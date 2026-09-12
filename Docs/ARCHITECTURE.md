@@ -950,3 +950,142 @@ donc impossible à oublier dans un nouveau coup.
 La leçon générale : **un mécanisme de préservation sans mécanisme de migration est un mécanisme de
 gel.** Dès qu'on décide de ne pas écraser les données de l'utilisateur, il faut décider dans le même
 mouvement comment on y apporte les corrections.
+
+---
+
+## 15. Phase fonctionnalités : ce qui manquait n'était pas de la finition
+
+Demande de carte blanche sur les fonctionnalités, après plusieurs passes de correction. L'occasion
+de regarder le prototype avec une autre question : non pas « qu'est-ce qui est cassé », mais
+« qu'est-ce qu'il n'y a pas à décider ».
+
+La réponse était franche. Le combat se résumait à choisir parmi cinq coups et à reculer quand la
+vie descendait. Tout le reste — la chute, la parade, les zones — existait mais ne débouchait sur
+rien : on mettait quelqu'au sol et on attendait, on parait et on ne perdait simplement pas de vie.
+
+### 15.1 Deux statistiques fantômes
+
+Avant d'ajouter quoi que ce soit, j'ai trouvé deux leviers qui existaient et que **rien ne lisait** :
+
+- `StatType.AttackSpeed`, infobulle « multiplie la vitesse d'exécution des coups » — aucune ligne
+  de code ne l'utilisait. `AttackExecutor` lisait `attack.duration` directement.
+- `StatType.MoveSpeed`, même chose — `EnemyMotor` n'en savait rien.
+
+C'est pire qu'une statistique absente : une stat réglable qui ne fait rien **fait croire que le
+levier existe**. On la tourne, rien ne change, et on cherche le problème ailleurs. Les deux sont
+maintenant branchées, ce qui a débloqué au passage les profils d'adversaire — un boxeur « rapide »
+ne pouvait pas être rapide avant.
+
+### 15.2 Donner une suite à ce qui n'en avait pas
+
+Trois mécaniques existaient sans conséquence. Chacune a reçu la suite qui lui manquait :
+
+| Mécanique | Avant | Maintenant |
+|---|---|---|
+| Parade | Annule le coup | Ouvre une **riposte ×2,2** pendant 0,9 s |
+| Chute | Temps d'attente | Permet un **coup de grâce** à 28 dégâts |
+| Coup à la tête | × 1,6 dégâts | Remplit la **jauge d'étourdissement** deux fois plus vite |
+
+La riposte est **consommée** et pas seulement lue : une parade ouvre UN coup renforcé, pas une
+seconde entière de dégâts doublés. Sans ça, parer une fois permettrait de placer quatre coups à
+220 % et la parade cesserait d'être un échange pour devenir la seule ouverture utile du jeu.
+
+La jauge d'étourdissement est la plus structurante des trois, parce qu'elle ajoute un **second axe**
+à côté des points de vie : la pression. Sans elle, un échange est une soustraction et rien de ce qui
+se passe entre deux coups n'a d'importance. Elle se remplit vite, se vide après un court répit, et a
+un temps mort après déclenchement — sinon un adversaire sonné se fait re-sonner immédiatement et ne
+rejoue plus jamais, ce qui est le piège classique de cette mécanique.
+
+### 15.3 Quatre attaques de plus, zéro touche de plus
+
+Sprinter, être en l'air, glisser, avoir un adversaire au sol : la même commande produit un coup
+différent. C'est la façon la moins chère d'ajouter de la variété, et surtout celle qui ne demande
+**rien à apprendre** — le joueur les découvre en jouant normalement.
+
+L'ordre des substitutions est une priorité, pas un hasard : être en l'air l'emporte sur tout le
+reste, parce qu'aucun autre coup n'a de sens les pieds décollés. Et le coup de grâce ne remplace que
+les coups de PIED : achever quelqu'un au sol d'un crochet demanderait de se pencher, ce que le corps
+ne sait pas faire.
+
+### 15.4 Charger, et pourquoi tous les coups ne se chargent pas
+
+Les coups **lourds** se chargent, les **rapides** se répètent. Ce partage découle du coup lui-même :
+l'intérêt d'un direct est de partir tout de suite, donc le maintenir doit l'enchaîner ; l'intérêt
+d'un uppercut est son poids, donc le maintenir doit l'armer. Chaque touche garde ainsi un
+comportement qu'on peut deviner sans l'avoir lu.
+
+La charge est gérée par l'exécuteur et non par le lecteur d'entrées, parce que c'est l'exécuteur qui
+sait si un coup peut partir : charger en étant étourdi ou déjà engagé n'a aucun sens, et la charge
+doit alors s'annuler plutôt que s'accumuler dans le vide.
+
+Elle **se voit** : pose d'armement tenue, tremblement croissant, barre sous le réticule, et un
+« CHARGE PLEINE » qui pulse. Une charge sans retour visuel est injouable — le joueur relâche au
+hasard, ne voit pas la différence, et conclut que la mécanique ne sert à rien.
+
+### 15.5 La caméra d'observation, et l'angle mort du FPS
+
+Un jeu en première personne a un angle mort énorme : **on ne voit jamais son propre personnage.**
+Tout le travail d'animation, de matière, de chute et de marques de coup porte sur un corps que le
+joueur ne regarde jamais. Quand il dit « les animations sont horribles », ni lui ni moi ne pouvons
+savoir de quoi on parle.
+
+La caméra orbitale (F3) résout ça, à une condition : **le gameplay continue.** On peut marcher,
+courir, frapper, se faire toucher et tomber pendant qu'on orbite. C'est donc un outil de jugement,
+pas une caméra libre décorative.
+
+Un détail a failli tout casser. La caméra d'observation éteint celle du jeu, or les affichages du
+monde — barres de vie, chiffres de dégâts, reflets du soleil — gardent une référence **câblée** vers
+la caméra première personne. Ils auraient continué à projeter depuis une caméra éteinte, et tout se
+serait retrouvé au mauvais endroit de l'écran sans qu'aucune erreur n'apparaisse. D'où
+`GuiKit.ActiveCamera`, et le fait que les deux caméras portent le même tag `MainCamera`.
+
+### 15.6 Mode vagues : la difficulté par les statistiques, pas par le nombre
+
+Un duel contre un adversaire réglé une fois pour toutes finit par se jouer toujours pareil, et on
+n'apprend plus rien. À plusieurs, le combat pose d'autres questions : se replacer, ne pas se faire
+encercler, choisir qui mettre au sol d'abord, garder de l'endurance pour sortir d'une mauvaise
+position. Ce sont ces questions qui révèlent ce qui manque aux mécaniques.
+
+La difficulté monte par les **statistiques** et non par le nombre seul : plus de vie, plus de dégâts,
+des coups plus rapides. Multiplier les adversaires sans les renforcer rend les vagues plus longues
+mais pas plus dures — et allonger un test n'apprend rien.
+
+La montée passe par les overrides de statistiques, donc par le même chemin qu'une amélioration de
+personnage : ce n'est pas un cas particulier câblé à part, c'est le système de stats utilisé
+normalement.
+
+### 15.7 Mesurer au lieu de discuter
+
+« Ce n'est pas assez nerveux » n'est pas une information exploitable : cinq choses interviennent en
+même temps — durée des coups, ralenti d'impact, tampon d'entrée, endurance, vitesse de déplacement —
+et rien ne dit laquelle domine pour un joueur donné.
+
+Deux réponses, et la seconde compte plus que la première :
+
+1. **Mesurer.** L'overlay affiche la cadence réelle en coups par seconde, l'écart en millisecondes
+   entre les deux derniers coups, et l'échelle de temps courante. Un ressenti devient un fait, et un
+   fait se corrige.
+2. **Donner les curseurs.** Les trois réglages de nervosité sont dans le menu, réglables en jouant.
+   Les trouver en jouant prend trois minutes ; les deviner à distance prend un aller-retour de test
+   par essai.
+
+Les statistiques de combat relèvent de la même idée. La **réussite** est le chiffre le plus utile de
+tous : un joueur qui rate la moitié de ses coups a l'impression que l'adversaire encaisse trop,
+alors que le problème est sa précision. Aucune quantité de discussion ne tranche ça ; un pourcentage
+le tranche en une seconde.
+
+### 15.8 Les réglages sont sauvegardés
+
+Détail d'ergonomie qui n'en est pas un : un réglage de ressenti se trouve par essais successifs,
+parfois longs. Le perdre au redémarrage oblige à tout refaire, ce qui est exactement la friction que
+ce menu existe pour supprimer.
+
+### 15.9 Ce que je retiens
+
+La question « qu'est-ce qui manque » a donné de bien meilleures réponses que « qu'est-ce qui est
+cassé ». Et la meilleure de toutes n'était pas une fonctionnalité : c'était de constater que deux
+leviers de réglage étaient branchés dans le vide.
+
+**Un paramètre exposé et non lu est un mensonge de l'interface.** Il coûte plus cher qu'une absence,
+parce qu'il dirige le travail de réglage vers un endroit où il ne se passe rien. Avant d'ajouter un
+levier, vérifier que les existants en sont vraiment.
