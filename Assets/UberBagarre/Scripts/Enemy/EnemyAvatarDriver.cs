@@ -19,7 +19,16 @@ namespace UberBagarre.Enemy
         [SerializeField] private FirstPersonHands _arms;
         [SerializeField] private ProceduralLocomotion _locomotion;
 
+        [SerializeField]
+        [Tooltip("Optionnel. S'il est present, la garde VISIBLE correspond a la garde REELLE : " +
+                 "le joueur peut alors lire qu'il va se faire bloquer.")]
+        private GuardSystem _guard;
+
         [SerializeField, Min(0.5f)] private float _guardBlendSpeed = 8f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Garde de base d'un ennemi au repos : poings hauts, mais pas encore serres.")]
+        private float _idleGuard = 0.35f;
 
         private float _guardWeight;
 
@@ -30,9 +39,13 @@ namespace UberBagarre.Enemy
             if (_arms != null)
             {
                 // Un ennemi vivant garde les poings hauts en permanence : il est en garde,
-                // sauf quand il frappe ou qu'il encaisse.
-                bool guarding = _combatant == null || (_combatant.IsAlive && _combatant.CanAct);
-                _guardWeight = Mathf.MoveTowards(_guardWeight, guarding ? 0.35f : 0f, _guardBlendSpeed * dt);
+                // sauf quand il frappe ou qu'il encaisse. Quand il se couvre REELLEMENT, les
+                // poings se collent au menton — c'est le signal que le coup va etre bloque.
+                bool ready = _combatant == null || (_combatant.IsAlive && _combatant.CanAct);
+                bool covering = _guard != null && _guard.IsGuarding;
+
+                float target = covering ? 1f : (ready ? _idleGuard : 0f);
+                _guardWeight = Mathf.MoveTowards(_guardWeight, target, _guardBlendSpeed * dt);
                 _arms.GuardWeight = _guardWeight;
             }
 

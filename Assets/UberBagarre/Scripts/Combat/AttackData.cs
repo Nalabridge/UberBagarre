@@ -5,6 +5,18 @@ using UnityEngine;
 
 namespace UberBagarre.Combat
 {
+    /// <summary>
+    /// Avec quoi le coup est porté.
+    ///
+    /// Le membre change entièrement la mécanique : un poing suit le repère de visée, un pied
+    /// doit reprendre la main sur la jambe que le cycle de marche est en train de piloter.
+    /// </summary>
+    public enum AttackLimb
+    {
+        Hand = 0,
+        Foot = 1
+    }
+
     /// <summary>Quelle main porte le coup.</summary>
     public enum AttackHand
     {
@@ -46,6 +58,17 @@ namespace UberBagarre.Combat
         public Vector3 cameraOffset;
 
         public Vector3 cameraEuler;
+
+        [Header("Membre libre")]
+        [Tooltip("Pose de la main OPPOSEE au membre qui frappe. Un boxeur ne lance jamais un " +
+                 "bras seul : l'autre remonte se couvrir, et c'est ce qui rend le coup credible.")]
+        public Vector3 offHandPosition;
+
+        public Vector3 offHandEuler;
+
+        [Range(0f, 1f)]
+        [Tooltip("Poids de la pose ci-dessus. A 0 la main libre garde sa garde habituelle.")]
+        public float offHandWeight;
     }
 
     /// <summary>
@@ -70,7 +93,11 @@ namespace UberBagarre.Combat
     {
         [Header("Identite")]
         public string displayName = "Jab";
+        public AttackLimb limb = AttackLimb.Hand;
         public AttackHand hand = AttackHand.Alternate;
+
+        [Tooltip("Un coup dans les jambes peut faire chuter. 0 = jamais.")]
+        [Range(0f, 1f)] public float knockdownChance;
 
         [Tooltip("Un coup lourd produit plus de secousse, de recul et de retour d'impact.")]
         public bool isHeavy;
@@ -112,6 +139,8 @@ namespace UberBagarre.Combat
         public const string StraightAsset = "A_Direct";
         public const string HookAsset = "A_Crochet";
         public const string UppercutAsset = "A_Uppercut";
+        public const string KickAsset = "A_CoupDePied";
+        public const string LowKickAsset = "A_CoupDePiedBas";
 
         /// <summary>
         /// Charge un coup depuis Resources. Renvoie null si l'asset n'existe pas.
@@ -213,6 +242,9 @@ namespace UberBagarre.Combat
                 result.bodyEuler = Vector3.Lerp(a.bodyEuler, b.bodyEuler, t);
                 result.cameraOffset = Vector3.Lerp(a.cameraOffset, b.cameraOffset, t);
                 result.cameraEuler = Vector3.Lerp(a.cameraEuler, b.cameraEuler, t);
+                result.offHandPosition = Vector3.Lerp(a.offHandPosition, b.offHandPosition, t);
+                result.offHandEuler = Vector3.Lerp(a.offHandEuler, b.offHandEuler, t);
+                result.offHandWeight = Mathf.Lerp(a.offHandWeight, b.offHandWeight, t);
                 return result;
             }
 

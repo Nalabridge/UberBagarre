@@ -48,6 +48,8 @@ namespace UberBagarre.Player
         public bool StraightPressed { get; private set; }
         public bool HookPressed { get; private set; }
         public bool UppercutPressed { get; private set; }
+        public bool KickPressed { get; private set; }
+        public bool LowKickPressed { get; private set; }
 
         // Entrées "système" : volontairement non coupées par _gameplayInputEnabled,
         // sinon on ne pourrait plus libérer le curseur quand le gameplay est désactivé.
@@ -112,6 +114,8 @@ namespace UberBagarre.Player
             StraightPressed = _provider.GetPressedThisFrame(_bindings.attackStraight);
             HookPressed = _provider.GetPressedThisFrame(_bindings.attackHook);
             UppercutPressed = _provider.GetPressedThisFrame(_bindings.attackUppercut);
+            KickPressed = _provider.GetPressedThisFrame(_bindings.attackKick);
+            LowKickPressed = _provider.GetPressedThisFrame(_bindings.attackLowKick);
         }
 
         private void ClearGameplayInput()
@@ -127,6 +131,8 @@ namespace UberBagarre.Player
             StraightPressed = false;
             HookPressed = false;
             UppercutPressed = false;
+            KickPressed = false;
+            LowKickPressed = false;
         }
     }
 }

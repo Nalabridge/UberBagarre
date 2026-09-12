@@ -98,6 +98,12 @@ namespace UberBagarre.View
         private float _leftAttackGrip = -1f;
         private float _rightAttackGrip = -1f;
 
+        /// <summary>Repère dans lequel les poses sont exprimées. Les coups de pied s'en servent aussi.</summary>
+        public Transform PoseSpace
+        {
+            get { return _poseSpace != null ? _poseSpace : transform; }
+        }
+
         public float GuardWeight { get; set; }
         public float SprintWeight { get; set; }
 

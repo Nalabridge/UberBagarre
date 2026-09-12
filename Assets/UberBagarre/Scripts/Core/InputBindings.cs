@@ -33,7 +33,13 @@ namespace UberBagarre.Core
         [Tooltip("Uppercut : le plus lent et le plus lourd.")]
         public InputBinding attackUppercut = InputBinding.FromMouse(2);
 
-        [Tooltip("Garde / blocage (maintenu).")]
+        [Tooltip("Coup de pied de face : lourd, lent, il repousse.")]
+        public InputBinding attackKick = InputBinding.FromKey(KeyCode.F);
+
+        [Tooltip("Coup de pied bas : peu de degats, mais c'est lui qui fait tomber.")]
+        public InputBinding attackLowKick = InputBinding.FromKey(KeyCode.V);
+
+        [Tooltip("Garde / blocage (maintenu). Les premieres fractions de seconde sont une PARADE.")]
         public InputBinding guard = InputBinding.FromKey(KeyCode.LeftControl);
 
         [Header("Esquive")]

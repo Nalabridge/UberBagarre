@@ -43,6 +43,13 @@ namespace UberBagarre.EditorTools
             public ProceduralLocomotion Locomotion;
             public Hitbox LeftHitbox;
             public Hitbox RightHitbox;
+            public Hitbox LeftFootHitbox;
+            public Hitbox RightFootHitbox;
+
+            /// <summary>La nuque. Les hurtbox de tête et les marques de coup s'y accrochent.</summary>
+            public Transform Neck;
+
+            public Transform Pelvis;
         }
 
         /// <summary>Palette d'un combattant : permet de distinguer le joueur de l'ennemi.</summary>
@@ -91,21 +98,21 @@ namespace UberBagarre.EditorTools
             GameObject neck = EditorBuildUtility.CreateEmpty("Neck", chest.transform, new Vector3(0f, NeckOffset, 0f));
             Bone("NeckVisual", neck.transform, Quaternion.Euler(-90f, 0f, 0f), 0.07f, 0.052f, skin.Flesh);
 
-            if (withHead)
-            {
-                // Le joueur ne voit jamais sa propre tete : elle n'existe que sur l'adversaire.
-                Box("HeadVisual", neck.transform, new Vector3(0f, 0.12f, 0.005f),
-                    new Vector3(0.16f, 0.21f, 0.18f), skin.Flesh);
-            }
+            // Le joueur ne voit jamais sa propre tete : elle n'existe que sur l'adversaire.
+            if (withHead) BuildHead(neck.transform, skin);
 
             IkLimb leftArm = BuildArm(chest.transform, result.Body.transform, HandSide.Left, skin, faction, owner);
             IkLimb rightArm = BuildArm(chest.transform, result.Body.transform, HandSide.Right, skin, faction, owner);
 
-            IkLimb leftLeg = BuildLeg(pelvis.transform, result.Body.transform, true, skin);
-            IkLimb rightLeg = BuildLeg(pelvis.transform, result.Body.transform, false, skin);
+            IkLimb leftLeg = BuildLeg(pelvis.transform, result.Body.transform, true, skin, faction, owner);
+            IkLimb rightLeg = BuildLeg(pelvis.transform, result.Body.transform, false, skin, faction, owner);
 
             result.LeftHitbox = leftArm.End.GetComponent<Hitbox>();
             result.RightHitbox = rightArm.End.GetComponent<Hitbox>();
+            result.LeftFootHitbox = leftLeg.End.GetComponent<Hitbox>();
+            result.RightFootHitbox = rightLeg.End.GetComponent<Hitbox>();
+            result.Neck = neck.transform;
+            result.Pelvis = pelvis.transform;
 
             result.Rig = result.Body.AddComponent<BodyRig>();
             SerializedWiring.SetObject(result.Rig, "_pelvis", pelvis.transform);
@@ -171,7 +178,8 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ jambes
 
-        private static IkLimb BuildLeg(Transform pelvis, Transform poleSpace, bool isLeft, Skin skin)
+        private static IkLimb BuildLeg(Transform pelvis, Transform poleSpace, bool isLeft, Skin skin,
+            Faction faction, GameObject owner)
         {
             float sign = isLeft ? -1f : 1f;
             string prefix = isLeft ? "Left" : "Right";
@@ -190,6 +198,16 @@ namespace UberBagarre.EditorTools
 
             Box(prefix + "FootVisual", ankle.transform, new Vector3(0f, -0.042f, 0.050f),
                 new Vector3(0.105f, 0.065f, 0.255f), skin.Shoe);
+
+            // Le coup de pied part de la POINTE, pas de la cheville. 13 cm d'ecart, mais c'est
+            // la difference entre un coup de pied qui touche et un coup de pied qui passe a cote.
+            GameObject toe = EditorBuildUtility.CreateEmpty(prefix + "Toe", ankle.transform,
+                new Vector3(0f, -0.034f, 0.135f));
+
+            Hitbox footHitbox = ankle.AddComponent<Hitbox>();
+            SerializedWiring.SetObject(footHitbox, "_origin", toe.transform);
+            SerializedWiring.SetEnum(footHitbox, "_ownerFaction", (int)faction);
+            SerializedWiring.SetObject(footHitbox, "_owner", owner);
 
             IkLimb limb = hip.AddComponent<IkLimb>();
             SerializedWiring.SetObject(limb, "_upper", thigh.transform);
@@ -327,6 +345,53 @@ namespace UberBagarre.EditorTools
             return spec;
         }
 
+        // ------------------------------------------------------------------ tête
+
+        /// <summary>
+        /// Tête de l'adversaire : crâne, mâchoire, arcade, nez, oreilles, yeux, cheveux.
+        ///
+        /// Une boîte unique suffisait à prouver que la hurtbox de tête fonctionnait, mais pas à
+        /// se battre contre quelqu'un : sans mâchoire ni arcade, impossible de dire de quel côté
+        /// l'adversaire regarde, donc impossible de lire ses intentions. L'ASYMÉTRIE
+        /// avant / arrière est ce qui compte ici, pas le détail.
+        ///
+        /// Le sommet du crâne arrive vers 1,73 m pour un corps de 1,80 m, et les yeux à 1,62 m,
+        /// exactement à la hauteur de caméra du joueur — les deux combattants se regardent
+        /// réellement dans les yeux.
+        /// </summary>
+        private static void BuildHead(Transform neck, Skin skin)
+        {
+            Box("JawVisual", neck, new Vector3(0f, 0.105f, 0.020f),
+                new Vector3(0.128f, 0.085f, 0.150f), skin.Flesh);
+
+            Box("SkullVisual", neck, new Vector3(0f, 0.185f, 0.002f),
+                new Vector3(0.172f, 0.195f, 0.195f), skin.Flesh);
+
+            Box("BrowVisual", neck, new Vector3(0f, 0.216f, 0.080f),
+                new Vector3(0.150f, 0.030f, 0.050f), skin.Flesh);
+
+            // Nez : segment conique oriente vers l'avant et legerement vers le bas.
+            BoneAt("NoseVisual", neck, new Vector3(0f, 0.170f, 0.072f), Quaternion.Euler(22f, 0f, 0f),
+                0.038f, 0.014f, skin.Flesh);
+
+            for (int i = 0; i < 2; i++)
+            {
+                float sign = i == 0 ? -1f : 1f;
+                string side = i == 0 ? "Left" : "Right";
+
+                Box(side + "EarVisual", neck, new Vector3(sign * 0.086f, 0.176f, -0.006f),
+                    new Vector3(0.020f, 0.058f, 0.042f), skin.Flesh);
+
+                // Les yeux sont le seul element sombre du visage : c'est ce qui donne
+                // instantanement la direction du regard, meme de loin.
+                Box(side + "EyeVisual", neck, new Vector3(sign * 0.040f, 0.198f, 0.084f),
+                    new Vector3(0.030f, 0.022f, 0.020f), skin.Shoe);
+            }
+
+            Box("HairVisual", neck, new Vector3(0f, 0.252f, -0.010f),
+                new Vector3(0.180f, 0.112f, 0.200f), skin.Shirt);
+        }
+
         // ------------------------------------------------------------------ formes
 
         /// <summary>Segment d'os conique, orienté sur +Z, longueur et rayon de base donnés.</summary>
@@ -334,6 +399,14 @@ namespace UberBagarre.EditorTools
         {
             ProceduralMeshFactory.CreateVisual(ProceduralMeshFactory.TaperedSegment, name, parent,
                 Vector3.zero, rotation, new Vector3(radius * 2f, radius * 2f, length), material);
+        }
+
+        /// <summary>Segment d'os conique placé à un endroit précis du parent.</summary>
+        private static void BoneAt(string name, Transform parent, Vector3 localPosition, Quaternion rotation,
+            float length, float radius, Material material)
+        {
+            ProceduralMeshFactory.CreateVisual(ProceduralMeshFactory.TaperedSegment, name, parent,
+                localPosition, rotation, new Vector3(radius * 2f, radius * 2f, length), material);
         }
 
         /// <summary>Boîte adoucie : ni cube ni sphère, ce qu'il faut pour un torse ou un poing.</summary>

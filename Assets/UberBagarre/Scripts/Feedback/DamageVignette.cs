@@ -31,6 +31,25 @@ namespace UberBagarre.Feedback
         [SerializeField, Min(0f)] private float _hold = 0.09f;
         [SerializeField, Min(0.05f)] private float _fadeOut = 0.55f;
 
+        [Header("Assombrissement selon la vie")]
+        [SerializeField]
+        [Tooltip("Les bords de l'ecran s'assombrissent a mesure que la vie descend.")]
+        private bool _darkenWhenHurt = true;
+
+        [SerializeField] private Color _darkColor = new Color(0.02f, 0.01f, 0.02f);
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Assombrissement maximal, atteint a vie nulle.")]
+        private float _maxDarkening = 0.82f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Niveau de vie a partir duquel l'assombrissement commence.")]
+        private float _darkenStart = 0.85f;
+
+        [SerializeField, Min(0.1f)]
+        [Tooltip("Vitesse de rattrapage. Assez lente pour que la perte se ressente comme un etouffement.")]
+        private float _darkenResponse = 1.6f;
+
         [Header("Vie basse")]
         [SerializeField, Range(0f, 1f)]
         [Tooltip("Sous ce niveau de vie, une vignette permanente pulse doucement.")]
@@ -43,9 +62,11 @@ namespace UberBagarre.Feedback
         [SerializeField] private bool _enabled = true;
 
         private Texture2D _texture;
+        private Texture2D _darkTexture;
         private float _current;
         private float _target;
         private float _holdTimer;
+        private float _darkening;
 
         public bool VignetteEnabled
         {
@@ -56,6 +77,10 @@ namespace UberBagarre.Feedback
         private void Awake()
         {
             _texture = BuildRadialTexture(128, _innerRadius);
+
+            // Second degrade, bien plus large : l'assombrissement doit mordre jusqu'au centre
+            // quand la vie est au plus bas, la ou le halo de degats reste peripherique.
+            _darkTexture = BuildRadialTexture(128, 0.12f);
         }
 
         private void OnEnable()
@@ -71,6 +96,7 @@ namespace UberBagarre.Feedback
         private void OnDestroy()
         {
             if (_texture != null) Destroy(_texture);
+            if (_darkTexture != null) Destroy(_darkTexture);
         }
 
         private void OnDamaged(DamageInfo info)
@@ -95,6 +121,16 @@ namespace UberBagarre.Feedback
                 _target = 0f;
                 _current = Mathf.MoveTowards(_current, 0f, dt / Mathf.Max(0.05f, _fadeOut));
             }
+
+            float darkTarget = 0f;
+
+            if (_darkenWhenHurt && _health != null && _health.IsAlive)
+            {
+                float missing = Mathf.InverseLerp(_darkenStart, 0f, _health.Normalized);
+                darkTarget = missing * _maxDarkening;
+            }
+
+            _darkening = Mathf.MoveTowards(_darkening, darkTarget, _darkenResponse * dt);
         }
 
         private void OnGUI()
@@ -110,11 +146,23 @@ namespace UberBagarre.Feedback
                 intensity = Mathf.Max(intensity, _lowHealthIntensity * lowHealth * pulse);
             }
 
-            if (intensity <= 0.002f) return;
-
+            Rect fullScreen = new Rect(0f, 0f, Screen.width, Screen.height);
             Color previous = GUI.color;
-            GUI.color = new Color(_color.r, _color.g, _color.b, Mathf.Clamp01(intensity));
-            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), _texture);
+
+            // L'assombrissement est dessine EN PREMIER : le rouge des degats doit rester
+            // lisible par-dessus, meme quand l'ecran est deja sombre.
+            if (_darkening > 0.002f && _darkTexture != null)
+            {
+                GUI.color = new Color(_darkColor.r, _darkColor.g, _darkColor.b, Mathf.Clamp01(_darkening));
+                GUI.DrawTexture(fullScreen, _darkTexture);
+            }
+
+            if (intensity > 0.002f)
+            {
+                GUI.color = new Color(_color.r, _color.g, _color.b, Mathf.Clamp01(intensity));
+                GUI.DrawTexture(fullScreen, _texture);
+            }
+
             GUI.color = previous;
         }
 

@@ -104,6 +104,49 @@ namespace UberBagarre.EditorTools
             return material;
         }
 
+        /// <summary>
+        /// Crée (ou met à jour) un ciel procédural chaud de fin d'après-midi.
+        ///
+        /// Pourquoi ça compte autant : une scène créée vide n'a AUCUN ciel. Le fond est alors la
+        /// couleur d'effacement par défaut de la caméra, un bleu-gris plat. Ce fond uni est
+        /// probablement le premier responsable de l'impression « vieux jeu » : il n'y a ni
+        /// dégradé, ni horizon, ni lumière d'ambiance cohérente avec le soleil.
+        ///
+        /// Renvoie null si le shader n'existe pas (HDRP gère le ciel par volumes). L'appelant
+        /// retombe alors sur une couleur d'effacement chaude, ce qui reste mieux que le défaut.
+        /// </summary>
+        public static Material CreateOrUpdateProceduralSky(string folder, string materialName,
+            Color skyTint, Color groundColor, float atmosphereThickness, float exposure, float sunSize)
+        {
+            Shader shader = Shader.Find("Skybox/Procedural");
+            if (shader == null) return null;
+
+            EnsureFolder(folder);
+            string path = folder + "/" + materialName + ".mat";
+
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+            }
+
+            SetColorIfPresent(material, "_SkyTint", skyTint);
+            SetColorIfPresent(material, "_GroundColor", groundColor);
+            SetFloatIfPresent(material, "_AtmosphereThickness", atmosphereThickness);
+            SetFloatIfPresent(material, "_Exposure", exposure);
+            SetFloatIfPresent(material, "_SunSize", sunSize);
+            SetFloatIfPresent(material, "_SunSizeConvergence", 5f);
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
         private static void SetColorIfPresent(Material material, string property, Color value)
         {
             if (material.HasProperty(property)) material.SetColor(property, value);

@@ -17,6 +17,10 @@ namespace UberBagarre.Feedback
         [SerializeField] private AttackExecutor _executor;
         [SerializeField] private Combatant _combatant;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Donne a la garde et a la parade un retour qui leur est propre.")]
+        private GuardSystem _guard;
+
         [Header("Sorties")]
         [SerializeField] private CameraShake _cameraShake;
         [SerializeField] private ImpactAudio _audio;
@@ -27,6 +31,25 @@ namespace UberBagarre.Feedback
         private float _takenHitShake = 0.45f;
 
         [SerializeField, Min(0f)] private float _takenHitShakeDuration = 0.35f;
+
+        [Header("Garde")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Secousse d'un coup bloque : nette mais courte. Le coup est arrete, pas encaisse.")]
+        private float _blockShake = 0.18f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Secousse d'une parade reussie. Franche : c'est un moment fort, il doit se sentir.")]
+        private float _parryShake = 0.30f;
+
+        /// <summary>
+        /// Vrai pendant la frame où un coup vient d'être paré.
+        ///
+        /// Une parade annule les dégâts, donc la vie ne bouge pas et rien ne le signale. Ce
+        /// drapeau permet à l'interface de l'afficher pendant un court instant.
+        /// </summary>
+        public float ParryFlash { get; private set; }
+
+        public float BlockFlash { get; private set; }
 
         private void OnEnable()
         {
@@ -39,6 +62,12 @@ namespace UberBagarre.Feedback
             if (_combatant != null && _combatant.Health != null)
             {
                 _combatant.Health.Damaged += OnDamageTaken;
+            }
+
+            if (_guard != null)
+            {
+                _guard.Parried += OnParried;
+                _guard.Blocked += OnBlocked;
             }
         }
 
@@ -54,6 +83,35 @@ namespace UberBagarre.Feedback
             {
                 _combatant.Health.Damaged -= OnDamageTaken;
             }
+
+            if (_guard != null)
+            {
+                _guard.Parried -= OnParried;
+                _guard.Blocked -= OnBlocked;
+            }
+        }
+
+        private void Update()
+        {
+            float dt = Time.unscaledDeltaTime;
+            ParryFlash = Mathf.MoveTowards(ParryFlash, 0f, dt * 1.6f);
+            BlockFlash = Mathf.MoveTowards(BlockFlash, 0f, dt * 3f);
+        }
+
+        private void OnParried(DamageInfo info)
+        {
+            ParryFlash = 1f;
+
+            if (_cameraShake != null) _cameraShake.Play(_parryShake, 0.18f);
+            if (_audio != null) _audio.PlayParry();
+        }
+
+        private void OnBlocked(DamageInfo info)
+        {
+            BlockFlash = 1f;
+
+            if (_cameraShake != null) _cameraShake.Play(_blockShake, 0.12f);
+            if (_audio != null) _audio.PlayBlock();
         }
 
         private void OnAttackStarted(AttackData attack, View.HandSide side)

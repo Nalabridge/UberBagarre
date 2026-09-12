@@ -502,3 +502,184 @@ chemin a coûté plusieurs allers-retours de test.
 Corollaire pratique : **tout `return false` dans un chemin critique mérite une raison
 journalisable.** Ce n'est pas du bruit, c'est ce qui rend un système diagnosticable sans y avoir
 les mains dedans.
+
+---
+
+## 12. Conséquences : zones, chute, garde, recul
+
+Cette phase n'ajoute presque aucune mécanique nouvelle — elle donne des **conséquences** à
+celles qui existaient. Un prototype de combat peut être complet sur le papier et rester creux :
+si toucher la tête, le ventre ou la cuisse produit le même résultat, il n'y a rien à décider.
+
+### 12.1 Les zones ne servaient à rien, et c'était invisible
+
+`HitZone` existait depuis la phase 6, avec ses multiplicateurs. Deux choses l'empêchaient de
+fonctionner.
+
+**D'abord, il n'y avait que deux zones, et la hurtbox de corps couvrait tout** — de 0,22 m à
+1,75 m sur un corps de 1,80 m. Un coup aux chevilles comptait donc comme un coup au torse.
+
+**Ensuite, et c'est le vrai problème : le choix de la zone n'était pas déterministe.** La hitbox
+faisait un `Physics.OverlapSphere` et retenait la première hurtbox rencontrée, avec une seule
+touche par combattant et par attaque. Or l'ordre de retour d'`OverlapSphere` n'est pas spécifié.
+Dès que deux zones se recouvraient, le **même coup au même endroit** pouvait compter comme jambe,
+corps ou tête d'une fois sur l'autre — avec des dégâts et des conséquences différents, et aucune
+erreur nulle part.
+
+Et il n'était pas question de supprimer le recouvrement : un trou entre la cuisse et le bas du
+torse se traduirait par des coups qui ne font **rien du tout**, le pire ressenti possible.
+
+La correction est dans `Hitbox.TestSphere` : on collecte les candidats, et on retient pour chaque
+combattant **la zone la plus proche du point d'impact**. C'est déterministe, et c'est aussi la
+règle la plus intuitive — on touche là où le poing se trouve réellement. Les trois zones peuvent
+alors se chevaucher librement :
+
+| Zone | Hauteurs (corps de 1,80 m) | Dégâts | Conséquence propre |
+|---|---|---|---|
+| Jambes | 0,00 → 0,92 | × 0,55 | 70 % de chances de **chute** |
+| Corps | 0,74 → 1,54 | × 1,00 | — |
+| Tête | 1,40 → 1,80 | × 1,60 | traité comme un coup lourd |
+
+Le coup de pied bas existe grâce à ce tableau : 11 dégâts seulement, mais il ouvre la seule
+situation où l'adversaire ne peut rien faire pendant deux secondes.
+
+### 12.2 Pourquoi une chute procédurale et pas un ragdoll
+
+Le squelette est piloté **à chaque image** par l'IK des quatre membres et par le cycle de marche.
+Un ragdoll physique entrerait en conflit avec eux : il faudrait désactiver toute la chaîne, la
+laisser à la physique, puis resynchroniser les cibles d'IK sur la pose obtenue pour se relever —
+pour un résultat différent à chaque chute, donc impossible à régler.
+
+`KnockdownSystem` fait basculer le corps autour de ses pieds en quatre phases (debout, chute,
+au sol, relevé), en pilotant un seul poids. C'est déterministe, réglable au degré, et l'IK
+continue son travail pendant toute la durée. `ProceduralLocomotion.KnockdownWeight` fait
+d'ailleurs glisser les cibles de pied d'un repère **monde** vers un repère lié au corps : des
+pieds restés vissés au sol tordraient les jambes pendant la bascule.
+
+Deux détails qui ne sont pas des détails :
+
+- **Le transform qui bascule est le CORPS, jamais la racine.** La racine porte le
+  `CharacterController` et la caméra. Une capsule de collision couchée traverserait le sol.
+- **En vue première personne, basculer le corps ne se voit pas.** Le joueur ne voit pas son
+  torse. Sans déplacer le point de vue, « tomber » serait indiscernable d'une simple perte de
+  contrôle. D'où `_cameraRoot`, et un nœud `CameraKnockdown` dédié dans le rig caméra — un nœud,
+  un effet, pour que deux systèmes n'écrivent jamais sur la même rotation.
+
+### 12.3 Le recul était juste dans les chiffres, et faux à l'écran
+
+`HitReaction` appliquait bien un recul depuis la phase 6. Il était invisible, et le calcul dit
+pourquoi : le recul est une **vitesse**, amortie linéairement par les moteurs. La distance
+réellement parcourue vaut donc
+
+```
+distance = v² / (2 × amortissement)
+```
+
+Avec l'ancien réglage, un direct donnait 0,88 m/s et un amortissement de 8 : **4,8 cm**. Le
+système fonctionnait parfaitement et ne produisait rien de perceptible.
+
+La plage utile se lit directement dans la formule : 2 m/s pour 25 cm, 4 m/s pour un bon mètre.
+Les valeurs sont désormais exprimées pour atterrir dedans.
+
+C'est le même genre d'erreur que la portée d'attaque en phase 9 : **une grandeur de ressenti se
+calcule, elle ne s'estime pas à l'œil.** Un amortissement et une vitesse ne disent rien tant
+qu'on n'a pas écrit la distance qui en découle.
+
+### 12.4 Garde et parade : la même touche, deux mécaniques opposées
+
+Lier les deux à la même touche est délibéré. Ce qui les sépare est la **durée de maintien**, donc
+le timing :
+
+- **Garder** absorbe 72 % et coûte 11 d'endurance par coup encaissé. C'est une position
+  d'attente, pas un abri. Endurance vide = garde brisée + 0,7 s d'étourdissement.
+- **Parer** est la fenêtre de 0,26 s qui suit la levée de garde. Le coup est annulé, l'attaquant
+  est étourdi 0,6 s, repoussé, son coup annulé, et le défenseur récupère 16 d'endurance.
+
+Sans la fenêtre, garder en permanence serait toujours la meilleure option ; sans le coût, ce
+serait la seule. La garde ne protège que dans un cône frontal de 120° : contourner reste payant.
+
+**Le drapeau `DamageInfo.Blocked` est la pièce qui rend tout ça réel.** Sans lui, un coup bloqué
+arrivait en aval exactement comme un coup pris en pleine face : même état `Hit`, même annulation
+du coup en cours, même chance de chute, mêmes bleus. Bloquer n'aurait changé qu'un nombre. Le
+drapeau voyage avec les dégâts, et chaque système décide : `HitReaction` ne retire plus le
+contrôle, `KnockdownSystem` ne fait plus tomber, `BruiseSystem` ne marque plus la peau. Un
+combattant qui bloque **garde l'initiative** — c'est précisément ce qu'il achète avec son
+endurance.
+
+Côté ennemi, la fenêtre de parade est réglée à 0,06 s au lieu de 0,26 s. Ce n'est pas une
+approximation : il lève sa garde **en réaction** à l'attaque détectée, donc avec la fenêtre du
+joueur il parerait presque tout et le joueur n'aurait jamais la main. L'ennemi **bloque**, le
+joueur **pare** : le timing reste une compétence humaine.
+
+### 12.5 Les coups de pied, et pourquoi ils ne sont pas des coups de poing
+
+Trois différences, toutes imposées par la mécanique et non par le goût :
+
+1. **Le repère n'est pas le même.** Une pose de poing vit dans le repère de visée, qui suit le
+   tangage de la caméra. Appliquer ça à un pied voudrait dire que lever les yeux envoie le coup
+   de pied en l'air. Les poses de pied vivent donc dans le repère du personnage, origine au sol :
+   « 0,97 » veut dire 97 cm au-dessus du sol, la seule unité qui permette de régler un coup de pied.
+2. **La jambe est déjà occupée.** Le cycle de marche la pilote. Plutôt que deux systèmes qui
+   s'écrasent, le combat **dépose une cible et un poids** (`SetFootOverride`) et la locomotion
+   reste seule à écrire sur l'os. La reprise et la restitution sont volontairement plus lentes
+   que pour un poing (18 % / 28 % du coup), sinon le pied claque d'une position à l'autre.
+3. **La hauteur d'impact décide de la zone.** Le coup de pied de face vise 0,97 m, franchement
+   au-dessus du bassin : 10 cm plus bas, il basculait dans la zone « jambes » et ses dégâts
+   étaient divisés par deux. Les cibles de cheville restent par ailleurs sous 0,82 m de la
+   hanche, pour une jambe de 0,86 m — au-delà, l'IK sature et le balayage se figerait en
+   milieu de course.
+
+Au passage, `AttackPoseKey` a gagné une pose de **membre libre**. Un bras qui part seul pendant
+que l'autre reste figé est la signature d'une animation bricolée : sur un poing, l'autre main
+remonte se couvrir ; sur un coup de pied, le bras opposé s'ouvre pour tenir l'équilibre. C'est
+de la donnée, pas du code — la règle unique est « la main opposée au membre qui frappe ».
+
+### 12.6 La glissade se payait à la seconde, donc presque rien
+
+Le sprint est facturé par seconde, et c'est correct : courir longtemps coûte plus que courir un
+instant. Appliquer la même logique à la glissade était une erreur de modèle. Une glissade relancée
+en boucle ne facturait que le temps réellement écoulé — quelques dixièmes à chaque fois, la barre
+bougeait à peine, et la glissade restait spammable **alors que le coût existait**.
+
+Une glissade est un **événement**, pas une durée : elle se paie à l'entrée, en une fois (18), et
+on la refuse avant qu'elle ne parte s'il n'y a pas de quoi la payer. Le moteur ne connaît toujours
+pas l'endurance — il expose un événement `SlideStarted` et un drapeau `SlideBlocked`, exactement
+le couple déjà en place pour le sprint.
+
+### 12.7 « Ça fait vieux, trop low poly »
+
+Ce reproche ne portait presque pas sur la géométrie. Quatre causes, par ordre d'effet réel :
+
+1. **Aucun anticrénelage.** Un projet Unity neuf démarre avec MSAA désactivé. Toutes les arêtes
+   sont en escalier, ce qui est le marqueur visuel le plus daté qui existe. `VisualQuality`
+   l'active (8×), avec le filtrage anisotrope, des ombres en 4 cascades sur 70 m, et une brume
+   légère — sans elle, un décor proche et un décor lointain ont le même contraste et la scène
+   paraît plate.
+2. **La lumière.** Un soleil pâle et vertical aplatit tout. Un soleil rasant (18°) et **chaud**,
+   opposé à un appoint froid venant du ciel, crée des ombres longues donc du relief. C'est le
+   réglage qui change le plus l'impression générale, pour zéro triangle de plus.
+3. **Les silhouettes.** 14 côtés sur un bras, ça se voit dès qu'il passe devant un fond clair.
+   Les subdivisions ont été augmentées (22 côtés, 16 subdivisions pour les boîtes adoucies) :
+   quelques milliers de triangles au total, une fraction d'un personnage de jeu moderne.
+4. **L'ombrage de la boîte adoucie.** Ses six faces ne partagent aucun sommet, donc
+   `RecalculateNormals` laissait une cassure nette sur chaque arête du cube alors que la
+   géométrie, elle, était arrondie. Les normales sont maintenant **calculées** : mélange de la
+   normale de face et de la direction radiale dans la même proportion que la géométrie. Un poing
+   cesse d'avoir des facettes.
+
+Un détail qui aurait pu annuler tout le point 3 : `ProceduralMeshFactory` gardait tout maillage
+déjà présent sur disque. Affiner une forme dans le code n'aurait donc rien changé pour qui a déjà
+ouvert le projet une fois. Le nombre de sommets sert désormais de signature, et l'asset est
+**réécrit en place** — l'identifiant reste le même, donc aucune référence de scène ne tombe.
+
+### 12.8 Ce que je retiens
+
+Trois pannes de cette phase (zones non déterministes, recul invisible, glissade gratuite) ont la
+même forme : **le système était écrit, branché et correct, et ne produisait rien d'observable.**
+Aucune n'aurait provoqué le moindre message d'erreur.
+
+Le point commun est qu'aucune des trois n'était vérifiable en lisant le code. Il fallait à chaque
+fois écrire la grandeur finale : la distance parcourue, la hauteur d'impact comparée aux bornes
+de zone, le coût réellement prélevé sur une partie. C'est la même leçon que la portée d'attaque en
+phase 9, et elle mérite d'être énoncée comme une règle : **une valeur de ressenti se calcule
+jusqu'à son unité observable avant d'être réglée à l'œil.**

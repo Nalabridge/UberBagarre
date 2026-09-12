@@ -26,12 +26,15 @@ namespace UberBagarre.UI
         [SerializeField] private Combatant _player;
         [SerializeField] private AttackExecutor _playerExecutor;
         [SerializeField] private DodgeSystem _playerDodge;
+        [SerializeField] private GuardSystem _playerGuard;
         [SerializeField] private AttackData _testAttack;
 
         [Header("Ennemi")]
         [SerializeField] private EnemyBrain _enemyBrain;
         [SerializeField] private Combatant _enemy;
         [SerializeField] private AttackExecutor _enemyExecutor;
+        [SerializeField] private GuardSystem _enemyGuard;
+        [SerializeField] private KnockdownSystem _enemyKnockdown;
 
         [Header("Affichage")]
         [SerializeField]
@@ -46,6 +49,9 @@ namespace UberBagarre.UI
         private float _straightFlash;
         private float _hookFlash;
         private float _uppercutFlash;
+        private float _kickFlash;
+        private float _lowKickFlash;
+        private float _guardFlash;
 
         private void Update()
         {
@@ -57,13 +63,16 @@ namespace UberBagarre.UI
             _straightFlash = _input.StraightPressed ? 1f : Mathf.MoveTowards(_straightFlash, 0f, dt * 3f);
             _hookFlash = _input.HookPressed ? 1f : Mathf.MoveTowards(_hookFlash, 0f, dt * 3f);
             _uppercutFlash = _input.UppercutPressed ? 1f : Mathf.MoveTowards(_uppercutFlash, 0f, dt * 3f);
+            _kickFlash = _input.KickPressed ? 1f : Mathf.MoveTowards(_kickFlash, 0f, dt * 3f);
+            _lowKickFlash = _input.LowKickPressed ? 1f : Mathf.MoveTowards(_lowKickFlash, 0f, dt * 3f);
+            _guardFlash = _input.GuardHeld ? 1f : Mathf.MoveTowards(_guardFlash, 0f, dt * 3f);
         }
 
         private void OnGUI()
         {
             if (!_visible) return;
 
-            Rect panel = new Rect(14f, 14f, 470f, 330f);
+            Rect panel = new Rect(14f, 14f, 500f, 372f);
             GuiKit.Fill(panel, _background);
             GuiKit.Outline(panel, 2f, new Color(0f, 0f, 0f, 0.9f));
 
@@ -176,6 +185,13 @@ namespace UberBagarre.UI
                     (_playerDodge.IsInvulnerable ? "  [INVULNERABLE]" : ""));
             }
 
+            if (_playerGuard != null)
+            {
+                _builder.AppendLine("  garde   : " + (_playerGuard.IsGuarding
+                    ? (_playerGuard.InParryWindow ? ">>> FENETRE DE PARADE <<<" : "levee (blocage)")
+                    : "baissee"));
+            }
+
             _builder.AppendLine();
         }
 
@@ -201,6 +217,18 @@ namespace UberBagarre.UI
                 {
                     _builder.AppendLine("  refus   : " + _enemyExecutor.LastRefusal);
                 }
+            }
+
+            if (_enemyGuard != null)
+            {
+                _builder.AppendLine("  garde   : " + (_enemyGuard.IsGuarding ? "LEVEE (il va bloquer)" : "baissee"));
+            }
+
+            if (_enemyKnockdown != null)
+            {
+                _builder.AppendLine("  au sol  : " + (_enemyKnockdown.IsDown
+                    ? "OUI (" + (_enemyKnockdown.Weight * 100f).ToString("0") + "% couche)"
+                    : "non"));
             }
 
             if (_enemyBrain != null)
@@ -229,13 +257,16 @@ namespace UberBagarre.UI
             }
         }
 
-        /// <summary>Trois témoins : ils s'allument à la frame où le clic est LU. Si aucun ne s'allume, le problème est dans les touches.</summary>
+        /// <summary>Un témoin par attaque : il s'allume à la frame où la touche est LUE. Si aucun ne s'allume, le problème est dans les touches.</summary>
         private void DrawInputLamps(Rect panel)
         {
             float y = panel.yMax - 66f;
-            Lamp(new Rect(panel.x + 12f, y, 92f, 20f), "DIRECT", _straightFlash);
-            Lamp(new Rect(panel.x + 112f, y, 92f, 20f), "CROCHET", _hookFlash);
-            Lamp(new Rect(panel.x + 212f, y, 100f, 20f), "UPPERCUT", _uppercutFlash);
+            Lamp(new Rect(panel.x + 12f, y, 76f, 20f), "DIRECT", _straightFlash);
+            Lamp(new Rect(panel.x + 94f, y, 80f, 20f), "CROCHET", _hookFlash);
+            Lamp(new Rect(panel.x + 180f, y, 84f, 20f), "UPPERCUT", _uppercutFlash);
+            Lamp(new Rect(panel.x + 270f, y, 62f, 20f), "PIED", _kickFlash);
+            Lamp(new Rect(panel.x + 338f, y, 70f, 20f), "PIED BAS", _lowKickFlash);
+            Lamp(new Rect(panel.x + 414f, y, 66f, 20f), "GARDE", _guardFlash);
         }
 
         private void Lamp(Rect rect, string label, float flash)

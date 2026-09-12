@@ -10,9 +10,12 @@ namespace UberBagarre.Player
     /// ne sait pas d'où vient l'ordre — d'où la possibilité de brancher une IA à sa place.
     ///
     /// Schéma par défaut :
-    ///   Clic gauche              → direct (alterne gauche / droite)
-    ///   Ctrl + clic gauche       → crochet
-    ///   Alt  + clic gauche       → uppercut
+    ///   Clic gauche   → direct (alterne gauche / droite)
+    ///   Clic droit    → crochet
+    ///   Clic molette  → uppercut
+    ///   F             → coup de pied de face
+    ///   V             → coup de pied bas (celui qui fait tomber)
+    ///   Ctrl gauche   → garde ; les premières fractions de seconde sont une PARADE
     /// </summary>
     public class PlayerCombat : MonoBehaviour
     {
@@ -23,10 +26,20 @@ namespace UberBagarre.Player
         [SerializeField] private DodgeSystem _dodge;
         [SerializeField] private Combatant _combatant;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Sans lui, la touche de garde ne fait que lever les poings a l'ecran.")]
+        private GuardSystem _guard;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Sert uniquement a couper le deplacement pendant qu'on est au sol.")]
+        private KnockdownSystem _knockdown;
+
         [Header("Coups")]
         [SerializeField] private AttackData _straight;
         [SerializeField] private AttackData _hook;
         [SerializeField] private AttackData _uppercut;
+        [SerializeField] private AttackData _kick;
+        [SerializeField] private AttackData _lowKick;
 
         [Header("Effet sur le deplacement")]
         [SerializeField, Range(0f, 1f)]
@@ -41,12 +54,30 @@ namespace UberBagarre.Player
                  "stamina ne limite que le combat et la course devient gratuite.")]
         private float _sprintStaminaPerSecond = 13f;
 
+        [Header("Cout de la glissade")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Endurance prelevee a chaque DEPART de glissade. Facturer a la seconde ne " +
+                 "coutait presque rien quand on enchainait les appuis : la glissade restait " +
+                 "spammable alors que la barre baissait a peine.")]
+        private float _slideStaminaCost = 18f;
+
         private float _currentSpeedMultiplier = 1f;
 
         private void Awake()
         {
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
+            if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
+        }
+
+        private void OnEnable()
+        {
+            if (_motor != null) _motor.SlideStarted += OnSlideStarted;
+        }
+
+        private void OnDisable()
+        {
+            if (_motor != null) _motor.SlideStarted -= OnSlideStarted;
         }
 
         /// <summary>
@@ -61,6 +92,8 @@ namespace UberBagarre.Player
             _straight = ResolveAttack(_straight, AttackData.StraightAsset, "Direct");
             _hook = ResolveAttack(_hook, AttackData.HookAsset, "Crochet");
             _uppercut = ResolveAttack(_uppercut, AttackData.UppercutAsset, "Uppercut");
+            _kick = ResolveAttack(_kick, AttackData.KickAsset, "Coup de pied");
+            _lowKick = ResolveAttack(_lowKick, AttackData.LowKickAsset, "Coup de pied bas");
 
             if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
             if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
@@ -116,19 +149,66 @@ namespace UberBagarre.Player
         {
             if (_input == null || _executor == null) return;
 
-            // Mort : plus d'entrees de gameplay, mais la camera reste libre pour voir ce qui se passe.
+            // Mort ou au sol : plus d'entrees de gameplay, mais la camera reste libre pour voir
+            // ce qui se passe. Marcher normalement en etant couche viderait la chute de tout
+            // son sens : c'est la perte de controle qui en fait une punition.
             bool dead = _combatant != null && !_combatant.IsAlive;
-            if (_motor != null) _motor.InputLocked = dead;
-            if (dead) return;
+            bool down = _knockdown != null && _knockdown.IsDown;
+
+            if (_motor != null) _motor.InputLocked = dead || down;
+
+            if (dead || down)
+            {
+                // La garde tombe explicitement : sans cette ligne, elle garderait sa derniere
+                // valeur et un combattant couche continuerait de bloquer les coups.
+                if (_guard != null) _guard.SetGuard(false);
+                return;
+            }
 
             if (_input.DodgePressed) TryDodge();
 
-            if (_input.UppercutPressed) _executor.TryPlay(_uppercut);
+            UpdateGuard();
+
+            // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches
+            // pressees dans la meme image doivent donner un resultat previsible, pas le coup
+            // qui se trouve en premier dans le code.
+            if (_input.LowKickPressed) _executor.TryPlay(_lowKick);
+            else if (_input.KickPressed) _executor.TryPlay(_kick);
+            else if (_input.UppercutPressed) _executor.TryPlay(_uppercut);
             else if (_input.HookPressed) _executor.TryPlay(_hook);
             else if (_input.StraightPressed) _executor.TryPlay(_straight);
 
             UpdateSprintCost();
             UpdateMovementPenalty();
+        }
+
+        /// <summary>
+        /// La garde est tenue, pas déclenchée : c'est la durée de maintien qui distingue une
+        /// parade d'un blocage, et c'est le GuardSystem qui mesure ce temps.
+        ///
+        /// On ne garde pas pendant son propre coup : sinon lever la garde en frappant donnerait
+        /// une invulnérabilité gratuite pendant toute l'attaque.
+        /// </summary>
+        private void UpdateGuard()
+        {
+            if (_guard == null) return;
+
+            bool canGuard = !_executor.IsAttacking && (_combatant == null || _combatant.IsAlive);
+            _guard.SetGuard(_input.GuardHeld && canGuard);
+        }
+
+        /// <summary>
+        /// La glissade se paie au départ, en une fois.
+        ///
+        /// Le moteur a déjà démarré la glissade quand on arrive ici : c'est voulu. Interdire
+        /// après coup donnerait une glissade qui s'interrompt en plein vol. À la place, elle se
+        /// déroule normalement et c'est la SUIVANTE qui est refusée, faute d'endurance.
+        /// </summary>
+        private void OnSlideStarted()
+        {
+            if (_combatant == null || _combatant.Stamina == null) return;
+
+            _combatant.Stamina.TrySpend(_slideStaminaCost);
         }
 
         /// <summary>
@@ -164,6 +244,9 @@ namespace UberBagarre.Player
             }
 
             _motor.SprintBlocked = stamina.IsEmpty;
+
+            // La glissade se refuse AVANT de partir : il faut de quoi la payer entierement.
+            _motor.SlideBlocked = !stamina.CanSpend(_slideStaminaCost);
         }
 
         private void UpdateMovementPenalty()

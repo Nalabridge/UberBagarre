@@ -46,61 +46,105 @@ namespace UberBagarre.EditorTools
                 return;
             }
 
-            PlayerMotor player = FindPlayer();
-            if (player == null)
+            List<Combatant> fighters = FindFighters();
+
+            if (fighters.Count == 0)
             {
-                EditorUtility.DisplayDialog("Joueur introuvable",
-                    "Aucun joueur dans la scene ouverte. Genere d'abord la scene :\n" +
+                EditorUtility.DisplayDialog("Aucun combattant",
+                    "La scene ne contient aucun combattant a habiller. Genere-la d'abord :\n" +
                     "Uber Bagarre > 2 - Construire la scene Combat Sandbox.", "OK");
                 return;
             }
 
-            Bind(player, model, animator);
+            Combatant target = ChooseFighter(fighters, model.name);
+            if (target == null) return;
+
+            Bind(target.transform, model, animator);
         }
 
-        private static PlayerMotor FindPlayer()
+        /// <summary>Tous les combattants de la scène possédant un squelette à rebrancher.</summary>
+        private static List<Combatant> FindFighters()
         {
-            Scene scene = SceneManager.GetActiveScene();
-            GameObject[] roots = scene.GetRootGameObjects();
+            List<Combatant> fighters = new List<Combatant>();
+            GameObject[] roots = SceneManager.GetActiveScene().GetRootGameObjects();
 
             for (int i = 0; i < roots.Length; i++)
             {
-                PlayerMotor motor = roots[i].GetComponentInChildren<PlayerMotor>(true);
-                if (motor != null) return motor;
+                Combatant[] found = roots[i].GetComponentsInChildren<Combatant>(true);
+
+                for (int j = 0; j < found.Length; j++)
+                {
+                    if (found[j].GetComponentInChildren<BodyRig>(true) != null) fighters.Add(found[j]);
+                }
             }
 
+            return fighters;
+        }
+
+        /// <summary>
+        /// Demande sur QUI brancher le modèle.
+        ///
+        /// Le joueur et l'ennemi partagent le même squelette : un modèle importé peut habiller
+        /// l'un ou l'autre indifféremment. Deviner à sa place reviendrait à l'obliger à tout
+        /// recommencer une fois sur deux.
+        /// </summary>
+        private static Combatant ChooseFighter(List<Combatant> fighters, string modelName)
+        {
+            if (fighters.Count == 1) return fighters[0];
+
+            Combatant player = null;
+            Combatant enemy = null;
+
+            for (int i = 0; i < fighters.Count; i++)
+            {
+                if (fighters[i].Faction == Faction.Player && player == null) player = fighters[i];
+                else if (enemy == null) enemy = fighters[i];
+            }
+
+            if (player == null) return enemy;
+            if (enemy == null) return player;
+
+            int choice = EditorUtility.DisplayDialogComplex(
+                "Brancher " + modelName + " sur qui ?",
+                "Le joueur et l'ennemi utilisent le meme squelette : ce modele peut habiller l'un ou l'autre.",
+                "Le joueur (" + player.DisplayName + ")",
+                "Annuler",
+                "L'ennemi (" + enemy.DisplayName + ")");
+
+            if (choice == 0) return player;
+            if (choice == 2) return enemy;
             return null;
         }
 
-        private static void Bind(PlayerMotor player, GameObject model, Animator animator)
+        private static void Bind(Transform fighterRoot, GameObject model, Animator animator)
         {
-            BodyRig rig = player.GetComponentInChildren<BodyRig>(true);
-            ProceduralLocomotion locomotion = player.GetComponentInChildren<ProceduralLocomotion>(true);
+            BodyRig rig = fighterRoot.GetComponentInChildren<BodyRig>(true);
+            ProceduralLocomotion locomotion = fighterRoot.GetComponentInChildren<ProceduralLocomotion>(true);
 
             if (rig == null)
             {
                 EditorUtility.DisplayDialog("Corps introuvable",
-                    "Le joueur n'a pas de BodyRig. Regenere la scene avant de brancher un modele.", "OK");
+                    "Ce combattant n'a pas de BodyRig. Regenere la scene avant de brancher un modele.", "OK");
                 return;
             }
 
-            Undo.RegisterFullObjectHierarchyUndo(player.gameObject, "Brancher un modele 3D");
+            Undo.RegisterFullObjectHierarchyUndo(fighterRoot.gameObject, "Brancher un modele 3D");
 
             // Le modele se place a la racine du joueur : ses pieds sont alors au niveau du sol,
             // et il suit le lacet sans suivre le tangage de la camera.
-            Undo.SetTransformParent(model.transform, player.transform, "Brancher un modele 3D");
+            Undo.SetTransformParent(model.transform, fighterRoot, "Brancher un modele 3D");
             model.transform.localPosition = Vector3.zero;
             model.transform.localRotation = Quaternion.identity;
 
             List<string> report = new List<string>();
 
             BindSpine(rig, animator, report);
-            BindArm(rig, player.transform, animator, true, report);
-            BindArm(rig, player.transform, animator, false, report);
-            BindLeg(rig, player.transform, animator, true, report);
-            BindLeg(rig, player.transform, animator, false, report);
+            BindArm(rig, fighterRoot, animator, true, report);
+            BindArm(rig, fighterRoot, animator, false, report);
+            BindLeg(rig, fighterRoot, animator, true, report);
+            BindLeg(rig, fighterRoot, animator, false, report);
 
-            if (locomotion != null) BindAnkleHeight(locomotion, player.transform, animator, report);
+            if (locomotion != null) BindAnkleHeight(locomotion, fighterRoot, animator, report);
 
             HidePlaceholderVisuals(rig, model, report);
 
@@ -108,10 +152,11 @@ namespace UberBagarre.EditorTools
             animator.enabled = false;
 
             rig.CaptureRestPose();
-            EditorUtility.SetDirty(player.gameObject);
-            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(player.gameObject.scene);
+            EditorUtility.SetDirty(fighterRoot.gameObject);
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(fighterRoot.gameObject.scene);
 
-            Debug.Log("[UberBagarre] Modele branche : " + model.name + "\n  " + string.Join("\n  ", report.ToArray()), player);
+            Debug.Log("[UberBagarre] Modele branche sur " + fighterRoot.name + " : " + model.name + "\n  " +
+                      string.Join("\n  ", report.ToArray()), fighterRoot);
         }
 
         // ------------------------------------------------------------------ colonne

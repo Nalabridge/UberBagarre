@@ -30,6 +30,50 @@ namespace UberBagarre.UI
             }
         }
 
+        private static Texture2D _softDisc;
+
+        /// <summary>Disque doux : opaque au centre, transparent au bord. Sert aux halos lumineux.</summary>
+        public static Texture2D SoftDisc
+        {
+            get
+            {
+                if (_softDisc != null) return _softDisc;
+
+                const int size = 64;
+                _softDisc = new Texture2D(size, size, TextureFormat.RGBA32, false);
+                _softDisc.wrapMode = TextureWrapMode.Clamp;
+                _softDisc.hideFlags = HideFlags.HideAndDontSave;
+
+                Color[] pixels = new Color[size * size];
+                Vector2 centre = new Vector2(size * 0.5f, size * 0.5f);
+
+                for (int y = 0; y < size; y++)
+                {
+                    for (int x = 0; x < size; x++)
+                    {
+                        float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), centre) / (size * 0.5f);
+                        float alpha = Mathf.Clamp01(1f - d);
+
+                        // Puissance 3 : coeur lumineux et bord tres doux, sinon on voit un disque net.
+                        alpha = alpha * alpha * alpha;
+                        pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+                    }
+                }
+
+                _softDisc.SetPixels(pixels);
+                _softDisc.Apply();
+                return _softDisc;
+            }
+        }
+
+        public static void Disc(Rect rect, Color color)
+        {
+            Color previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, SoftDisc);
+            GUI.color = previous;
+        }
+
         public static void Fill(Rect rect, Color color)
         {
             Color previous = GUI.color;

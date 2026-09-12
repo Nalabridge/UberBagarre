@@ -1,3 +1,4 @@
+using UberBagarre.Combat;
 using UberBagarre.View;
 using UnityEngine;
 
@@ -18,6 +19,12 @@ namespace UberBagarre.Player
         [SerializeField] private FirstPersonHands _hands;
         [SerializeField] private ProceduralLocomotion _locomotion;
 
+        [SerializeField]
+        [Tooltip("Optionnel. S'il est present, c'est LUI qui dit si la garde est reellement " +
+                 "levee : les poings a l'ecran racontent alors la meme chose que les degats " +
+                 "encaisses, au lieu de suivre la touche sans condition.")]
+        private GuardSystem _guard;
+
         [Header("Reactivite")]
         [SerializeField, Min(0.5f)] private float _guardBlendSpeed = 10f;
         [SerializeField, Min(0.5f)] private float _sprintBlendSpeed = 6f;
@@ -29,6 +36,7 @@ namespace UberBagarre.Player
         {
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
+            if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
         }
 
         private void Update()
@@ -37,8 +45,16 @@ namespace UberBagarre.Player
 
             if (_hands != null)
             {
-                float guardTarget = (_input != null && _input.GuardHeld) ? 1f : 0f;
-                _guardWeight = Mathf.MoveTowards(_guardWeight, guardTarget, _guardBlendSpeed * dt);
+                bool guarding = _guard != null
+                    ? _guard.IsGuarding
+                    : _input != null && _input.GuardHeld;
+
+                float guardTarget = guarding ? 1f : 0f;
+
+                // La fenetre de parade se voit : les poings se collent instantanement au menton,
+                // sans le fondu habituel. Sans ce signal, parer serait un coup de des invisible.
+                float blend = _guard != null && _guard.InParryWindow ? _guardBlendSpeed * 3f : _guardBlendSpeed;
+                _guardWeight = Mathf.MoveTowards(_guardWeight, guardTarget, blend * dt);
 
                 float sprintTarget = (_motor != null && _motor.IsSprinting) ? 1f : 0f;
                 _sprintWeight = Mathf.MoveTowards(_sprintWeight, sprintTarget, _sprintBlendSpeed * dt);

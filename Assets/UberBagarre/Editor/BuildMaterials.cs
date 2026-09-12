@@ -22,6 +22,7 @@ namespace UberBagarre.EditorTools
         public Material Shoe;
         public Material EnemySkin;
         public Material EnemyShirt;
+        public Material Bruise;
 
         public static BuildMaterials CreateAll(float floorTiling)
         {
@@ -60,6 +61,11 @@ namespace UberBagarre.EditorTools
 
             m.EnemyShirt = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_EnemyShirt",
                 new Color(0.36f, 0.12f, 0.13f), 0.14f, 0f);
+
+            // Hematome : violet sombre tirant sur le rouge, et mat. Un bleu brillant ferait
+            // tache de peinture ; c'est l'absence de reflet qui le fait lire comme de la peau.
+            m.Bruise = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Bruise",
+                new Color(0.26f, 0.10f, 0.17f), 0.02f, 0f);
 
             return m;
         }

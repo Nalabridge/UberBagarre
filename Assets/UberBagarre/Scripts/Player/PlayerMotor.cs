@@ -1,3 +1,4 @@
+using System;
 using UberBagarre.Core;
 using UnityEngine;
 
@@ -93,6 +94,23 @@ namespace UberBagarre.Player
         /// <summary>Coupé de l'extérieur quand l'endurance est vide.</summary>
         public bool SprintBlocked { get; set; }
 
+        /// <summary>
+        /// Coupé de l'extérieur quand il n'y a plus assez d'endurance pour glisser.
+        ///
+        /// Le moteur ne connaît pas l'endurance, et c'est volontaire : il sait se déplacer, pas
+        /// ce que ça coûte. PlayerCombat, qui tient déjà le même rôle pour le sprint, décide.
+        /// </summary>
+        public bool SlideBlocked { get; set; }
+
+        /// <summary>
+        /// Émis à l'instant où une glissade démarre.
+        ///
+        /// C'est ce signal qui permet de la FACTURER une fois par glissade. Facturer par seconde
+        /// laissait la glissade se spammer : chaque relance ne coûtait que la durée réellement
+        /// écoulée, donc presque rien quand on enchaîne les appuis.
+        /// </summary>
+        public event Action SlideStarted;
+
         public bool IsGrounded { get; private set; }
         public bool IsSprinting { get; private set; }
         public bool IsCrouching { get; private set; }
@@ -180,7 +198,7 @@ namespace UberBagarre.Player
                 bool tooSlow = _horizontalVelocity.magnitude < _walkSpeed * 0.55f;
                 if (_slideTimer <= 0f || tooSlow || !IsGrounded) EndSlide();
             }
-            else if (_slideEnabled && _input != null && !InputLocked && _input.CrouchPressed &&
+            else if (_slideEnabled && !SlideBlocked && _input != null && !InputLocked && _input.CrouchPressed &&
                      IsGrounded && _slideCooldownTimer <= 0f &&
                      _horizontalVelocity.magnitude >= _slideMinEntrySpeed && moveInput.y > 0.3f)
             {
@@ -196,6 +214,9 @@ namespace UberBagarre.Player
             Vector3 direction = _horizontalVelocity.sqrMagnitude > 0.01f ? _horizontalVelocity.normalized : transform.forward;
             _slideDirection = direction;
             _horizontalVelocity = direction * Mathf.Max(_slideStartSpeed, _horizontalVelocity.magnitude);
+
+            Action started = SlideStarted;
+            if (started != null) started();
         }
 
         private void EndSlide()

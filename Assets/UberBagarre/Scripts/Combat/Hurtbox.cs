@@ -16,6 +16,10 @@ namespace UberBagarre.Combat
         [Tooltip("Statistiques du defenseur. C'est ici qu'intervient la defense.")]
         private CombatantStats _stats;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Si present, la garde filtre les degats avant qu'ils n'atteignent la vie.")]
+        private GuardSystem _guard;
+
         [SerializeField] private Faction _faction = Faction.Enemy;
         [SerializeField] private HitZone _zone = HitZone.Body;
 
@@ -38,6 +42,7 @@ namespace UberBagarre.Combat
         {
             if (_health == null) _health = GetComponentInParent<HealthSystem>();
             if (_stats == null) _stats = GetComponentInParent<CombatantStats>();
+            if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
         }
 
         public void Receive(DamageInfo info)
@@ -50,6 +55,18 @@ namespace UberBagarre.Combat
             // La defense s'applique ici, apres le multiplicateur de zone : une tete reste une
             // tete, mais un combattant resistant encaisse mieux partout.
             info.Amount = DamageCalculator.ApplyDefence(info.Amount, _stats);
+
+            // La garde intervient en dernier, apres zone et defense : parer doit annuler
+            // le coup quelle que soit la zone touchee.
+            if (_guard != null)
+            {
+                bool parried;
+                bool blocked;
+                info.Amount = _guard.FilterIncomingDamage(info, out parried, out blocked);
+
+                if (parried) return;
+                info.Blocked = blocked;
+            }
 
             _health.ApplyDamage(info);
         }

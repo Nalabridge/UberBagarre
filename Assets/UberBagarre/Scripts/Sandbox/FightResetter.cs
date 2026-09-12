@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UberBagarre.Combat;
 using UberBagarre.Player;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.Sandbox
@@ -44,7 +45,19 @@ namespace UberBagarre.Sandbox
         {
             for (int i = 0; i < _combatants.Count; i++)
             {
-                if (_combatants[i] != null) _combatants[i].Revive();
+                Combatant combatant = _combatants[i];
+                if (combatant == null) continue;
+
+                combatant.Revive();
+
+                // Une relance doit effacer TOUTES les traces du combat precedent, pas seulement
+                // les barres : un combattant a plein de vie couvert de bleus, ou encore couche
+                // au sol, raconte le contraire de ce que disent les chiffres.
+                KnockdownSystem knockdown = combatant.GetComponentInChildren<KnockdownSystem>(true);
+                if (knockdown != null) knockdown.ForceStand();
+
+                BruiseSystem bruises = combatant.GetComponentInChildren<BruiseSystem>(true);
+                if (bruises != null) bruises.Clear();
             }
 
             if (_spawnDirector != null) _spawnDirector.SpawnAll();

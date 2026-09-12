@@ -64,20 +64,19 @@ namespace UberBagarre.EditorTools
             ProceduralMeshFactory.EnsureLibrary();
 
             BuildMaterials materials = BuildMaterials.CreateAll(ArenaSize);
-
-            AttackData straight, hook, uppercut;
-            AttackLibraryBuilder.BuildAll(false, out straight, out hook, out uppercut);
+            AttackLibraryBuilder.Library attacks = AttackLibraryBuilder.BuildAll(false);
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            BuildLighting();
+            Light sun = BuildLighting();
             ArenaBuilder.Build(ArenaSize, RingRadius);
             BuildPunchingBag(materials);
 
-            GameObject player = BuildPlayer(materials, straight, hook, uppercut);
-            GameObject enemy = BuildEnemy(materials, straight, hook, uppercut);
+            GameObject player = BuildPlayer(materials, attacks);
+            GameObject enemy = BuildEnemy(materials, attacks);
 
-            WireHudAndDebug(player, enemy, straight);
+            BuildRendering(sun, player.GetComponentInChildren<Camera>());
+            WireHudAndDebug(player, enemy, attacks.Straight);
             BuildSpawnSystem(player, enemy);
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -92,39 +91,101 @@ namespace UberBagarre.EditorTools
             Debug.Log("[UberBagarre] Scene Combat Sandbox generee.\n" +
                       "  Render pipeline : " + EditorBuildUtility.ActivePipelineName() + "\n" +
                       "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
-                      "  Combat       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
-                      "  Defense      : Ctrl gauche = garde, Alt gauche = esquive (direction = WASD)\n" +
+                      "  Poings       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
+                      "  Pieds        : F = coup de pied de face, V = coup de pied bas (fait tomber)\n" +
+                      "  Defense      : Ctrl gauche = garde (les 0,26 premieres secondes PARENT le coup),\n" +
+                      "                 Alt gauche = esquive (direction = WASD)\n" +
                       "  Debug        : F1 = overlay, R = relancer le combat, Echap = liberer le curseur\n" +
                       "  Appuie sur Play.");
         }
 
         // ------------------------------------------------------------------ décor
 
-        private static void BuildLighting()
+        /// <summary>
+        /// Éclairage de l'arène. Renvoie le soleil, dont les reflets d'objectif ont besoin.
+        ///
+        /// Le soleil est bas et CHAUD, pas blanc-bleu. C'est le réglage qui change le plus
+        /// l'impression générale : une lumière bleu pâle et verticale aplatit tout et donne
+        /// l'aspect « maquette sous un néon ». Un soleil rasant à 18° crée des ombres longues,
+        /// donc du relief, et oppose le chaud de la lumière au froid des ombres — l'ambiance de
+        /// fin d'après-midi qui se lit immédiatement comme « extérieur, vrai lieu ».
+        /// </summary>
+        private static Light BuildLighting()
         {
             GameObject root = new GameObject("=== Eclairage ===");
 
-            GameObject sunGo = EditorBuildUtility.CreateEmpty("Directional Light", root.transform, Vector3.zero);
-            sunGo.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
+            GameObject sunGo = EditorBuildUtility.CreateEmpty("Soleil", root.transform, Vector3.zero);
+            sunGo.transform.rotation = Quaternion.Euler(18f, -38f, 0f);
 
             Light sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            // Lumiere de fin de journee, volontairement faible : ce sont les lampadaires qui
-            // eclairent le combat, ce qui donne du contraste et des ombres portees lisibles.
-            sun.intensity = 0.62f;
-            sun.color = new Color(0.78f, 0.82f, 0.95f);
+            sun.intensity = 1.35f;
+            sun.color = new Color(1f, 0.86f, 0.66f);
             sun.shadows = LightShadows.Soft;
+            sun.shadowStrength = 0.82f;
+            sun.shadowBias = 0.03f;
+            sun.shadowNormalBias = 0.25f;
 
-            // Lumiere d'appoint faible a l'oppose : evite des ombres totalement noires sans
-            // avoir a configurer d'eclairage indirect dans un projet vierge.
-            GameObject fillGo = EditorBuildUtility.CreateEmpty("Fill Light", root.transform, Vector3.zero);
-            fillGo.transform.rotation = Quaternion.Euler(20f, 160f, 0f);
+            // Appoint froid a l'oppose : c'est le ciel. Le contraste chaud / froid fait tout le
+            // travail de relief, et evite des ombres d'un noir mort sans toucher a l'eclairage
+            // indirect, qu'un projet vierge n'a pas calcule.
+            GameObject fillGo = EditorBuildUtility.CreateEmpty("Lumiere du ciel", root.transform, Vector3.zero);
+            fillGo.transform.rotation = Quaternion.Euler(38f, 150f, 0f);
 
             Light fill = fillGo.AddComponent<Light>();
             fill.type = LightType.Directional;
-            fill.intensity = 0.18f;
-            fill.color = new Color(0.75f, 0.82f, 1f);
+            fill.intensity = 0.32f;
+            fill.color = new Color(0.62f, 0.72f, 0.95f);
             fill.shadows = LightShadows.None;
+
+            return sun;
+        }
+
+        /// <summary>
+        /// Réglages de rendu et reflets d'objectif.
+        ///
+        /// Ils vivent sur leur propre objet, et pas sur le joueur : ils ne décrivent pas un
+        /// combattant mais la scène entière. Les régler ailleurs rendrait incompréhensible
+        /// pourquoi supprimer le joueur change les ombres.
+        /// </summary>
+        private static void BuildRendering(Light sun, Camera camera)
+        {
+            GameObject root = new GameObject("=== Rendu ===");
+
+            root.AddComponent<VisualQuality>();
+
+            SunFlare flare = root.AddComponent<SunFlare>();
+            SerializedWiring.SetObject(flare, "_sun", sun);
+            SerializedWiring.SetObject(flare, "_camera", camera);
+
+            BuildSky(sun, camera);
+        }
+
+        /// <summary>
+        /// Le ciel. Une scène générée vide n'en a aucun, et ça se paie cher visuellement :
+        /// le fond est un aplat bleu-gris, sans dégradé ni horizon. Le soleil est déclaré comme
+        /// astre du ciel, donc le dégradé et le disque solaire suivent automatiquement la
+        /// rotation et la couleur de la lumière — un seul réglage pour les deux.
+        /// </summary>
+        private static void BuildSky(Light sun, Camera camera)
+        {
+            // Horizon chaud, sol ocre, atmosphere epaisse : l'heure doree.
+            Material sky = EditorBuildUtility.CreateOrUpdateProceduralSky(
+                "Assets/UberBagarre/Art/Materials", "M_CielChaud",
+                new Color(0.62f, 0.70f, 0.86f), new Color(0.30f, 0.26f, 0.22f), 1.45f, 1.15f, 0.035f);
+
+            if (sky != null)
+            {
+                RenderSettings.skybox = sky;
+                RenderSettings.sun = sun;
+            }
+
+            if (camera == null) return;
+
+            // Filet de securite : si le shader de ciel procedural n'existe pas (HDRP), une
+            // couleur d'effacement chaude vaut toujours mieux que le bleu-gris par defaut.
+            camera.clearFlags = sky != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.52f, 0.58f, 0.68f);
         }
 
         // ------------------------------------------------------------------ sac de frappe
@@ -166,7 +227,7 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ joueur
 
-        private static GameObject BuildPlayer(BuildMaterials materials, AttackData straight, AttackData hook, AttackData uppercut)
+        private static GameObject BuildPlayer(BuildMaterials materials, AttackLibraryBuilder.Library attacks)
         {
             GameObject playerGo = new GameObject("Player");
             playerGo.transform.position = new Vector3(0f, 0f, -SpawnDistance * 0.5f);
@@ -183,7 +244,8 @@ namespace UberBagarre.EditorTools
             // Rig camera : un noeud = un effet, pour qu'ils ne s'ecrasent jamais entre eux.
             GameObject head = EditorBuildUtility.CreateEmpty("Head", playerGo.transform,
                 new Vector3(0f, FighterBuilder.EyeHeight, 0f));
-            GameObject cameraBob = EditorBuildUtility.CreateEmpty("CameraBob", head.transform, Vector3.zero);
+            GameObject cameraKnockdown = EditorBuildUtility.CreateEmpty("CameraKnockdown", head.transform, Vector3.zero);
+            GameObject cameraBob = EditorBuildUtility.CreateEmpty("CameraBob", cameraKnockdown.transform, Vector3.zero);
             GameObject cameraShakeNode = EditorBuildUtility.CreateEmpty("CameraShake", cameraBob.transform, Vector3.zero);
             GameObject cameraPunchNode = EditorBuildUtility.CreateEmpty("CameraPunch", cameraShakeNode.transform, Vector3.zero);
 
@@ -244,7 +306,8 @@ namespace UberBagarre.EditorTools
             // --- combat
             Combatant combatant = AddCombatant(playerGo, Faction.Player, "Joueur", head.transform, 100f, 100f, 12f, 8f);
 
-            AddHurtboxes(playerGo, combatant, Faction.Player, PlayerHeight);
+            GuardSystem guard = AddGuard(playerGo, combatant, 0.26f);
+            Transform hurtboxRoot = AddHurtboxes(playerGo, combatant, guard, Faction.Player, PlayerHeight);
 
             CameraShake shake = cameraShakeNode.AddComponent<CameraShake>();
             CameraPunch punch = cameraPunchNode.AddComponent<CameraPunch>();
@@ -256,8 +319,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_locomotion", body.Locomotion);
             SerializedWiring.SetObject(executor, "_cameraPunch", punch);
             SerializedWiring.SetObject(executor, "_hitStop", hitStop);
+            SerializedWiring.SetObject(executor, "_footPoseSpace", playerGo.transform);
             SerializedWiring.SetObject(executor, "_leftHitbox", body.LeftHitbox);
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
+            SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
+            SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
 
             DodgeSystem dodge = playerGo.AddComponent<DodgeSystem>();
             SerializedWiring.SetObject(dodge, "_combatant", combatant);
@@ -271,21 +337,32 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(reaction, "_executor", executor);
             SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
+            KnockdownSystem knockdown = AddKnockdown(playerGo, combatant, body, executor, motor, hurtboxRoot);
+            SerializedWiring.SetObject(knockdown, "_cameraRoot", cameraKnockdown.transform);
+
             PlayerCombat combat = playerGo.AddComponent<PlayerCombat>();
             SerializedWiring.SetObject(combat, "_input", input);
             SerializedWiring.SetObject(combat, "_executor", executor);
             SerializedWiring.SetObject(combat, "_motor", motor);
             SerializedWiring.SetObject(combat, "_dodge", dodge);
             SerializedWiring.SetObject(combat, "_combatant", combatant);
-            SerializedWiring.SetObject(combat, "_straight", straight);
-            SerializedWiring.SetObject(combat, "_hook", hook);
-            SerializedWiring.SetObject(combat, "_uppercut", uppercut);
+            SerializedWiring.SetObject(combat, "_guard", guard);
+            SerializedWiring.SetObject(combat, "_knockdown", knockdown);
+            SerializedWiring.SetObject(combat, "_straight", attacks.Straight);
+            SerializedWiring.SetObject(combat, "_hook", attacks.Hook);
+            SerializedWiring.SetObject(combat, "_uppercut", attacks.Uppercut);
+            SerializedWiring.SetObject(combat, "_kick", attacks.Kick);
+            SerializedWiring.SetObject(combat, "_lowKick", attacks.LowKick);
 
-            // Relecture immediate : si une de ces trois references est restee vide, le combat
-            // sera inerte au lancement. Autant le savoir maintenant.
+            SerializedWiring.SetObject(driver, "_guard", guard);
+
+            // Relecture immediate : si une de ces references est restee vide, le coup
+            // correspondant sera inerte au lancement. Autant le savoir maintenant.
             SerializedWiring.Verify(combat, "_straight");
             SerializedWiring.Verify(combat, "_hook");
             SerializedWiring.Verify(combat, "_uppercut");
+            SerializedWiring.Verify(combat, "_kick");
+            SerializedWiring.Verify(combat, "_lowKick");
 
             // --- retours
             AudioSource audioSource = playerGo.AddComponent<AudioSource>();
@@ -295,6 +372,7 @@ namespace UberBagarre.EditorTools
             CombatFeedbackRelay relay = playerGo.AddComponent<CombatFeedbackRelay>();
             SerializedWiring.SetObject(relay, "_executor", executor);
             SerializedWiring.SetObject(relay, "_combatant", combatant);
+            SerializedWiring.SetObject(relay, "_guard", guard);
             SerializedWiring.SetObject(relay, "_cameraShake", shake);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
@@ -309,12 +387,17 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(floatingText, "_owner", combatant);
             SerializedWiring.SetObject(floatingText, "_combo", combo);
 
+            // Pas de marques de coup sur le joueur, et c'est un choix : en vue premiere
+            // personne, un bleu pose au point d'impact d'un coup a la tete se retrouve
+            // exactement dans l'axe de la camera, a 20 cm de l'oeil. Il masquerait l'ecran.
+            // Les consequences visibles sur soi passent par la vignette, pas par la peau.
+
             return playerGo;
         }
 
         // ------------------------------------------------------------------ ennemi
 
-        private static GameObject BuildEnemy(BuildMaterials materials, AttackData straight, AttackData hook, AttackData uppercut)
+        private static GameObject BuildEnemy(BuildMaterials materials, AttackLibraryBuilder.Library attacks)
         {
             GameObject enemyGo = new GameObject("Ennemi");
             enemyGo.transform.position = new Vector3(0f, 0f, SpawnDistance * 0.5f);
@@ -348,14 +431,22 @@ namespace UberBagarre.EditorTools
             Combatant combatant = AddCombatant(enemyGo, Faction.Enemy, "Bagarreur",
                 armsAnchor.transform, 90f, 100f, 10f, 6f);
 
-            AddHurtboxes(enemyGo, combatant, Faction.Enemy, PlayerHeight);
+            // Fenetre de parade tres courte pour l'ennemi, et c'est un choix d'equilibrage :
+            // il leve sa garde en reaction, donc avec la meme fenetre que le joueur il parerait
+            // presque tous les coups — le joueur n'aurait jamais la main. Il BLOQUE, le joueur
+            // PARE : le timing reste une competence du joueur.
+            GuardSystem guard = AddGuard(enemyGo, combatant, 0.06f);
+            Transform hurtboxRoot = AddHurtboxes(enemyGo, combatant, guard, Faction.Enemy, PlayerHeight);
 
             AttackExecutor executor = enemyGo.AddComponent<AttackExecutor>();
             SerializedWiring.SetObject(executor, "_combatant", combatant);
             SerializedWiring.SetObject(executor, "_hands", arms);
             SerializedWiring.SetObject(executor, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(executor, "_footPoseSpace", enemyGo.transform);
             SerializedWiring.SetObject(executor, "_leftHitbox", body.LeftHitbox);
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
+            SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
+            SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
 
             DodgeSystem dodge = enemyGo.AddComponent<DodgeSystem>();
             SerializedWiring.SetObject(dodge, "_combatant", combatant);
@@ -369,18 +460,22 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(reaction, "_executor", executor);
             SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
+            AddKnockdown(enemyGo, combatant, body, executor, motor, hurtboxRoot);
+
             EnemyAvatarDriver avatarDriver = enemyGo.AddComponent<EnemyAvatarDriver>();
             SerializedWiring.SetObject(avatarDriver, "_motor", motor);
             SerializedWiring.SetObject(avatarDriver, "_combatant", combatant);
             SerializedWiring.SetObject(avatarDriver, "_arms", arms);
             SerializedWiring.SetObject(avatarDriver, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(avatarDriver, "_guard", guard);
 
             EnemyBrain brain = enemyGo.AddComponent<EnemyBrain>();
             SerializedWiring.SetObject(brain, "_self", combatant);
             SerializedWiring.SetObject(brain, "_motor", motor);
             SerializedWiring.SetObject(brain, "_executor", executor);
             SerializedWiring.SetObject(brain, "_dodge", dodge);
-            ConfigureEnemyAttacks(brain, straight, hook, uppercut);
+            SerializedWiring.SetObject(brain, "_guard", guard);
+            ConfigureEnemyAttacks(brain, attacks);
 
             AudioSource audioSource = enemyGo.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;
@@ -389,10 +484,13 @@ namespace UberBagarre.EditorTools
             CombatFeedbackRelay relay = enemyGo.AddComponent<CombatFeedbackRelay>();
             SerializedWiring.SetObject(relay, "_executor", executor);
             SerializedWiring.SetObject(relay, "_combatant", combatant);
+            SerializedWiring.SetObject(relay, "_guard", guard);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
             WorldHealthBar bar = enemyGo.AddComponent<WorldHealthBar>();
             SerializedWiring.SetObject(bar, "_combatant", combatant);
+
+            AddBruises(enemyGo, combatant, body, materials);
 
             return enemyGo;
         }
@@ -402,27 +500,32 @@ namespace UberBagarre.EditorTools
         /// à portée moyenne il a le choix, ce qui rend ses enchaînements moins prévisibles
         /// sans avoir besoin d'une IA plus complexe.
         /// </summary>
-        private static void ConfigureEnemyAttacks(EnemyBrain brain, AttackData straight, AttackData hook, AttackData uppercut)
+        private static void ConfigureEnemyAttacks(EnemyBrain brain, AttackLibraryBuilder.Library library)
         {
             SerializedObject so = SerializedWiring.Open(brain);
             SerializedProperty attacks = so.FindProperty("_attacks");
             if (attacks == null) return;
 
-            attacks.arraySize = 3;
+            attacks.arraySize = 5;
 
-            SetAttackOption(attacks.GetArrayElementAtIndex(0), straight, 3f, 0f, 1.15f, 0.8f);
-            SetAttackOption(attacks.GetArrayElementAtIndex(1), hook, 1.4f, 0f, 1.05f, 2.2f);
-            SetAttackOption(attacks.GetArrayElementAtIndex(2), uppercut, 0.8f, 0f, 0.95f, 3.4f);
+            // Les coups de pied portent plus loin (la jambe mesure 20 cm de plus que le bras) et
+            // se rechargent plus lentement : ils restent rares, donc ils restent des evenements.
+            SetAttackOption(attacks.GetArrayElementAtIndex(0), library.Straight, 3f, 0f, 1.15f, 0.8f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(1), library.Hook, 1.4f, 0f, 1.05f, 2.2f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(2), library.Uppercut, 0.8f, 0f, 0.95f, 3.4f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(3), library.Kick, 0.9f, 0.75f, 1.35f, 4.5f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(4), library.LowKick, 1.1f, 0.55f, 1.25f, 3.8f);
 
             SerializedProperty sequence = so.FindProperty("_scriptedSequence");
             if (sequence != null)
             {
                 // Sequence de test prete a l'emploi, mais desactivee : cocher "Use Scripted
                 // Sequence" suffit a obtenir un adversaire au timing parfaitement previsible.
-                sequence.arraySize = 3;
-                SetScriptedStep(sequence.GetArrayElementAtIndex(0), 2f, straight);
-                SetScriptedStep(sequence.GetArrayElementAtIndex(1), 1.5f, hook);
-                SetScriptedStep(sequence.GetArrayElementAtIndex(2), 3f, uppercut);
+                sequence.arraySize = 4;
+                SetScriptedStep(sequence.GetArrayElementAtIndex(0), 2f, library.Straight);
+                SetScriptedStep(sequence.GetArrayElementAtIndex(1), 1.5f, library.Hook);
+                SetScriptedStep(sequence.GetArrayElementAtIndex(2), 3f, library.Uppercut);
+                SetScriptedStep(sequence.GetArrayElementAtIndex(3), 3f, library.LowKick);
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -474,43 +577,117 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>
-        /// Deux zones touchables : tête et corps. Les colliders sont en trigger — ils servent
-        /// uniquement à être touchés, jamais à bloquer un déplacement, ce dont s'occupe déjà
-        /// le CharacterController.
+        /// Trois zones touchables : jambes, corps, tête. Les colliders sont en trigger — ils
+        /// servent uniquement à être touchés, jamais à bloquer un déplacement, ce dont s'occupe
+        /// déjà le CharacterController.
+        ///
+        /// Les zones se RECOUVRENT volontairement, sur quelques centimètres. Un trou entre la
+        /// cuisse et le bas du torse se traduirait par des coups qui ne font rien du tout, ce
+        /// qui est le pire ressenti possible. Le recouvrement n'est pas ambigu pour autant :
+        /// la hitbox retient la zone la plus proche du point d'impact.
+        ///
+        /// Les rayons sont plus généreux que le modèle, et c'est la norme en jeu de combat :
+        /// une zone collée au personnage donne l'impression de le traverser.
+        ///
+        /// Hauteurs pour un corps de 1,80 m :
+        ///   jambes 0,00 → 0,92 (le bassin)   dégâts x 0,55
+        ///   corps  0,74 → 1,54               dégâts x 1,00
+        ///   tête   1,40 → 1,80               dégâts x 1,60
         /// </summary>
-        private static void AddHurtboxes(GameObject go, Combatant combatant, Faction faction, float height)
+        private static Transform AddHurtboxes(GameObject go, Combatant combatant, GuardSystem guard,
+            Faction faction, float height)
         {
-            GameObject bodyBox = EditorBuildUtility.CreateEmpty("Hurtbox_Corps", go.transform,
-                new Vector3(0f, height * 0.55f, 0f));
+            // Un parent commun : c'est lui qui basculera quand le combattant tombe, d'un seul
+            // bloc. Trois rotations a tenir synchronisees finiraient forcement par diverger.
+            GameObject root = EditorBuildUtility.CreateEmpty("Hurtboxes", go.transform, Vector3.zero);
 
-            // Hurtbox volontairement plus large que le corps. En jeu de combat, une zone
-            // touchable genereuse est la norme : elle pardonne l'imprecision du joueur, alors
-            // qu'une zone collee au modele donne l'impression de traverser l'adversaire.
+            GameObject legBox = EditorBuildUtility.CreateEmpty("Hurtbox_Jambes", root.transform,
+                new Vector3(0f, height * 0.256f, 0f));
+
+            CapsuleCollider legCollider = legBox.AddComponent<CapsuleCollider>();
+            legCollider.isTrigger = true;
+            legCollider.radius = 0.32f;
+            legCollider.height = height * 0.511f;
+
+            // Les jambes encaissent peu : un coup bas ne met pas K.O. Son interet est le
+            // desequilibre, pas les degats — et c'est la seule zone qui fait tomber.
+            AddHurtbox(legBox, combatant, guard, faction, HitZone.Leg, 0.55f);
+
+            GameObject bodyBox = EditorBuildUtility.CreateEmpty("Hurtbox_Corps", root.transform,
+                new Vector3(0f, height * 0.633f, 0f));
+
             CapsuleCollider bodyCollider = bodyBox.AddComponent<CapsuleCollider>();
             bodyCollider.isTrigger = true;
             bodyCollider.radius = 0.38f;
-            bodyCollider.height = height * 0.85f;
+            bodyCollider.height = height * 0.444f;
 
-            Hurtbox bodyHurtbox = bodyBox.AddComponent<Hurtbox>();
-            SerializedWiring.SetObject(bodyHurtbox, "_health", combatant.Health);
-            SerializedWiring.SetObject(bodyHurtbox, "_stats", combatant.Stats);
-            SerializedWiring.SetEnum(bodyHurtbox, "_faction", (int)faction);
-            SerializedWiring.SetEnum(bodyHurtbox, "_zone", (int)HitZone.Body);
-            SerializedWiring.SetFloat(bodyHurtbox, "_damageMultiplier", 1f);
+            AddHurtbox(bodyBox, combatant, guard, faction, HitZone.Body, 1f);
 
-            GameObject headBox = EditorBuildUtility.CreateEmpty("Hurtbox_Tete", go.transform,
-                new Vector3(0f, height * 0.89f, 0f));
+            GameObject headBox = EditorBuildUtility.CreateEmpty("Hurtbox_Tete", root.transform,
+                new Vector3(0f, height * 0.889f, 0f));
 
             SphereCollider headCollider = headBox.AddComponent<SphereCollider>();
             headCollider.isTrigger = true;
-            headCollider.radius = 0.21f;
+            headCollider.radius = 0.20f;
 
-            Hurtbox headHurtbox = headBox.AddComponent<Hurtbox>();
-            SerializedWiring.SetObject(headHurtbox, "_health", combatant.Health);
-            SerializedWiring.SetObject(headHurtbox, "_stats", combatant.Stats);
-            SerializedWiring.SetEnum(headHurtbox, "_faction", (int)faction);
-            SerializedWiring.SetEnum(headHurtbox, "_zone", (int)HitZone.Head);
-            SerializedWiring.SetFloat(headHurtbox, "_damageMultiplier", 1.6f);
+            AddHurtbox(headBox, combatant, guard, faction, HitZone.Head, 1.6f);
+
+            return root.transform;
+        }
+
+        private static void AddHurtbox(GameObject go, Combatant combatant, GuardSystem guard,
+            Faction faction, HitZone zone, float multiplier)
+        {
+            Hurtbox hurtbox = go.AddComponent<Hurtbox>();
+            SerializedWiring.SetObject(hurtbox, "_health", combatant.Health);
+            SerializedWiring.SetObject(hurtbox, "_stats", combatant.Stats);
+            SerializedWiring.SetObject(hurtbox, "_guard", guard);
+            SerializedWiring.SetEnum(hurtbox, "_faction", (int)faction);
+            SerializedWiring.SetEnum(hurtbox, "_zone", (int)zone);
+            SerializedWiring.SetFloat(hurtbox, "_damageMultiplier", multiplier);
+        }
+
+        /// <summary>
+        /// Garde et parade. La fenêtre de parade est passée en paramètre parce qu'elle n'a pas
+        /// la même valeur pour un humain et pour une IA — voir la note côté ennemi.
+        /// </summary>
+        private static GuardSystem AddGuard(GameObject go, Combatant combatant, float parryWindow)
+        {
+            GuardSystem guard = go.AddComponent<GuardSystem>();
+            SerializedWiring.SetObject(guard, "_combatant", combatant);
+            SerializedWiring.SetObject(guard, "_stamina", combatant.Stamina);
+            SerializedWiring.SetFloat(guard, "_parryWindow", parryWindow);
+            return guard;
+        }
+
+        /// <summary>
+        /// Chute et relevé. Le transform qui bascule est le CORPS, pas la racine : la racine
+        /// porte le CharacterController et la caméra, qui doivent rester debout — une capsule
+        /// de collision couchée traverserait le sol et les murs.
+        /// </summary>
+        private static KnockdownSystem AddKnockdown(GameObject go, Combatant combatant,
+            FighterBuilder.Result body, AttackExecutor executor, MonoBehaviour impulseReceiver,
+            Transform hurtboxRoot)
+        {
+            KnockdownSystem knockdown = go.AddComponent<KnockdownSystem>();
+            SerializedWiring.SetObject(knockdown, "_combatant", combatant);
+            SerializedWiring.SetObject(knockdown, "_health", combatant.Health);
+            SerializedWiring.SetObject(knockdown, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(knockdown, "_executor", executor);
+            SerializedWiring.SetObject(knockdown, "_bodyRoot", body.Body.transform);
+            SerializedWiring.SetObject(knockdown, "_hurtboxRoot", hurtboxRoot);
+            SerializedWiring.SetObject(knockdown, "_impulseReceiver", impulseReceiver);
+            return knockdown;
+        }
+
+        private static BruiseSystem AddBruises(GameObject go, Combatant combatant,
+            FighterBuilder.Result body, BuildMaterials materials)
+        {
+            BruiseSystem bruises = go.AddComponent<BruiseSystem>();
+            SerializedWiring.SetObject(bruises, "_combatant", combatant);
+            SerializedWiring.SetObject(bruises, "_rig", body.Rig);
+            SerializedWiring.SetObject(bruises, "_bruiseMaterial", materials.Bruise);
+            return bruises;
         }
 
         private static void WireHudAndDebug(GameObject player, GameObject enemy, AttackData testAttack)
@@ -522,6 +699,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hud, "_playerHealth", playerCombatant.Health);
             SerializedWiring.SetObject(hud, "_playerStamina", playerCombatant.Stamina);
             SerializedWiring.SetObject(hud, "_player", playerCombatant);
+            SerializedWiring.SetObject(hud, "_guard", player.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(hud, "_relay", player.GetComponent<CombatFeedbackRelay>());
 
             CombatDebugOverlay overlay = player.AddComponent<CombatDebugOverlay>();
             SerializedWiring.SetObject(overlay, "_input", player.GetComponent<PlayerInputReader>());
@@ -532,6 +711,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(overlay, "_enemyExecutor", enemy.GetComponent<AttackExecutor>());
             SerializedWiring.SetObject(overlay, "_enemyBrain", enemy.GetComponent<EnemyBrain>());
             SerializedWiring.SetObject(overlay, "_testAttack", testAttack);
+            SerializedWiring.SetObject(overlay, "_playerGuard", player.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(overlay, "_enemyGuard", enemy.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(overlay, "_enemyKnockdown", enemy.GetComponent<KnockdownSystem>());
         }
 
         private static InputBindings GetOrCreateInputBindings()

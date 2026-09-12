@@ -36,10 +36,16 @@ namespace UberBagarre.EditorTools
 
             // Longueur 1 sur +Z, rayon 0.5 a la base : mis a l'echelle, il devient n'importe
             // quelle phalange, n'importe quel os.
-            GetOrCreate(TaperedSegment, () => BuildTaperedCapsule(1f, 0.5f, 0.34f, 14, 6, 5));
-            GetOrCreate(EvenSegment, () => BuildTaperedCapsule(1f, 0.5f, 0.46f, 16, 4, 6));
-            GetOrCreate(RoundedBox, () => BuildRoundedBox(0.62f, 10));
-            GetOrCreate(Knuckle, () => BuildRoundedBox(0.85f, 8));
+            //
+            // Les subdivisions sont volontairement generreuses. Le reproche « ca fait vieux,
+            // trop low poly » ne vient pas du nombre de formes mais de leur SILHOUETTE : un
+            // bras a 14 cotes montre ses aretes des qu'il passe devant un fond clair. Ces
+            // maillages font quelques milliers de triangles en tout, soit une fraction de ce
+            // que coute un seul personnage de jeu moderne.
+            GetOrCreate(TaperedSegment, () => BuildTaperedCapsule(1f, 0.5f, 0.34f, 22, 8, 7));
+            GetOrCreate(EvenSegment, () => BuildTaperedCapsule(1f, 0.5f, 0.46f, 24, 6, 8));
+            GetOrCreate(RoundedBox, () => BuildRoundedBox(0.62f, 16));
+            GetOrCreate(Knuckle, () => BuildRoundedBox(0.85f, 12));
         }
 
         public static Mesh Load(string meshName)
@@ -49,16 +55,65 @@ namespace UberBagarre.EditorTools
 
         private delegate Mesh Factory();
 
+        /// <summary>
+        /// Récupère le maillage, et le MET À JOUR si sa définition a changé dans le code.
+        ///
+        /// Un simple « s'il existe, on le garde » a un défaut sérieux : améliorer une forme ici
+        /// n'aurait aucun effet sur un projet déjà ouvert une fois, et il faudrait supprimer les
+        /// assets à la main sans le savoir. Le nombre de sommets sert donc de signature.
+        ///
+        /// La mise à jour réécrit le CONTENU de l'asset existant au lieu de le supprimer et de
+        /// le recréer : l'identifiant de l'asset est conservé, donc toutes les références de
+        /// scène qui pointent dessus restent valides.
+        /// </summary>
         private static Mesh GetOrCreate(string meshName, Factory factory)
         {
             string path = MeshesFolder + "/" + meshName + ".asset";
             Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            if (existing != null) return existing;
 
-            Mesh mesh = factory();
-            mesh.name = meshName;
-            AssetDatabase.CreateAsset(mesh, path);
-            return mesh;
+            Mesh fresh = factory();
+            fresh.name = meshName;
+
+            if (existing == null)
+            {
+                AssetDatabase.CreateAsset(fresh, path);
+                return fresh;
+            }
+
+            if (existing.vertexCount == fresh.vertexCount)
+            {
+                Object.DestroyImmediate(fresh);
+                return existing;
+            }
+
+            Overwrite(existing, fresh);
+            EditorUtility.SetDirty(existing);
+            Object.DestroyImmediate(fresh);
+
+            Debug.Log("[UberBagarre] Maillage " + meshName + " mis a jour (definition affinee dans le code).", existing);
+            return existing;
+        }
+
+        /// <summary>
+        /// Réécrit un maillage avec le contenu d'un autre, sommet par sommet.
+        ///
+        /// On recopie les canaux explicitement plutôt que de passer par une copie sérialisée
+        /// générique : ici on sait exactement quels canaux existent (sommets, normales, UV,
+        /// triangles), et ça reste de l'API Mesh publique et documentée.
+        /// </summary>
+        private static void Overwrite(Mesh target, Mesh source)
+        {
+            target.Clear();
+            target.indexFormat = source.indexFormat;
+            target.SetVertices(new List<Vector3>(source.vertices));
+            target.SetNormals(new List<Vector3>(source.normals));
+
+            List<Vector2> uv = new List<Vector2>(source.uv);
+            if (uv.Count == target.vertexCount) target.SetUVs(0, uv);
+
+            target.SetTriangles(source.triangles, 0);
+            target.RecalculateTangents();
+            target.RecalculateBounds();
         }
 
         // ------------------------------------------------------------------ segment conique
@@ -179,17 +234,18 @@ namespace UberBagarre.EditorTools
             roundness = Mathf.Clamp01(roundness);
 
             List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> normals = new List<Vector3>();
             List<int> triangles = new List<int>();
 
-            Vector3[] normals =
+            Vector3[] faces =
             {
                 Vector3.forward, Vector3.back, Vector3.up,
                 Vector3.down, Vector3.right, Vector3.left
             };
 
-            for (int f = 0; f < normals.Length; f++)
+            for (int f = 0; f < faces.Length; f++)
             {
-                Vector3 normal = normals[f];
+                Vector3 normal = faces[f];
                 Vector3 axisA = new Vector3(normal.y, normal.z, normal.x);
                 Vector3 axisB = Vector3.Cross(normal, axisA);
 
@@ -204,6 +260,15 @@ namespace UberBagarre.EditorTools
 
                         Vector3 cube = normal + axisA * u + axisB * v;
                         vertices.Add(Vector3.Lerp(cube, cube.normalized, roundness) * 0.5f);
+
+                        // Normale calculee, pas deduite des triangles.
+                        //
+                        // Les six faces ne partagent aucun sommet : RecalculateNormals laisse
+                        // donc une cassure nette sur chaque arete du cube, alors que la
+                        // geometrie, elle, est arrondie. On melange la normale de face et la
+                        // direction radiale dans la MEME proportion que la geometrie : l'ombrage
+                        // suit alors la forme reelle, et un poing cesse d'avoir des facettes.
+                        normals.Add(Vector3.Lerp(normal, cube.normalized, roundness).normalized);
                     }
                 }
 
@@ -226,8 +291,9 @@ namespace UberBagarre.EditorTools
 
             Mesh mesh = new Mesh();
             mesh.SetVertices(vertices);
+            mesh.SetNormals(normals);
             mesh.SetTriangles(triangles, 0);
-            mesh.RecalculateNormals();
+            mesh.RecalculateTangents();
             mesh.RecalculateBounds();
             return mesh;
         }

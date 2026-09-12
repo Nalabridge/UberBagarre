@@ -79,6 +79,13 @@ namespace UberBagarre.Combat
             _current = _maxStamina;
         }
 
+        /// <summary>Rend une partie de l'endurance, par exemple en récompense d'une parade réussie.</summary>
+        public void Refill(float amount)
+        {
+            if (amount <= 0f) return;
+            _current = Mathf.Min(_maxStamina, _current + amount);
+        }
+
         private void Update()
         {
             if (_current >= _maxStamina || Time.time < _regenBlockedUntil) return;

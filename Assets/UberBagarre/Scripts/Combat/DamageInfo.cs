@@ -15,7 +15,10 @@ namespace UberBagarre.Combat
     {
         Body = 0,
         Head = 1,
-        Arm = 2
+        Arm = 2,
+
+        /// <summary>Les jambes encaissent peu, mais font perdre l'equilibre.</summary>
+        Leg = 3
     }
 
     /// <summary>
@@ -35,6 +38,17 @@ namespace UberBagarre.Combat
         public Faction AttackerFaction;
         public GameObject Attacker;
         public AttackData Attack;
+
+        /// <summary>
+        /// Vrai si la garde du défenseur a absorbé ce coup.
+        ///
+        /// Le drapeau voyage AVEC les dégâts, et ce n'est pas un détail : sans lui, chaque
+        /// système en aval (réaction, chute, marques) traiterait un coup bloqué exactement
+        /// comme un coup reçu en pleine face. Bloquer ne changerait que le nombre de dégâts —
+        /// et comme on serait quand même sonné et mis au sol, lever sa garde ne servirait
+        /// pratiquement à rien.
+        /// </summary>
+        public bool Blocked;
 
         public bool IsHeavy
         {

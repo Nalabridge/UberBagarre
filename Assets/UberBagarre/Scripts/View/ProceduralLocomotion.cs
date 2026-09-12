@@ -74,6 +74,12 @@ namespace UberBagarre.View
         [SerializeField] private float _slidePelvisDrop = 0.62f;
         [SerializeField] private float _slideLean = 14f;
 
+        [Header("Reprise de jambe par le combat")]
+        [SerializeField, Min(0.5f)]
+        [Tooltip("Vitesse a laquelle la jambe revient au cycle de marche quand le coup de pied " +
+                 "cesse de la piloter. 4 = un quart de seconde.")]
+        private float _footReleaseSpeed = 4f;
+
         [Header("Balancement des bras")]
         [SerializeField, Min(0f)] private float _armSwingAmount = 0.05f;
 
@@ -93,6 +99,9 @@ namespace UberBagarre.View
         private float _moveWeight;
 
         private readonly Vector3[] _footPosition = new Vector3[2];
+        private readonly Vector3[] _footOverride = new Vector3[2];
+        private readonly Quaternion[] _footOverrideRotation = new Quaternion[2];
+        private readonly float[] _footOverrideWeight = new float[2];
         private readonly Vector3[] _swingStart = new Vector3[2];
         private readonly bool[] _wasSwinging = new bool[2];
         private bool _initialised;
@@ -116,6 +125,27 @@ namespace UberBagarre.View
             return Mathf.Sin((_phase + offset) * Mathf.PI * 2f) * _armSwingAmount * _moveWeight;
         }
 
+        /// <summary>
+        /// Impose la position d'un pied, par exemple pendant un coup de pied.
+        ///
+        /// Le cycle de marche et le combat veulent tous deux piloter la même jambe. Plutôt que
+        /// de les faire s'écraser mutuellement, le combat dépose une cible et un poids, et la
+        /// locomotion reste seule à écrire sur l'os — elle mélange les deux intentions.
+        /// </summary>
+        public void SetFootOverride(bool isLeft, Vector3 worldPosition, Quaternion worldRotation, float weight)
+        {
+            int index = isLeft ? 0 : 1;
+            _footOverride[index] = worldPosition;
+            _footOverrideRotation[index] = worldRotation;
+            _footOverrideWeight[index] = Mathf.Clamp01(weight);
+        }
+
+        /// <summary>Position monde actuelle d'un pied. Sert à la détection des coups de pied.</summary>
+        public Vector3 FootPosition(bool isLeft)
+        {
+            return _footPosition[isLeft ? 0 : 1];
+        }
+
         /// <summary>Intensité du déplacement, 0 à l'arrêt, 1 en course. Utile aux autres systèmes.</summary>
         public float MoveWeight { get { return _moveWeight; } }
 
@@ -135,6 +165,15 @@ namespace UberBagarre.View
         /// de son propre coup. Les deux doivent pouvoir coexister sans que l'un efface l'autre.
         /// </summary>
         public Vector3 HitReactionEuler { get; set; }
+
+        /// <summary>
+        /// 0 = debout, 1 = au sol.
+        ///
+        /// Quand le combattant tombe, les pieds ne peuvent plus rester plantés au sol : le corps
+        /// bascule, et des pieds vissés à leur position tordraient les jambes. Ce poids fait donc
+        /// basculer les cibles de pied d'un repère MONDE vers un repère lié au corps.
+        /// </summary>
+        public float KnockdownWeight { get; set; }
 
         private void Start()
         {
@@ -198,6 +237,29 @@ namespace UberBagarre.View
                 }
 
                 Quaternion footRotation = FootRotation(i, flatVelocity);
+
+                // Au sol, les pieds suivent le corps au lieu de rester plantes.
+                if (KnockdownWeight > 0.001f)
+                {
+                    Vector3 sprawl = _rig.Pelvis != null
+                        ? _rig.Pelvis.position + _root.TransformDirection(isLeft ? _idleLeftFoot : _idleRightFoot) * 0.6f
+                        : _footPosition[i];
+
+                    _footPosition[i] = Vector3.Lerp(_footPosition[i], sprawl, KnockdownWeight);
+                }
+
+                if (_footOverrideWeight[i] > 0.001f)
+                {
+                    _footPosition[i] = Vector3.Lerp(_footPosition[i], _footOverride[i], _footOverrideWeight[i]);
+                    footRotation = Quaternion.Slerp(footRotation, _footOverrideRotation[i], _footOverrideWeight[i]);
+                }
+
+                // Le poids retombe de lui-meme, et c'est ce qui rend la reprise en main sure :
+                // tant qu'un coup de pied est joue, il reecrit ce poids chaque image ; des qu'il
+                // s'arrete — fin normale, coup interrompu, composant desactive — la jambe revient
+                // a sa marche en un quart de seconde au lieu de claquer en une seule image.
+                _footOverrideWeight[i] = Mathf.MoveTowards(_footOverrideWeight[i], 0f, _footReleaseSpeed * dt);
+
                 leg.ApplyWorldPose(_footPosition[i], footRotation);
             }
         }

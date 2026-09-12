@@ -24,6 +24,10 @@ namespace UberBagarre.Enemy
         [SerializeField] private DodgeSystem _dodge;
 
         [SerializeField]
+        [Tooltip("Optionnel. Sans lui, l'ennemi encaisse tout sans jamais se couvrir.")]
+        private GuardSystem _guard;
+
+        [SerializeField]
         [Tooltip("Cible. Laisse vide : l'ennemi trouvera le combattant hostile le plus proche.")]
         private Combatant _target;
 
@@ -71,6 +75,20 @@ namespace UberBagarre.Enemy
 
         [SerializeField, Min(0f)] private float _dodgeMaxDistance = 2.0f;
 
+        [Header("Garde")]
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Probabilite de lever la garde sur un coup detecte, quand il n'esquive pas. " +
+                 "C'est ce qui oblige a varier : matraquer la meme touche finit par se faire bloquer.")]
+        private float _guardChance = 0.4f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Delai de reaction avant de lever la garde.")]
+        private float _guardReactionTime = 0.1f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Duree pendant laquelle il tient sa garde apres l'avoir levee.")]
+        private float _guardHoldDuration = 0.75f;
+
         [Header("Sequence de test")]
         [SerializeField]
         [Tooltip("Ignore l'IA et joue la liste ci-dessous en boucle. Pour tester au timing pres.")]
@@ -90,6 +108,8 @@ namespace UberBagarre.Enemy
         private float _strafeSign = 1f;
         private float _nextStrafeFlip;
         private AttackExecutor _targetExecutor;
+        private float _guardFrom = -1f;
+        private float _guardUntil = -1f;
 
         public Combatant Target { get { return _target; } }
         public float DistanceToTarget { get { return _self != null ? _self.DistanceTo(_target) : 0f; } }
@@ -130,6 +150,8 @@ namespace UberBagarre.Enemy
             AddDefaultOption(AttackData.StraightAsset, 3f, 1.15f, 0.8f);
             AddDefaultOption(AttackData.HookAsset, 1.4f, 1.05f, 2.2f);
             AddDefaultOption(AttackData.UppercutAsset, 0.8f, 0.95f, 3.4f);
+            AddDefaultOption(AttackData.KickAsset, 0.9f, 1.35f, 4.5f);
+            AddDefaultOption(AttackData.LowKickAsset, 1.1f, 1.25f, 3.8f);
 
             Debug.LogWarning("[UberBagarre] " + name + " n'avait aucun coup configure : repertoire par defaut " +
                              "charge depuis Resources (" + _attacks.Count + " coups). Regenere la scene " +
@@ -156,9 +178,11 @@ namespace UberBagarre.Enemy
             if (_self == null || !_self.IsAlive)
             {
                 UnsubscribeFromTarget();
+                if (_guard != null) _guard.SetGuard(false);
                 return;
             }
 
+            UpdateGuard();
             AcquireTarget();
             if (_target == null || !_target.IsAlive) return;
 
@@ -213,15 +237,46 @@ namespace UberBagarre.Enemy
 
         private void OnTargetAttackStarted(AttackData attack, View.HandSide side)
         {
-            if (_dodge == null || !_active || _dodgeChance <= 0f) return;
+            if (!_active) return;
             if (_self.DistanceTo(_target) > _dodgeMaxDistance) return;
-            if (Random.value > _dodgeChance) return;
 
-            _pendingDodgeTime = Time.time + _dodgeReactionTime;
+            // L'esquive passe avant la garde : elle annule le coup au lieu de l'absorber, donc
+            // c'est toujours la meilleure reponse quand elle est disponible.
+            if (_dodge != null && _dodgeChance > 0f && Random.value <= _dodgeChance)
+            {
+                _pendingDodgeTime = Time.time + _dodgeReactionTime;
 
-            // On s'ecarte lateralement : reculer en ligne droite ne sort pas d'un direct.
-            float side01 = Random.value < 0.5f ? -1f : 1f;
-            _pendingDodgeDirection = transform.right * side01;
+                // On s'ecarte lateralement : reculer en ligne droite ne sort pas d'un direct.
+                float side01 = Random.value < 0.5f ? -1f : 1f;
+                _pendingDodgeDirection = transform.right * side01;
+                return;
+            }
+
+            if (_guard == null || _guardChance <= 0f) return;
+            if (Random.value > _guardChance) return;
+
+            _guardFrom = Time.time + _guardReactionTime;
+            _guardUntil = _guardFrom + _guardHoldDuration;
+        }
+
+        /// <summary>
+        /// Garde de l'ennemi : levée en réaction, tenue un court instant, puis relâchée.
+        ///
+        /// Elle n'est jamais permanente, et c'est le cœur de l'intérêt : un adversaire
+        /// éternellement en garde rend le combat injouable, un adversaire qui ne garde jamais
+        /// rend inutile de varier ses coups.
+        /// </summary>
+        private void UpdateGuard()
+        {
+            if (_guard == null) return;
+
+            // CanAct couvre d'un coup tous les cas ou se couvrir n'a pas de sens : en train de
+            // frapper, d'esquiver, d'encaisser, ou au sol. Un ennemi couche qui bloque encore
+            // les coups annulerait tout l'interet de l'avoir mis par terre.
+            bool canCover = _self != null && _self.CanAct;
+            float now = Time.time;
+
+            _guard.SetGuard(canCover && now >= _guardFrom && now < _guardUntil);
         }
 
         private void ResolvePendingDodge()

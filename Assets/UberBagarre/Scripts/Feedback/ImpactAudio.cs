@@ -22,11 +22,15 @@ namespace UberBagarre.Feedback
         [SerializeField] private AudioClip _heavyImpactClip;
         [SerializeField] private AudioClip _whooshClip;
         [SerializeField] private AudioClip _hurtClip;
+        [SerializeField] private AudioClip _blockClip;
+        [SerializeField] private AudioClip _parryClip;
 
         [Header("Volumes")]
         [SerializeField, Range(0f, 1f)] private float _impactVolume = 0.8f;
         [SerializeField, Range(0f, 1f)] private float _whooshVolume = 0.3f;
         [SerializeField, Range(0f, 1f)] private float _hurtVolume = 0.6f;
+        [SerializeField, Range(0f, 1f)] private float _blockVolume = 0.7f;
+        [SerializeField, Range(0f, 1f)] private float _parryVolume = 0.85f;
 
         [SerializeField, Range(0f, 0.5f)]
         [Tooltip("Variation aleatoire de hauteur : deux coups identiques ne sonnent jamais pareil.")]
@@ -44,6 +48,8 @@ namespace UberBagarre.Feedback
             if (_heavyImpactClip == null) _heavyImpactClip = BuildImpact("Impact_Lourd", 0.32f, 85f, 0.8f);
             if (_whooshClip == null) _whooshClip = BuildWhoosh("Whoosh");
             if (_hurtClip == null) _hurtClip = BuildGrunt("Douleur");
+            if (_blockClip == null) _blockClip = BuildBlock("Blocage");
+            if (_parryClip == null) _parryClip = BuildParry("Parade");
         }
 
         public void PlayImpact(bool heavy)
@@ -59,6 +65,23 @@ namespace UberBagarre.Feedback
         public void PlayHurt()
         {
             Play(_hurtClip, _hurtVolume);
+        }
+
+        /// <summary>
+        /// Bloquer et parer DOIVENT s'entendre différemment d'un coup encaissé.
+        ///
+        /// C'est le seul retour immédiat dont dispose le joueur pour savoir si sa garde a servi :
+        /// la barre de vie ne bouge pas dans les deux cas, et un coup bloqué à 28 % ressemble
+        /// beaucoup à un coup qui rate. Le son est donc l'information, pas une décoration.
+        /// </summary>
+        public void PlayBlock()
+        {
+            Play(_blockClip, _blockVolume);
+        }
+
+        public void PlayParry()
+        {
+            Play(_parryClip, _parryVolume);
         }
 
         private void Play(AudioClip clip, float volume)
@@ -119,6 +142,69 @@ namespace UberBagarre.Feedback
 
                 float envelope = Mathf.Sin(t * Mathf.PI);
                 data[i] = previous * envelope * envelope * 0.8f;
+            }
+
+            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>
+        /// Blocage : un « tac » mat et sourd, sans résonance. Le coup s'arrête sur l'avant-bras,
+        /// donc pas de claquement — c'est l'absence de brillance qui dit « absorbé ».
+        /// </summary>
+        private static AudioClip BuildBlock(string clipName)
+        {
+            int samples = Mathf.CeilToInt(0.14f * SampleRate);
+            float[] data = new float[samples];
+            float phase = 0f;
+            float previous = 0f;
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)samples;
+
+                float frequency = 190f * Mathf.Lerp(1f, 0.55f, t);
+                phase += frequency / SampleRate * Mathf.PI * 2f;
+
+                // Le bruit est fortement filtre : un claquement net sonnerait comme un impact
+                // reussi, et le joueur croirait avoir pris le coup.
+                previous = Mathf.Lerp(previous, Random.value * 2f - 1f, 0.10f);
+
+                float envelope = Mathf.Exp(-t * 22f);
+                data[i] = Mathf.Clamp((Mathf.Sin(phase) * 0.7f + previous * 0.5f) * envelope, -1f, 1f);
+            }
+
+            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>
+        /// Parade : un « ting » clair et montant. À l'opposé exact du blocage — une parade est
+        /// une réussite, et ça doit s'entendre dès la première fois, sans explication.
+        /// </summary>
+        private static AudioClip BuildParry(string clipName)
+        {
+            int samples = Mathf.CeilToInt(0.26f * SampleRate);
+            float[] data = new float[samples];
+            float phase = 0f;
+            float harmonicPhase = 0f;
+
+            for (int i = 0; i < samples; i++)
+            {
+                float t = i / (float)samples;
+
+                // La hauteur MONTE : c'est ce qui distingue une reussite d'un impact, dont la
+                // hauteur descend toujours.
+                float frequency = 780f * Mathf.Lerp(1f, 1.35f, Mathf.Sqrt(t));
+                phase += frequency / SampleRate * Mathf.PI * 2f;
+                harmonicPhase += frequency * 2.51f / SampleRate * Mathf.PI * 2f;
+
+                float tone = Mathf.Sin(phase) + Mathf.Sin(harmonicPhase) * 0.30f;
+                float click = (Random.value * 2f - 1f) * Mathf.Exp(-t * 120f) * 0.4f;
+
+                data[i] = Mathf.Clamp(tone * 0.5f * Mathf.Exp(-t * 11f) + click, -1f, 1f);
             }
 
             AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);

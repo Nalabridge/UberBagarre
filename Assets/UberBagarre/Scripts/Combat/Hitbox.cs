@@ -7,10 +7,11 @@ namespace UberBagarre.Combat
     /// <summary>
     /// Détection de coup pendant une fenêtre d'impact.
     ///
-    /// Deux règles importantes :
+    /// Trois règles importantes :
     /// - la hitbox n'est active que pendant la fenêtre définie par l'attaque, jamais en permanence ;
     /// - chaque cible n'est comptée QU'UNE FOIS par attaque, sinon un coup qui balaye 6 frames
-    ///   infligerait six fois ses dégâts.
+    ///   infligerait six fois ses dégâts ;
+    /// - parmi les zones touchables d'une même cible, on retient LA PLUS PROCHE du point d'impact.
     ///
     /// Détection par sphère plutôt que par collider physique : le poing traverse beaucoup de
     /// distance en une frame, et une sphère testée à chaque frame sur la position réelle du poing
@@ -30,6 +31,12 @@ namespace UberBagarre.Combat
 
         private readonly List<object> _alreadyHit = new List<object>(8);
         private readonly Collider[] _overlapBuffer = new Collider[16];
+
+        // Meilleure zone retenue par cible, le temps d'un test de sphere.
+        private readonly List<object> _candidateOwners = new List<object>(4);
+        private readonly List<Hurtbox> _candidateZones = new List<Hurtbox>(4);
+        private readonly List<Vector3> _candidatePoints = new List<Vector3>(4);
+        private readonly List<float> _candidateDistances = new List<float>(4);
 
         private bool _open;
         private float _radius;
@@ -89,9 +96,26 @@ namespace UberBagarre.Combat
             }
         }
 
+        /// <summary>
+        /// Teste une sphère et retient, pour chaque combattant touché, la zone la plus proche.
+        ///
+        /// Ce tri est indispensable dès qu'un combattant a plusieurs zones touchables qui se
+        /// recouvrent — et elles se recouvrent forcément, parce qu'il ne doit pas exister de
+        /// trou entre la cuisse et le bas du torse. Sans tri, c'est l'ORDRE de retour de
+        /// Physics.OverlapSphere qui décidait de la zone : le même coup au même endroit pouvait
+        /// compter comme jambe, corps ou tête d'une fois sur l'autre, avec des dégâts et des
+        /// conséquences différents. Le système de zones était donc inutilisable, sans qu'aucune
+        /// erreur n'apparaisse nulle part.
+        /// </summary>
         private void TestSphere(Vector3 position)
         {
             int count = Physics.OverlapSphereNonAlloc(position, _radius, _overlapBuffer, ~0, QueryTriggerInteraction.Collide);
+            if (count <= 0) return;
+
+            _candidateOwners.Clear();
+            _candidateZones.Clear();
+            _candidatePoints.Clear();
+            _candidateDistances.Clear();
 
             for (int i = 0; i < count; i++)
             {
@@ -102,10 +126,33 @@ namespace UberBagarre.Combat
                 if (hurtbox == null || hurtbox.Faction == _ownerFaction) continue;
                 if (_alreadyHit.Contains(hurtbox.Owner)) continue;
 
-                _alreadyHit.Add(hurtbox.Owner);
+                Vector3 point = collider.ClosestPoint(position);
+                float distance = (point - position).sqrMagnitude;
+
+                int existing = _candidateOwners.IndexOf(hurtbox.Owner);
+
+                if (existing < 0)
+                {
+                    _candidateOwners.Add(hurtbox.Owner);
+                    _candidateZones.Add(hurtbox);
+                    _candidatePoints.Add(point);
+                    _candidateDistances.Add(distance);
+                }
+                else if (distance < _candidateDistances[existing])
+                {
+                    _candidateZones[existing] = hurtbox;
+                    _candidatePoints[existing] = point;
+                    _candidateDistances[existing] = distance;
+                }
+            }
+
+            for (int i = 0; i < _candidateZones.Count; i++)
+            {
+                Hurtbox hurtbox = _candidateZones[i];
+                _alreadyHit.Add(_candidateOwners[i]);
 
                 DamageInfo info = _template;
-                info.Point = collider.ClosestPoint(position);
+                info.Point = _candidatePoints[i];
                 info.Attacker = _owner;
                 info.AttackerFaction = _ownerFaction;
                 hurtbox.Receive(info);

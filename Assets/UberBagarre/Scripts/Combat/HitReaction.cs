@@ -29,12 +29,40 @@ namespace UberBagarre.Combat
         [Header("Reaction legere")]
         [SerializeField, Min(0f)] private float _lightDuration = 0.20f;
         [SerializeField] private float _lightAngle = 9f;
-        [SerializeField, Min(0f)] private float _lightKnockback = 1.1f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Vitesse de recul, en m/s. Voir la note sur la distance reellement parcourue.")]
+        private float _lightKnockback = 2.2f;
 
         [Header("Reaction lourde")]
         [SerializeField, Min(0f)] private float _heavyDuration = 0.42f;
         [SerializeField] private float _heavyAngle = 22f;
-        [SerializeField, Min(0f)] private float _heavyKnockback = 3.2f;
+        [SerializeField, Min(0f)] private float _heavyKnockback = 2.6f;
+
+        [Header("Coup bloque")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Part du recul conservee quand le coup est bloque. La perte de controle, elle, " +
+                 "est entierement annulee : c'est CA que paie la garde.")]
+        private float _blockedKnockbackScale = 0.45f;
+
+        [SerializeField] private float _blockedAngle = 3.5f;
+
+        [Header("Coup dans les jambes")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Un coup bas ne fait pas tourner la tete : il deporte le bassin et fait perdre l'equilibre.")]
+        private float _legAngleScale = 0.35f;
+
+        [SerializeField, Min(0f)] private float _legKnockbackScale = 1.25f;
+
+        [Header("Recul")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Recul minimal, quelle que soit la force du coup. En dessous, le recul existe " +
+                 "dans les chiffres mais ne se VOIT pas : 0,9 m/s amorti ne deplace que 5 cm.")]
+        private float _knockbackBase = 0.55f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Part du recul proportionnelle a la force d'impact du coup.")]
+        private float _knockbackPerImpactForce = 0.11f;
 
         [Header("Retour")]
         [SerializeField, Min(0.5f)] private float _recoverySpeed = 6f;
@@ -70,11 +98,23 @@ namespace UberBagarre.Combat
 
         private void OnDamaged(DamageInfo info)
         {
+            if (info.Blocked)
+            {
+                OnBlocked(info);
+                return;
+            }
+
             bool heavy = info.IsHeavy || info.Zone == HitZone.Head;
 
             float duration = heavy ? _heavyDuration : _lightDuration;
             float angle = heavy ? _heavyAngle : _lightAngle;
             float knockback = heavy ? _heavyKnockback : _lightKnockback;
+
+            if (info.Zone == HitZone.Leg)
+            {
+                angle *= _legAngleScale;
+                knockback *= _legKnockbackScale;
+            }
 
             if (_combatant != null)
             {
@@ -93,10 +133,40 @@ namespace UberBagarre.Combat
 
             if (_receiver != null)
             {
-                Vector3 push = info.Direction.normalized * (knockback * Mathf.Max(0.4f, info.ImpactForce * 0.25f));
+                // Le recul est une VITESSE, amortie lineairement par le moteur. La distance
+                // reellement parcourue vaut v2 / (2 x amortissement) : avec l'amortissement de 8
+                // des moteurs, 0,9 m/s ne deplacait que 5 cm. Invisible. A 2 m/s on recule de
+                // 25 cm, a 4 m/s d'un bon metre : c'est la plage ou le coup se VOIT porter.
+                float speed = knockback * (_knockbackBase + info.ImpactForce * _knockbackPerImpactForce);
+
+                Vector3 push = info.Direction.normalized * speed;
                 push.y = 0f;
                 _receiver.ApplyImpulse(push);
             }
+        }
+
+        /// <summary>
+        /// Réaction à un coup bloqué : le corps encaisse un peu, et c'est tout.
+        ///
+        /// Pas d'état Hit, pas d'annulation du coup en cours. Un combattant qui bloque garde
+        /// l'initiative — il peut riposter immédiatement. C'est exactement la récompense de la
+        /// garde, et la raison pour laquelle elle coûte de l'endurance.
+        /// </summary>
+        private void OnBlocked(DamageInfo info)
+        {
+            Vector3 local = transform.InverseTransformDirection(info.Direction.normalized);
+
+            _targetAngle = new Vector3(-local.z * _blockedAngle, 0f, -local.x * _blockedAngle);
+            _holdTimer = 0.08f;
+
+            if (_receiver == null) return;
+
+            float speed = _lightKnockback * _blockedKnockbackScale *
+                          (_knockbackBase + info.ImpactForce * _knockbackPerImpactForce);
+
+            Vector3 push = info.Direction.normalized * speed;
+            push.y = 0f;
+            _receiver.ApplyImpulse(push);
         }
 
         private void Update()

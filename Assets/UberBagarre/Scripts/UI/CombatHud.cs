@@ -1,4 +1,5 @@
 using UberBagarre.Combat;
+using UberBagarre.Feedback;
 using UnityEngine;
 
 namespace UberBagarre.UI
@@ -20,6 +21,14 @@ namespace UberBagarre.UI
         [SerializeField] private HealthSystem _playerHealth;
         [SerializeField] private StaminaSystem _playerStamina;
         [SerializeField] private Combatant _player;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Affiche l'etat de la garde et la fenetre de parade.")]
+        private GuardSystem _guard;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Fournit les eclats de parade et de blocage.")]
+        private CombatFeedbackRelay _relay;
 
         [Header("Affichage")]
         [SerializeField] private bool _visible = true;
@@ -48,6 +57,11 @@ namespace UberBagarre.UI
         [SerializeField, Min(1f)] private float _crosshairGap = 7f;
         [SerializeField, Min(1f)] private float _crosshairLength = 7f;
         [SerializeField] private Color _crosshairColor = new Color(1f, 1f, 1f, 0.6f);
+
+        [Header("Garde")]
+        [SerializeField] private Color _guardColor = new Color(0.55f, 0.75f, 1f, 0.75f);
+        [SerializeField] private Color _parryColor = new Color(1f, 0.95f, 0.55f);
+        [SerializeField] private Color _blockColor = new Color(0.6f, 0.8f, 1f);
 
         [Header("Animation de degats")]
         [SerializeField, Min(0f)] private float _trailDelay = 0.4f;
@@ -98,7 +112,64 @@ namespace UberBagarre.UI
             if (!_visible) return;
 
             DrawCrosshair();
+            DrawGuard();
             DrawPlayerPanel();
+        }
+
+        /// <summary>
+        /// État de la garde, autour du réticule.
+        ///
+        /// Tout ce qui concerne la défense s'affiche AU CENTRE de l'écran, et pas dans le coin
+        /// avec la vie : une parade se joue en deux dixièmes de seconde, et on n'a pas le temps
+        /// de regarder ailleurs que l'adversaire. Les crochets disent « je suis couvert », le
+        /// cercle plein dit « fenêtre de parade ouverte », l'éclat dit ce qui vient de se passer.
+        /// </summary>
+        private void DrawGuard()
+        {
+            float cx = Screen.width * 0.5f;
+            float cy = Screen.height * 0.5f;
+
+            if (_guard != null && _guard.IsGuarding)
+            {
+                bool parryWindow = _guard.InParryWindow;
+                float radius = parryWindow ? 30f : 36f;
+                float thickness = parryWindow ? 4f : 2.5f;
+                Color color = parryWindow ? _parryColor : _guardColor;
+
+                // Quatre crochets plutot qu'un cercle : ils ne masquent pas la cible, et leur
+                // resserrement pendant la fenetre de parade se lit du coin de l'oeil.
+                GuiKit.Fill(new Rect(cx - radius, cy - radius, 12f, thickness), color);
+                GuiKit.Fill(new Rect(cx - radius, cy - radius, thickness, 12f), color);
+                GuiKit.Fill(new Rect(cx + radius - 12f, cy - radius, 12f, thickness), color);
+                GuiKit.Fill(new Rect(cx + radius - thickness, cy - radius, thickness, 12f), color);
+                GuiKit.Fill(new Rect(cx - radius, cy + radius - thickness, 12f, thickness), color);
+                GuiKit.Fill(new Rect(cx - radius, cy + radius - 12f, thickness, 12f), color);
+                GuiKit.Fill(new Rect(cx + radius - 12f, cy + radius - thickness, 12f, thickness), color);
+                GuiKit.Fill(new Rect(cx + radius - thickness, cy + radius - 12f, thickness, 12f), color);
+            }
+
+            if (_relay == null) return;
+
+            if (_relay.BlockFlash > 0.01f)
+            {
+                float size = Mathf.Lerp(120f, 64f, _relay.BlockFlash);
+                GuiKit.Disc(new Rect(cx - size * 0.5f, cy - size * 0.5f, size, size),
+                    new Color(_blockColor.r, _blockColor.g, _blockColor.b, _relay.BlockFlash * 0.30f));
+            }
+
+            if (_relay.ParryFlash > 0.01f)
+            {
+                float size = Mathf.Lerp(260f, 90f, _relay.ParryFlash);
+                GuiKit.Disc(new Rect(cx - size * 0.5f, cy - size * 0.5f, size, size),
+                    new Color(_parryColor.r, _parryColor.g, _parryColor.b, _relay.ParryFlash * 0.55f));
+
+                GUIStyle style = GuiKit.Style(Mathf.RoundToInt(20f + _relay.ParryFlash * 10f),
+                    FontStyle.Bold, TextAnchor.MiddleCenter);
+
+                GuiKit.OutlinedLabel(new Rect(cx - 160f, cy - 92f, 320f, 34f), "PARADE !", style,
+                    new Color(1f, 0.97f, 0.8f, Mathf.Clamp01(_relay.ParryFlash * 1.4f)),
+                    new Color(0f, 0f, 0f, 0.9f), 2.5f);
+            }
         }
 
         private void DrawPlayerPanel()

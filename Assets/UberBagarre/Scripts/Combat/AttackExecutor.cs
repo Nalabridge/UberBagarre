@@ -28,9 +28,17 @@ namespace UberBagarre.Combat
         [SerializeField] private CameraPunch _cameraPunch;
         [SerializeField] private HitStop _hitStop;
 
-        [Header("Hitbox par main")]
+        [SerializeField]
+        [Tooltip("Repere des poses de PIED. A laisser sur la racine du personnage : origine au " +
+                 "sol et orientation du corps. Si on utilisait le repere de visee, regarder le " +
+                 "ciel enverrait le coup de pied en l'air.")]
+        private Transform _footPoseSpace;
+
+        [Header("Hitbox par membre")]
         [SerializeField] private Hitbox _leftHitbox;
         [SerializeField] private Hitbox _rightHitbox;
+        [SerializeField] private Hitbox _leftFootHitbox;
+        [SerializeField] private Hitbox _rightFootHitbox;
 
         [Header("Debug")]
         [SerializeField] private bool _logAttacks;
@@ -89,14 +97,26 @@ namespace UberBagarre.Combat
 
         private void OnEnable()
         {
-            if (_leftHitbox != null) _leftHitbox.Hit += OnHitboxHit;
-            if (_rightHitbox != null) _rightHitbox.Hit += OnHitboxHit;
+            Subscribe(_leftHitbox, true);
+            Subscribe(_rightHitbox, true);
+            Subscribe(_leftFootHitbox, true);
+            Subscribe(_rightFootHitbox, true);
         }
 
         private void OnDisable()
         {
-            if (_leftHitbox != null) _leftHitbox.Hit -= OnHitboxHit;
-            if (_rightHitbox != null) _rightHitbox.Hit -= OnHitboxHit;
+            Subscribe(_leftHitbox, false);
+            Subscribe(_rightHitbox, false);
+            Subscribe(_leftFootHitbox, false);
+            Subscribe(_rightFootHitbox, false);
+        }
+
+        private void Subscribe(Hitbox hitbox, bool add)
+        {
+            if (hitbox == null) return;
+
+            if (add) hitbox.Hit += OnHitboxHit;
+            else hitbox.Hit -= OnHitboxHit;
         }
 
         public bool TryPlay(AttackData attack)
@@ -166,7 +186,7 @@ namespace UberBagarre.Combat
             if (_attack == null) return;
 
             CloseHitWindow();
-            if (_hands != null) _hands.ClearAttackPose(_side);
+            ClearLimbPose();
             if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
             if (_cameraPunch != null) _cameraPunch.SetDriven(Vector3.zero, Vector3.zero);
 
@@ -223,18 +243,31 @@ namespace UberBagarre.Combat
             }
             else
             {
-                // Aucune donnee d'animation : plutot que d'envoyer la main a l'origine du repere
-                // (c'est-a-dire dans l'oeil du joueur), on fabrique un direct a partir de la garde.
-                // Un coup laid vaut mieux qu'un coup invisible qui ne touche rien.
+                // Aucune donnee d'animation : plutot que d'envoyer le membre a l'origine du repere
+                // (c'est-a-dire dans l'oeil du joueur), on fabrique un coup a partir de la pose
+                // de repos. Un coup laid vaut mieux qu'un coup invisible qui ne touche rien.
                 key = new AttackPoseKey();
                 key.grip = 1f;
 
-                HandPose guard = _hands.GetGuardPose(_side);
                 float extension = Mathf.Sin(Mathf.Clamp01(normalized) * Mathf.PI);
-                pose = new HandPose(guard.position + Vector3.forward * (0.30f * extension), guard.euler);
+
+                if (_attack.limb == AttackLimb.Foot)
+                {
+                    pose = new HandPose(
+                        new Vector3(mirrored ? -0.16f : 0.16f, 0.12f + 0.42f * extension, -0.17f + 0.70f * extension),
+                        new Vector3(-22f * extension, 0f, 0f));
+                }
+                else
+                {
+                    HandPose guard = _hands.GetGuardPose(_side);
+                    pose = new HandPose(guard.position + Vector3.forward * (0.30f * extension), guard.euler);
+                }
             }
 
-            if (_hands != null) _hands.SetAttackPose(_side, pose, weight, key.grip);
+            if (_attack.limb == AttackLimb.Foot) ApplyFootPose(pose, weight);
+            else if (_hands != null) _hands.SetAttackPose(_side, pose, weight, key.grip);
+
+            ApplyOffHandPose(key, mirrored, weight);
 
             if (_locomotion != null)
             {
@@ -247,6 +280,74 @@ namespace UberBagarre.Combat
                     AttackData.MirrorOffset(key.cameraOffset, mirrored) * weight,
                     AttackData.MirrorEuler(key.cameraEuler, mirrored) * weight);
             }
+        }
+
+        /// <summary>
+        /// Un coup de pied ne s'applique pas comme un coup de poing : la jambe est déjà pilotée
+        /// par le cycle de marche. On dépose donc une cible que la locomotion mélangera, au lieu
+        /// d'écrire directement sur l'os et de se battre avec elle.
+        /// </summary>
+        private void ApplyFootPose(HandPose pose, float weight)
+        {
+            if (_locomotion == null) return;
+
+            Transform space = FootPoseSpace;
+            Vector3 world = space.TransformPoint(pose.position);
+            Quaternion rotation = space.rotation * pose.Rotation;
+
+            _locomotion.SetFootOverride(_side == HandSide.Left, world, rotation, weight);
+        }
+
+        /// <summary>
+        /// Repère des coups de pied : la racine du personnage.
+        ///
+        /// On ne peut pas réutiliser le repère des mains : il suit le tangage de la caméra, donc
+        /// lever les yeux déplacerait la cible du pied. Une hauteur de pied n'a de sens que
+        /// mesurée depuis le sol.
+        /// </summary>
+        private Transform FootPoseSpace
+        {
+            get { return _footPoseSpace != null ? _footPoseSpace : transform; }
+        }
+
+        /// <summary>
+        /// Pose du membre libre : la main opposée à celle qui frappe.
+        ///
+        /// Un bras qui part seul pendant que l'autre reste figé, c'est exactement ce qui fait
+        /// « animation bricolée ». Sur un coup de poing l'autre main remonte se couvrir ; sur un
+        /// coup de pied le bras opposé s'ouvre pour tenir l'équilibre.
+        /// </summary>
+        private void ApplyOffHandPose(AttackPoseKey key, bool mirrored, float weight)
+        {
+            if (_hands == null) return;
+
+            HandSide other = _side == HandSide.Left ? HandSide.Right : HandSide.Left;
+
+            // Un coup de pied ne mobilise aucune main : les deux restent libres, et c'est celle
+            // du cote oppose au pied qui contrebalance. La regle est donc la meme pour tous les
+            // coups, et la donnee seule decide si la main libre bouge.
+            if (key.offHandWeight <= 0.001f)
+            {
+                _hands.ClearAttackPose(other);
+                return;
+            }
+
+            HandPose pose = AttackData.Mirror(key.offHandPosition, key.offHandEuler, mirrored);
+            _hands.SetAttackPose(other, pose, weight * key.offHandWeight, -1f);
+        }
+
+        private void ClearLimbPose()
+        {
+            // Les deux mains sont relachees dans tous les cas : un coup de pied pose lui aussi
+            // le bras oppose, et une pose oubliee resterait collee jusqu'au prochain coup.
+            if (_hands != null)
+            {
+                _hands.ClearAttackPose(HandSide.Left);
+                _hands.ClearAttackPose(HandSide.Right);
+            }
+
+            // Rien a faire pour le pied : la locomotion laisse le poids retomber d'elle-meme
+            // des qu'on cesse de le reecrire. Couper net ferait claquer la jambe.
         }
 
         private void UpdateHitWindow(float normalized)
@@ -283,7 +384,14 @@ namespace UberBagarre.Combat
 
         private Hitbox ActiveHitbox()
         {
-            return _side == HandSide.Left ? _leftHitbox : _rightHitbox;
+            bool isLeft = _side == HandSide.Left;
+
+            if (_attack != null && _attack.limb == AttackLimb.Foot)
+            {
+                return isLeft ? _leftFootHitbox : _rightFootHitbox;
+            }
+
+            return isLeft ? _leftHitbox : _rightHitbox;
         }
 
         private void OnHitboxHit(Hurtbox hurtbox, Vector3 point)
@@ -307,7 +415,7 @@ namespace UberBagarre.Combat
         private void Finish()
         {
             CloseHitWindow();
-            if (_hands != null) _hands.ClearAttackPose(_side);
+            ClearLimbPose();
 
             if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
             if (_cameraPunch != null) _cameraPunch.SetDriven(Vector3.zero, Vector3.zero);
