@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using UberBagarre.Combat;
 using UberBagarre.Core;
-using UberBagarre.Player;
+using UberBagarre.Enemy;
 using UberBagarre.Feedback;
+using UberBagarre.Player;
 using UberBagarre.Sandbox;
+using UberBagarre.UI;
 using UberBagarre.View;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -13,13 +15,12 @@ using UnityEngine.SceneManagement;
 namespace UberBagarre.EditorTools
 {
     /// <summary>
-    /// Génère la scène de test "CombatSandbox" : arène, lumière, rig joueur, points de spawn.
+    /// Génère la scène de test complète : arène, joueur, ennemi, sac de frappe, interface.
     ///
-    /// Pourquoi un générateur plutôt qu'un fichier .unity livré tel quel :
-    /// un .unity est un graphe d'objets référencés par GUID. Généré par Unity lui-même,
-    /// il est forcément valide dans TA version et TON pipeline. Et comme la construction est
-    /// du code lisible, tu vois exactement comment la scène est assemblée — et tu peux la
-    /// régénérer après chaque phase sans rien remonter à la main.
+    /// Pourquoi un générateur plutôt qu'un fichier .unity livré tel quel : un .unity est un
+    /// graphe d'objets liés par GUID, illisible et fragile hors d'Unity. Généré par Unity
+    /// lui-même il est forcément valide, et le code de construction documente la scène mieux
+    /// qu'une capture d'écran — on y lit exactement quel composant est branché à quoi.
     /// </summary>
     public static class SandboxSceneBuilder
     {
@@ -27,35 +28,14 @@ namespace UberBagarre.EditorTools
         public const string ScenePath = ScenesFolder + "/CombatSandbox.unity";
 
         private const string SettingsFolder = "Assets/UberBagarre/Settings";
-        private const string MaterialsFolder = "Assets/UberBagarre/Art/Materials";
-        private const string TexturesFolder = "Assets/UberBagarre/Art/Textures";
 
-        // Dimensions de l'arène : assez grand pour reculer et tourner autour de l'ennemi,
-        // assez petit pour qu'on ne perde jamais l'ennemi de vue.
-        private const float ArenaSize = 22f;
-        private const float WallHeight = 4f;
+        private const float ArenaSize = 26f;
+        private const float WallHeight = 4.5f;
         private const float WallThickness = 0.5f;
 
-        private const float PlayerEyeHeight = 1.62f;
         private const float PlayerHeight = 1.8f;
         private const float PlayerRadius = 0.3f;
-        private const float SpawnDistance = 4.5f;
-
-        // Proportions d'un corps de 1m80. Les os se chainent : bassin 0.92 + 0.13 + 0.17 + 0.20
-        // place la nuque a 1.42, juste sous les yeux a 1.62.
-        private const float PelvisHeight = 0.92f;
-        private const float SpineOffset = 0.13f;
-        private const float ChestOffset = 0.17f;
-        private const float NeckOffset = 0.20f;
-
-        private const float ShoulderOffsetX = 0.19f;
-        private const float ShoulderOffsetY = 0.16f;
-        private const float UpperArmLength = 0.30f;
-        private const float ForearmLength = 0.26f;
-
-        private const float HipOffsetX = 0.10f;
-        private const float ThighLength = 0.44f;
-        private const float ShinLength = 0.42f;
+        private const float SpawnDistance = 5f;
 
         [MenuItem("Uber Bagarre/2 - Construire la scene Combat Sandbox", false, 20)]
         public static void BuildFromMenu()
@@ -82,21 +62,24 @@ namespace UberBagarre.EditorTools
         {
             EditorBuildUtility.EnsureFolder(ScenesFolder);
             EditorBuildUtility.EnsureFolder(SettingsFolder);
-            EditorBuildUtility.EnsureFolder(MaterialsFolder);
-            EditorBuildUtility.EnsureFolder(TexturesFolder);
+            ProceduralMeshFactory.EnsureLibrary();
 
-            Materials materials = CreateMaterials();
+            BuildMaterials materials = BuildMaterials.CreateAll(ArenaSize);
+
+            AttackData straight, hook, uppercut;
+            AttackLibraryBuilder.BuildAll(false, out straight, out hook, out uppercut);
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             BuildLighting();
             BuildEnvironment(materials);
-
-            GameObject player = BuildPlayerRig(materials);
             BuildPunchingBag(materials);
-            SpawnPoint playerSpawn;
-            SpawnPoint enemySpawn;
-            BuildSpawnSystem(player, out playerSpawn, out enemySpawn);
+
+            GameObject player = BuildPlayer(materials, straight, hook, uppercut);
+            GameObject enemy = BuildEnemy(materials, straight, hook, uppercut);
+
+            WireHudAndDebug(player, enemy);
+            BuildSpawnSystem(player, enemy);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -108,65 +91,15 @@ namespace UberBagarre.EditorTools
             Selection.activeGameObject = player;
 
             Debug.Log("[UberBagarre] Scene Combat Sandbox generee.\n" +
-                      "  Render pipeline detecte : " + EditorBuildUtility.ActivePipelineName() + "\n" +
-                      "  Scene : " + ScenePath + "\n" +
-                      "  Commandes : ZQSD/WASD, souris = visee, Maj = sprint, C = accroupi / glissade.\n" +
-                      "  Combat : clic gauche = direct, Ctrl + clic = crochet, Alt + clic = uppercut.\n" +
-                      "  Echap libere le curseur.\n" +
+                      "  Render pipeline : " + EditorBuildUtility.ActivePipelineName() + "\n" +
+                      "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
+                      "  Combat       : clic gauche = direct, Ctrl + clic = crochet, Alt + clic = uppercut\n" +
+                      "  Defense      : clic droit = garde, Alt gauche = esquive (direction = WASD)\n" +
+                      "  Debug        : F1 = overlay, R = relancer le combat, Echap = liberer le curseur\n" +
                       "  Appuie sur Play.");
         }
 
-        // ------------------------------------------------------------------ matériaux
-
-        private class Materials
-        {
-            public Material Floor;
-            public Material Wall;
-            public Material Prop;
-            public Material SpawnMarker;
-            public Material Skin;
-            public Material Shirt;
-            public Material Pants;
-            public Material Shoe;
-        }
-
-        private static Materials CreateMaterials()
-        {
-            Texture2D checker = EditorBuildUtility.CreateOrUpdateCheckerTexture(
-                TexturesFolder, "CheckerFloor", 256, 8,
-                new Color(0.34f, 0.34f, 0.36f), new Color(0.27f, 0.27f, 0.29f));
-
-            Materials materials = new Materials();
-
-            materials.Floor = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_SandboxFloor", Color.white, 0.15f, 0f, checker, new Vector2(ArenaSize, ArenaSize));
-
-            materials.Wall = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_SandboxWall", new Color(0.52f, 0.51f, 0.49f), 0.1f, 0f);
-
-            materials.Prop = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_SandboxProp", new Color(0.42f, 0.33f, 0.26f), 0.2f, 0f);
-
-            materials.SpawnMarker = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_SpawnMarker", new Color(0.2f, 0.55f, 0.75f), 0.3f, 0f);
-
-            // Teintes sobres : le jeu vise un rendu credible, pas cartoon.
-            materials.Skin = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_Skin", new Color(0.72f, 0.55f, 0.45f), 0.22f, 0f);
-
-            materials.Shirt = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_Shirt", new Color(0.17f, 0.18f, 0.21f), 0.12f, 0f);
-
-            materials.Pants = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_Pants", new Color(0.20f, 0.23f, 0.31f), 0.10f, 0f);
-
-            materials.Shoe = EditorBuildUtility.CreateOrUpdateMaterial(
-                MaterialsFolder, "M_Shoe", new Color(0.10f, 0.10f, 0.11f), 0.25f, 0f);
-
-            return materials;
-        }
-
-        // ------------------------------------------------------------------ lumière
+        // ------------------------------------------------------------------ décor
 
         private static void BuildLighting()
         {
@@ -181,76 +114,89 @@ namespace UberBagarre.EditorTools
             sun.color = new Color(1f, 0.97f, 0.91f);
             sun.shadows = LightShadows.Soft;
 
-            // Seconde lumière très faible à l'opposé : évite des ombres totalement noires
-            // sans avoir besoin de configurer de l'éclairage indirect (GI) dans un projet vierge.
+            // Lumiere d'appoint faible a l'oppose : evite des ombres totalement noires sans
+            // avoir a configurer d'eclairage indirect dans un projet vierge.
             GameObject fillGo = EditorBuildUtility.CreateEmpty("Fill Light", root.transform, Vector3.zero);
             fillGo.transform.rotation = Quaternion.Euler(20f, 160f, 0f);
 
             Light fill = fillGo.AddComponent<Light>();
             fill.type = LightType.Directional;
-            fill.intensity = 0.28f;
+            fill.intensity = 0.30f;
             fill.color = new Color(0.75f, 0.82f, 1f);
             fill.shadows = LightShadows.None;
         }
 
-        // ------------------------------------------------------------------ environnement
-
-        private static void BuildEnvironment(Materials materials)
+        private static void BuildEnvironment(BuildMaterials materials)
         {
             GameObject root = new GameObject("=== Environnement ===");
 
             EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Sol", root.transform,
                 new Vector3(0f, -0.25f, 0f), new Vector3(ArenaSize, 0.5f, ArenaSize), materials.Floor, true);
 
-            float half = ArenaSize * 0.5f;
-            float offset = half - WallThickness * 0.5f;
+            float offset = ArenaSize * 0.5f - WallThickness * 0.5f;
 
-            CreateWall(root.transform, "Mur Nord", new Vector3(0f, WallHeight * 0.5f, offset),
+            Wall(root.transform, "Mur Nord", new Vector3(0f, WallHeight * 0.5f, offset),
                 new Vector3(ArenaSize, WallHeight, WallThickness), materials.Wall);
-            CreateWall(root.transform, "Mur Sud", new Vector3(0f, WallHeight * 0.5f, -offset),
+            Wall(root.transform, "Mur Sud", new Vector3(0f, WallHeight * 0.5f, -offset),
                 new Vector3(ArenaSize, WallHeight, WallThickness), materials.Wall);
-            CreateWall(root.transform, "Mur Est", new Vector3(offset, WallHeight * 0.5f, 0f),
+            Wall(root.transform, "Mur Est", new Vector3(offset, WallHeight * 0.5f, 0f),
                 new Vector3(WallThickness, WallHeight, ArenaSize), materials.Wall);
-            CreateWall(root.transform, "Mur Ouest", new Vector3(-offset, WallHeight * 0.5f, 0f),
+            Wall(root.transform, "Mur Ouest", new Vector3(-offset, WallHeight * 0.5f, 0f),
                 new Vector3(WallThickness, WallHeight, ArenaSize), materials.Wall);
 
-            // Quelques repères : sans eux, impossible de juger sa vitesse ni sa distance.
             GameObject props = EditorBuildUtility.CreateEmpty("Reperes", root.transform, Vector3.zero);
 
-            CreateProp(props.transform, "Caisse A", new Vector3(-6.5f, 0.6f, 6f), new Vector3(1.2f, 1.2f, 1.2f), materials.Prop);
-            CreateProp(props.transform, "Caisse B", new Vector3(-5.2f, 0.35f, 7.4f), new Vector3(0.7f, 0.7f, 0.7f), materials.Prop);
-            CreateProp(props.transform, "Caisse C", new Vector3(7.2f, 0.9f, -5.5f), new Vector3(1.8f, 1.8f, 1.8f), materials.Prop);
-            CreateProp(props.transform, "Poteau", new Vector3(6.5f, 1.6f, 6.5f), new Vector3(0.4f, 3.2f, 0.4f), materials.Wall);
+            Wall(props.transform, "Caisse A", new Vector3(-7.5f, 0.6f, 7f), new Vector3(1.2f, 1.2f, 1.2f), materials.Prop);
+            Wall(props.transform, "Caisse B", new Vector3(-6.2f, 0.35f, 8.4f), new Vector3(0.7f, 0.7f, 0.7f), materials.Prop);
+            Wall(props.transform, "Caisse C", new Vector3(8.2f, 0.9f, -6.5f), new Vector3(1.8f, 1.8f, 1.8f), materials.Prop);
+            Wall(props.transform, "Poteau", new Vector3(7.5f, 1.6f, 7.5f), new Vector3(0.4f, 3.2f, 0.4f), materials.Wall);
         }
 
-        private static void CreateWall(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
+        private static void Wall(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
         {
             EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, parent, position, scale, material, true);
         }
 
-        private static void CreateProp(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
-        {
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, parent, position, scale, material, true);
-        }
-
-        // ------------------------------------------------------------------ rig joueur
+        // ------------------------------------------------------------------ sac de frappe
 
         /// <summary>
-        /// Hiérarchie du joueur.
-        ///
-        /// Player                    lacet, déplacement, entrées
-        ///  ├─ Body                  le vrai corps : bassin, buste, jambes, bras
-        ///  │   └─ Pelvis → Spine → Chest → (Neck, épaules)
-        ///  │       └─ hanches → cuisses → tibias → chevilles
-        ///  ├─ Head                  tangage
-        ///  │   └─ CameraBob → CameraShake → CameraPunch → MainCamera
-        ///  └─ HandsAimAnchor        repère de visée des poings + composition des mains
-        ///
-        /// Le corps est enfant de Player et NON de la caméra : il suit donc le lacet
-        /// mais pas le tangage. C'est ce qui permet de baisser les yeux et de voir
-        /// son propre torse et ses jambes, au lieu d'un corps qui bascule avec le regard.
+        /// Cible passive. Elle reste utile même avec un ennemi : on règle les dégâts, les
+        /// fenêtres d'impact et le ressenti d'un coup sur une cible qui ne riposte pas.
         /// </summary>
-        private static GameObject BuildPlayerRig(Materials materials)
+        private static void BuildPunchingBag(BuildMaterials materials)
+        {
+            GameObject root = new GameObject("SacDeFrappe");
+            root.transform.position = new Vector3(-3.6f, 0f, 3.4f);
+
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Poteau", root.transform,
+                new Vector3(0.95f, 1.3f, 0f), new Vector3(0.09f, 1.3f, 0.09f), materials.Wall, true);
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Potence", root.transform,
+                new Vector3(0.48f, 2.55f, 0f), new Vector3(1.05f, 0.08f, 0.08f), materials.Wall, false);
+
+            GameObject pivot = EditorBuildUtility.CreateEmpty("Pivot", root.transform, new Vector3(0f, 2.5f, 0f));
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Chaine", pivot.transform,
+                new Vector3(0f, -0.16f, 0f), new Vector3(0.03f, 0.16f, 0.03f), materials.Wall, false);
+
+            GameObject bag = EditorBuildUtility.CreatePrimitive(PrimitiveType.Capsule, "Sac", pivot.transform,
+                new Vector3(0f, -0.88f, 0f), new Vector3(0.34f, 0.56f, 0.34f), materials.Prop, true);
+
+            HealthSystem health = root.AddComponent<HealthSystem>();
+            SerializedWiring.SetFloat(health, "_maxHealth", 99999f);
+            SerializedWiring.SetBool(health, "_logDamage", true);
+
+            Hurtbox hurtbox = bag.AddComponent<Hurtbox>();
+            SerializedWiring.SetObject(hurtbox, "_health", health);
+            SerializedWiring.SetEnum(hurtbox, "_faction", (int)Faction.Neutral);
+            SerializedWiring.SetEnum(hurtbox, "_zone", (int)HitZone.Body);
+
+            PunchingBag swing = root.AddComponent<PunchingBag>();
+            SerializedWiring.SetObject(swing, "_health", health);
+            SerializedWiring.SetObject(swing, "_pivot", pivot.transform);
+        }
+
+        // ------------------------------------------------------------------ joueur
+
+        private static GameObject BuildPlayer(BuildMaterials materials, AttackData straight, AttackData hook, AttackData uppercut)
         {
             GameObject playerGo = new GameObject("Player");
             playerGo.transform.position = new Vector3(0f, 0f, -SpawnDistance * 0.5f);
@@ -264,12 +210,14 @@ namespace UberBagarre.EditorTools
             controller.skinWidth = 0.02f;
             controller.minMoveDistance = 0f;
 
-            GameObject head = EditorBuildUtility.CreateEmpty("Head", playerGo.transform, new Vector3(0f, PlayerEyeHeight, 0f));
+            // Rig camera : un noeud = un effet, pour qu'ils ne s'ecrasent jamais entre eux.
+            GameObject head = EditorBuildUtility.CreateEmpty("Head", playerGo.transform,
+                new Vector3(0f, FighterBuilder.EyeHeight, 0f));
             GameObject cameraBob = EditorBuildUtility.CreateEmpty("CameraBob", head.transform, Vector3.zero);
-            GameObject cameraShake = EditorBuildUtility.CreateEmpty("CameraShake", cameraBob.transform, Vector3.zero);
-            GameObject cameraPunch = EditorBuildUtility.CreateEmpty("CameraPunch", cameraShake.transform, Vector3.zero);
+            GameObject cameraShakeNode = EditorBuildUtility.CreateEmpty("CameraShake", cameraBob.transform, Vector3.zero);
+            GameObject cameraPunchNode = EditorBuildUtility.CreateEmpty("CameraPunch", cameraShakeNode.transform, Vector3.zero);
 
-            GameObject cameraGo = EditorBuildUtility.CreateEmpty("MainCamera", cameraPunch.transform, Vector3.zero);
+            GameObject cameraGo = EditorBuildUtility.CreateEmpty("MainCamera", cameraPunchNode.transform, Vector3.zero);
             cameraGo.tag = "MainCamera";
 
             Camera camera = cameraGo.AddComponent<Camera>();
@@ -278,13 +226,13 @@ namespace UberBagarre.EditorTools
             camera.farClipPlane = 300f;
             cameraGo.AddComponent<AudioListener>();
 
-            BodyRig bodyRig;
-            ProceduralLocomotion locomotion;
-            BuildBody(playerGo.transform, materials, out bodyRig, out locomotion);
+            FighterBuilder.Result body = FighterBuilder.BuildBody(playerGo.transform,
+                FighterBuilder.Skin.Player(materials), false, Faction.Player, playerGo);
 
             GameObject aimAnchor = EditorBuildUtility.CreateEmpty("HandsAimAnchor", playerGo.transform, Vector3.zero);
             FirstPersonHands hands = aimAnchor.AddComponent<FirstPersonHands>();
 
+            // --- systèmes de base
             InputBindings bindings = GetOrCreateInputBindings();
 
             PlayerInputReader input = playerGo.AddComponent<PlayerInputReader>();
@@ -306,363 +254,293 @@ namespace UberBagarre.EditorTools
             HeadBob bob = cameraBob.AddComponent<HeadBob>();
             SerializedWiring.SetObject(bob, "_motor", motor);
 
-            HandsAimAnchor anchorComponent = aimAnchor.AddComponent<HandsAimAnchor>();
-            SerializedWiring.SetObject(anchorComponent, "_look", look);
-            SerializedWiring.SetObject(anchorComponent, "_positionSource", cameraGo.transform);
+            HandsAimAnchor anchor = aimAnchor.AddComponent<HandsAimAnchor>();
+            SerializedWiring.SetObject(anchor, "_look", look);
+            SerializedWiring.SetObject(anchor, "_positionSource", cameraGo.transform);
 
             SerializedWiring.SetObject(hands, "_poseSpace", aimAnchor.transform);
-            SerializedWiring.SetObject(hands, "_leftArm", bodyRig.LeftArm);
-            SerializedWiring.SetObject(hands, "_rightArm", bodyRig.RightArm);
-            SerializedWiring.SetObject(hands, "_leftHand", bodyRig.LeftHand);
-            SerializedWiring.SetObject(hands, "_rightHand", bodyRig.RightHand);
-            SerializedWiring.SetObject(hands, "_locomotion", locomotion);
+            SerializedWiring.SetObject(hands, "_leftArm", body.Rig.LeftArm);
+            SerializedWiring.SetObject(hands, "_rightArm", body.Rig.RightArm);
+            SerializedWiring.SetObject(hands, "_leftHand", body.Rig.LeftHand);
+            SerializedWiring.SetObject(hands, "_rightHand", body.Rig.RightHand);
+            SerializedWiring.SetObject(hands, "_locomotion", body.Locomotion);
 
             PlayerAvatarDriver driver = playerGo.AddComponent<PlayerAvatarDriver>();
             SerializedWiring.SetObject(driver, "_input", input);
             SerializedWiring.SetObject(driver, "_motor", motor);
             SerializedWiring.SetObject(driver, "_hands", hands);
-            SerializedWiring.SetObject(driver, "_locomotion", locomotion);
+            SerializedWiring.SetObject(driver, "_locomotion", body.Locomotion);
 
-            BuildCombat(playerGo, cameraPunch, bodyRig, hands, locomotion, input, motor);
+            // --- combat
+            Combatant combatant = AddCombatant(playerGo, Faction.Player, "Joueur", head.transform, 100f, 100f, 12f, 8f);
 
-            return playerGo;
-        }
+            AddHurtboxes(playerGo, combatant, Faction.Player, PlayerHeight);
 
-        // ------------------------------------------------------------------ combat
-
-        private static void BuildCombat(GameObject playerGo, GameObject cameraPunchNode, BodyRig bodyRig,
-            FirstPersonHands hands, ProceduralLocomotion locomotion, PlayerInputReader input, PlayerMotor motor)
-        {
-            Hitbox leftHitbox = bodyRig.LeftArm != null && bodyRig.LeftArm.End != null
-                ? bodyRig.LeftArm.End.GetComponent<Hitbox>() : null;
-            Hitbox rightHitbox = bodyRig.RightArm != null && bodyRig.RightArm.End != null
-                ? bodyRig.RightArm.End.GetComponent<Hitbox>() : null;
-
-            if (leftHitbox != null) SerializedWiring.SetObject(leftHitbox, "_owner", playerGo);
-            if (rightHitbox != null) SerializedWiring.SetObject(rightHitbox, "_owner", playerGo);
-
-            CameraPunch cameraPunch = cameraPunchNode.AddComponent<CameraPunch>();
+            CameraShake shake = cameraShakeNode.AddComponent<CameraShake>();
+            CameraPunch punch = cameraPunchNode.AddComponent<CameraPunch>();
             HitStop hitStop = playerGo.AddComponent<HitStop>();
 
             AttackExecutor executor = playerGo.AddComponent<AttackExecutor>();
+            SerializedWiring.SetObject(executor, "_combatant", combatant);
             SerializedWiring.SetObject(executor, "_hands", hands);
-            SerializedWiring.SetObject(executor, "_locomotion", locomotion);
-            SerializedWiring.SetObject(executor, "_cameraPunch", cameraPunch);
+            SerializedWiring.SetObject(executor, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(executor, "_cameraPunch", punch);
             SerializedWiring.SetObject(executor, "_hitStop", hitStop);
-            SerializedWiring.SetObject(executor, "_leftHitbox", leftHitbox);
-            SerializedWiring.SetObject(executor, "_rightHitbox", rightHitbox);
+            SerializedWiring.SetObject(executor, "_leftHitbox", body.LeftHitbox);
+            SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
 
-            AttackData straight, hook, uppercut;
-            AttackLibraryBuilder.BuildAll(false, out straight, out hook, out uppercut);
+            DodgeSystem dodge = playerGo.AddComponent<DodgeSystem>();
+            SerializedWiring.SetObject(dodge, "_combatant", combatant);
+            SerializedWiring.SetObject(dodge, "_stamina", combatant.Stamina);
+            SerializedWiring.SetObject(dodge, "_impulseReceiver", motor);
+
+            HitReaction reaction = playerGo.AddComponent<HitReaction>();
+            SerializedWiring.SetObject(reaction, "_combatant", combatant);
+            SerializedWiring.SetObject(reaction, "_health", combatant.Health);
+            SerializedWiring.SetObject(reaction, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(reaction, "_executor", executor);
+            SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
             PlayerCombat combat = playerGo.AddComponent<PlayerCombat>();
             SerializedWiring.SetObject(combat, "_input", input);
             SerializedWiring.SetObject(combat, "_executor", executor);
             SerializedWiring.SetObject(combat, "_motor", motor);
+            SerializedWiring.SetObject(combat, "_dodge", dodge);
+            SerializedWiring.SetObject(combat, "_combatant", combatant);
             SerializedWiring.SetObject(combat, "_straight", straight);
             SerializedWiring.SetObject(combat, "_hook", hook);
             SerializedWiring.SetObject(combat, "_uppercut", uppercut);
+
+            // --- retours
+            AudioSource audioSource = playerGo.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+            ImpactAudio audio = playerGo.AddComponent<ImpactAudio>();
+
+            CombatFeedbackRelay relay = playerGo.AddComponent<CombatFeedbackRelay>();
+            SerializedWiring.SetObject(relay, "_executor", executor);
+            SerializedWiring.SetObject(relay, "_combatant", combatant);
+            SerializedWiring.SetObject(relay, "_cameraShake", shake);
+            SerializedWiring.SetObject(relay, "_audio", audio);
+
+            DamageVignette vignette = playerGo.AddComponent<DamageVignette>();
+            SerializedWiring.SetObject(vignette, "_health", combatant.Health);
+
+            return playerGo;
         }
 
-        // ------------------------------------------------------------------ cible d'entrainement
+        // ------------------------------------------------------------------ ennemi
 
-        /// <summary>
-        /// Sac de frappe. Sans cible, impossible de savoir si la fenêtre d'impact fonctionne :
-        /// on frappe dans le vide. C'est le banc de test de tout le système de combat,
-        /// en attendant l'ennemi.
-        /// </summary>
-        private static void BuildPunchingBag(Materials materials)
+        private static GameObject BuildEnemy(BuildMaterials materials, AttackData straight, AttackData hook, AttackData uppercut)
         {
-            GameObject root = new GameObject("SacDeFrappe");
-            root.transform.position = new Vector3(0f, 0f, SpawnDistance * 0.5f);
+            GameObject enemyGo = new GameObject("Ennemi");
+            enemyGo.transform.position = new Vector3(0f, 0f, SpawnDistance * 0.5f);
+            enemyGo.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
 
-            // Portique : un sac qui flotte sans attache ne se lit pas.
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Poteau", root.transform,
-                new Vector3(0.95f, 1.3f, 0f), new Vector3(0.09f, 1.3f, 0.09f), materials.Wall, true);
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Potence", root.transform,
-                new Vector3(0.48f, 2.55f, 0f), new Vector3(1.05f, 0.08f, 0.08f), materials.Wall, false);
+            CharacterController controller = enemyGo.AddComponent<CharacterController>();
+            controller.height = PlayerHeight;
+            controller.radius = 0.32f;
+            controller.center = new Vector3(0f, PlayerHeight * 0.5f, 0f);
+            controller.stepOffset = 0.3f;
+            controller.skinWidth = 0.02f;
 
-            GameObject pivot = EditorBuildUtility.CreateEmpty("Pivot", root.transform, new Vector3(0f, 2.5f, 0f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Chaine", pivot.transform,
-                new Vector3(0f, -0.16f, 0f), new Vector3(0.03f, 0.16f, 0.03f), materials.Wall, false);
+            FighterBuilder.Result body = FighterBuilder.BuildBody(enemyGo.transform,
+                FighterBuilder.Skin.Enemy(materials), true, Faction.Enemy, enemyGo);
 
-            GameObject bag = EditorBuildUtility.CreatePrimitive(PrimitiveType.Capsule, "Sac", pivot.transform,
-                new Vector3(0f, -0.88f, 0f), new Vector3(0.34f, 0.56f, 0.34f), materials.Prop, true);
+            // L'ennemi utilise le MEME composant de bras que le joueur : seul le repere change.
+            // A hauteur d'yeux et face a l'avant, les poses de garde ecrites pour la premiere
+            // personne fonctionnent telles quelles en troisieme personne.
+            GameObject armsAnchor = EditorBuildUtility.CreateEmpty("ArmsAnchor", enemyGo.transform,
+                new Vector3(0f, FighterBuilder.EyeHeight, 0f));
+            FirstPersonHands arms = armsAnchor.AddComponent<FirstPersonHands>();
+            SerializedWiring.SetObject(arms, "_poseSpace", armsAnchor.transform);
+            SerializedWiring.SetObject(arms, "_leftArm", body.Rig.LeftArm);
+            SerializedWiring.SetObject(arms, "_rightArm", body.Rig.RightArm);
+            SerializedWiring.SetObject(arms, "_leftHand", body.Rig.LeftHand);
+            SerializedWiring.SetObject(arms, "_rightHand", body.Rig.RightHand);
+            SerializedWiring.SetObject(arms, "_locomotion", body.Locomotion);
 
-            HealthSystem health = root.AddComponent<HealthSystem>();
-            SerializedWiring.SetFloat(health, "_maxHealth", 9999f);
-            SerializedWiring.SetBool(health, "_logDamage", true);
+            EnemyMotor motor = enemyGo.AddComponent<EnemyMotor>();
 
-            Hurtbox hurtbox = bag.AddComponent<Hurtbox>();
-            SerializedWiring.SetObject(hurtbox, "_health", health);
-            SerializedWiring.SetEnum(hurtbox, "_faction", (int)Faction.Enemy);
-            SerializedWiring.SetEnum(hurtbox, "_zone", (int)HitZone.Body);
+            Combatant combatant = AddCombatant(enemyGo, Faction.Enemy, "Bagarreur",
+                armsAnchor.transform, 90f, 100f, 10f, 6f);
 
-            PunchingBag swing = root.AddComponent<PunchingBag>();
-            SerializedWiring.SetObject(swing, "_health", health);
-            SerializedWiring.SetObject(swing, "_pivot", pivot.transform);
-        }
+            AddHurtboxes(enemyGo, combatant, Faction.Enemy, PlayerHeight);
 
-        // ------------------------------------------------------------------ corps
+            AttackExecutor executor = enemyGo.AddComponent<AttackExecutor>();
+            SerializedWiring.SetObject(executor, "_combatant", combatant);
+            SerializedWiring.SetObject(executor, "_hands", arms);
+            SerializedWiring.SetObject(executor, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(executor, "_leftHitbox", body.LeftHitbox);
+            SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
 
-        private static void BuildBody(Transform playerRoot, Materials materials,
-            out BodyRig rig, out ProceduralLocomotion locomotion)
-        {
-            GameObject bodyGo = EditorBuildUtility.CreateEmpty("Body", playerRoot, Vector3.zero);
+            DodgeSystem dodge = enemyGo.AddComponent<DodgeSystem>();
+            SerializedWiring.SetObject(dodge, "_combatant", combatant);
+            SerializedWiring.SetObject(dodge, "_stamina", combatant.Stamina);
+            SerializedWiring.SetObject(dodge, "_impulseReceiver", motor);
 
-            GameObject pelvis = EditorBuildUtility.CreateEmpty("Pelvis", bodyGo.transform, new Vector3(0f, PelvisHeight, 0f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "PelvisVisual", pelvis.transform,
-                new Vector3(0f, -0.02f, 0f), new Vector3(0.30f, 0.19f, 0.20f), materials.Pants, false);
+            HitReaction reaction = enemyGo.AddComponent<HitReaction>();
+            SerializedWiring.SetObject(reaction, "_combatant", combatant);
+            SerializedWiring.SetObject(reaction, "_health", combatant.Health);
+            SerializedWiring.SetObject(reaction, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(reaction, "_executor", executor);
+            SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
-            GameObject spine = EditorBuildUtility.CreateEmpty("Spine", pelvis.transform, new Vector3(0f, SpineOffset, 0f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "TorsoVisual", spine.transform,
-                new Vector3(0f, 0.10f, 0f), new Vector3(0.33f, 0.28f, 0.21f), materials.Shirt, false);
+            EnemyAvatarDriver avatarDriver = enemyGo.AddComponent<EnemyAvatarDriver>();
+            SerializedWiring.SetObject(avatarDriver, "_motor", motor);
+            SerializedWiring.SetObject(avatarDriver, "_combatant", combatant);
+            SerializedWiring.SetObject(avatarDriver, "_arms", arms);
+            SerializedWiring.SetObject(avatarDriver, "_locomotion", body.Locomotion);
 
-            GameObject chest = EditorBuildUtility.CreateEmpty("Chest", spine.transform, new Vector3(0f, ChestOffset, 0f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "ChestVisual", chest.transform,
-                new Vector3(0f, 0.08f, 0f), new Vector3(0.38f, 0.24f, 0.23f), materials.Shirt, false);
+            EnemyBrain brain = enemyGo.AddComponent<EnemyBrain>();
+            SerializedWiring.SetObject(brain, "_self", combatant);
+            SerializedWiring.SetObject(brain, "_motor", motor);
+            SerializedWiring.SetObject(brain, "_executor", executor);
+            SerializedWiring.SetObject(brain, "_dodge", dodge);
+            ConfigureEnemyAttacks(brain, straight, hook, uppercut);
 
-            GameObject neck = EditorBuildUtility.CreateEmpty("Neck", chest.transform, new Vector3(0f, NeckOffset, 0f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "NeckVisual", neck.transform,
-                new Vector3(0f, 0.02f, 0f), new Vector3(0.11f, 0.05f, 0.11f), materials.Skin, false);
+            AudioSource audioSource = enemyGo.AddComponent<AudioSource>();
+            audioSource.playOnAwake = false;
+            ImpactAudio audio = enemyGo.AddComponent<ImpactAudio>();
 
-            IkLimb leftArm = BuildArm(chest.transform, bodyGo.transform, HandSide.Left, materials);
-            IkLimb rightArm = BuildArm(chest.transform, bodyGo.transform, HandSide.Right, materials);
-            HandRig leftHand = leftArm.End.GetComponentInChildren<HandRig>();
-            HandRig rightHand = rightArm.End.GetComponentInChildren<HandRig>();
+            CombatFeedbackRelay relay = enemyGo.AddComponent<CombatFeedbackRelay>();
+            SerializedWiring.SetObject(relay, "_executor", executor);
+            SerializedWiring.SetObject(relay, "_combatant", combatant);
+            SerializedWiring.SetObject(relay, "_audio", audio);
 
-            IkLimb leftLeg = BuildLeg(pelvis.transform, bodyGo.transform, true, materials);
-            IkLimb rightLeg = BuildLeg(pelvis.transform, bodyGo.transform, false, materials);
-
-            rig = bodyGo.AddComponent<BodyRig>();
-            SerializedWiring.SetObject(rig, "_pelvis", pelvis.transform);
-            SerializedWiring.SetObject(rig, "_spine", spine.transform);
-            SerializedWiring.SetObject(rig, "_chest", chest.transform);
-            SerializedWiring.SetObject(rig, "_neck", neck.transform);
-            SerializedWiring.SetObject(rig, "_leftLeg", leftLeg);
-            SerializedWiring.SetObject(rig, "_rightLeg", rightLeg);
-            SerializedWiring.SetObject(rig, "_leftArm", leftArm);
-            SerializedWiring.SetObject(rig, "_rightArm", rightArm);
-            SerializedWiring.SetObject(rig, "_leftHand", leftHand);
-            SerializedWiring.SetObject(rig, "_rightHand", rightHand);
-
-            locomotion = bodyGo.AddComponent<ProceduralLocomotion>();
-            SerializedWiring.SetObject(locomotion, "_rig", rig);
-            SerializedWiring.SetObject(locomotion, "_root", playerRoot);
-        }
-
-        private static IkLimb BuildArm(Transform chest, Transform poleSpace, HandSide side, Materials materials)
-        {
-            bool isLeft = side == HandSide.Left;
-            float sign = isLeft ? -1f : 1f;
-            string prefix = isLeft ? "Left" : "Right";
-
-            GameObject shoulder = EditorBuildUtility.CreateEmpty(prefix + "Shoulder", chest,
-                new Vector3(sign * ShoulderOffsetX, ShoulderOffsetY, 0f));
-
-            GameObject upperArm = EditorBuildUtility.CreateEmpty(prefix + "UpperArm", shoulder.transform, Vector3.zero);
-            GameObject forearm = EditorBuildUtility.CreateEmpty(prefix + "Forearm", upperArm.transform,
-                new Vector3(0f, 0f, UpperArmLength));
-            GameObject wrist = EditorBuildUtility.CreateEmpty(prefix + "Wrist", forearm.transform,
-                new Vector3(0f, 0f, ForearmLength));
-
-            CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.058f, materials.Shirt);
-            CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.044f, materials.Skin);
-            Transform knuckles = BuildHand(wrist.transform, side, materials);
-
-            // La detection part des articulations, pas du poignet : c'est la surface qui frappe.
-            Hitbox hitbox = wrist.AddComponent<Hitbox>();
-            SerializedWiring.SetObject(hitbox, "_origin", knuckles);
-            SerializedWiring.SetEnum(hitbox, "_ownerFaction", (int)Faction.Player);
-
-            IkLimb limb = shoulder.AddComponent<IkLimb>();
-            SerializedWiring.SetObject(limb, "_upper", upperArm.transform);
-            SerializedWiring.SetObject(limb, "_lower", forearm.transform);
-            SerializedWiring.SetObject(limb, "_end", wrist.transform);
-            SerializedWiring.SetFloat(limb, "_upperLength", UpperArmLength);
-            SerializedWiring.SetFloat(limb, "_lowerLength", ForearmLength);
-            SerializedWiring.SetBool(limb, "_autoMeasureLengths", true);
-
-            // Coude vers le bas, legerement en arriere et vers l'exterieur : silhouette de garde.
-            SerializedWiring.SetObject(limb, "_poleSpace", poleSpace);
-            SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.25f, -1f, -0.35f));
-
-            return limb;
-        }
-
-        private static IkLimb BuildLeg(Transform pelvis, Transform poleSpace, bool isLeft, Materials materials)
-        {
-            float sign = isLeft ? -1f : 1f;
-            string prefix = isLeft ? "Left" : "Right";
-
-            GameObject hip = EditorBuildUtility.CreateEmpty(prefix + "Hip", pelvis,
-                new Vector3(sign * HipOffsetX, -0.02f, 0f));
-
-            GameObject thigh = EditorBuildUtility.CreateEmpty(prefix + "Thigh", hip.transform, Vector3.zero);
-            GameObject shin = EditorBuildUtility.CreateEmpty(prefix + "Shin", thigh.transform,
-                new Vector3(0f, 0f, ThighLength));
-            GameObject ankle = EditorBuildUtility.CreateEmpty(prefix + "Ankle", shin.transform,
-                new Vector3(0f, 0f, ShinLength));
-
-            CreateBoneVisual(thigh.transform, prefix + "ThighVisual", ThighLength, 0.075f, materials.Pants);
-            CreateBoneVisual(shin.transform, prefix + "ShinVisual", ShinLength, 0.060f, materials.Pants);
-
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "FootVisual", ankle.transform,
-                new Vector3(0f, -0.045f, 0.048f), new Vector3(0.10f, 0.06f, 0.25f), materials.Shoe, false);
-
-            IkLimb limb = hip.AddComponent<IkLimb>();
-            SerializedWiring.SetObject(limb, "_upper", thigh.transform);
-            SerializedWiring.SetObject(limb, "_lower", shin.transform);
-            SerializedWiring.SetObject(limb, "_end", ankle.transform);
-            SerializedWiring.SetFloat(limb, "_upperLength", ThighLength);
-            SerializedWiring.SetFloat(limb, "_lowerLength", ShinLength);
-            SerializedWiring.SetBool(limb, "_autoMeasureLengths", true);
-
-            // Le genou plie vers l'avant : c'est tout ce qui distingue une jambe d'un bras.
-            SerializedWiring.SetObject(limb, "_poleSpace", poleSpace);
-            SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.15f, 0.35f, 1f));
-
-            return limb;
-        }
-
-        // ------------------------------------------------------------------ mains
-
-        private struct FingerSpec
-        {
-            public string Name;
-            public Vector3 Base;
-            public Vector3 BaseEuler;
-            public float Proximal;
-            public float Middle;
-            public float Distal;
-            public float Radius;
-            public float ProximalCurl;
-            public float MiddleCurl;
-            public float DistalCurl;
-            public float CloseDelay;
-            public Vector3 CurlAxis;
+            return enemyGo;
         }
 
         /// <summary>
-        /// Construit une main articulée : paume + 5 doigts de 3 phalanges, aux longueurs
-        /// et aux temps de fermeture différents. Le poing est donc le résultat d'une vraie
-        /// fermeture de doigts, et non un cube posé au bout du bras.
+        /// Répertoire de coups de l'ennemi. Les distances se recouvrent volontairement :
+        /// à portée moyenne il a le choix, ce qui rend ses enchaînements moins prévisibles
+        /// sans avoir besoin d'une IA plus complexe.
         /// </summary>
-        private static Transform BuildHand(Transform wrist, HandSide side, Materials materials)
+        private static void ConfigureEnemyAttacks(EnemyBrain brain, AttackData straight, AttackData hook, AttackData uppercut)
         {
-            float sign = side == HandSide.Left ? -1f : 1f;
-            string prefix = side == HandSide.Left ? "Left" : "Right";
+            SerializedObject so = SerializedWiring.Open(brain);
+            SerializedProperty attacks = so.FindProperty("_attacks");
+            if (attacks == null) return;
 
-            // Poignet, puis masse du poing. A 30 cm de l'oeil, des formes arrondies se lisent
-            // beaucoup mieux que des cubes : les aretes vives trahissent immediatement la primitive.
-            CreateBoneVisual(wrist, prefix + "WristVisual", 0.030f, 0.032f, materials.Skin);
+            attacks.arraySize = 3;
 
-            GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.040f));
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, prefix + "PalmVisual", palm.transform,
-                Vector3.zero, new Vector3(0.084f, 0.076f, 0.082f), materials.Skin, false);
+            SetAttackOption(attacks.GetArrayElementAtIndex(0), straight, 3f, 0f, 1.55f, 0.8f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(1), hook, 1.4f, 0f, 1.35f, 2.2f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(2), uppercut, 0.8f, 0f, 1.2f, 3.4f);
 
-            GameObject knuckles = EditorBuildUtility.CreateEmpty(prefix + "Knuckles", palm.transform,
-                new Vector3(0f, -0.006f, 0.040f));
-
-            FingerSpec[] specs = new FingerSpec[]
+            SerializedProperty sequence = so.FindProperty("_scriptedSequence");
+            if (sequence != null)
             {
-                MakeFinger("Index",       new Vector3(sign * 0.026f, -0.008f, 0.028f), Vector3.zero, 0.038f, 0.024f, 0.018f, 0.0105f, 78f,  96f, 62f, 0.15f, Vector3.right),
-                MakeFinger("Majeur",      new Vector3(sign * 0.009f, -0.006f, 0.030f), Vector3.zero, 0.042f, 0.026f, 0.019f, 0.0110f, 82f,  98f, 64f, 0.08f, Vector3.right),
-                MakeFinger("Annulaire",   new Vector3(sign * -0.009f, -0.008f, 0.028f), Vector3.zero, 0.039f, 0.025f, 0.018f, 0.0100f, 85f, 100f, 66f, 0.03f, Vector3.right),
-                MakeFinger("Auriculaire", new Vector3(sign * -0.025f, -0.011f, 0.024f), Vector3.zero, 0.032f, 0.021f, 0.016f, 0.0088f, 88f, 102f, 68f, 0f,    Vector3.right),
-                MakeFinger("Pouce",       new Vector3(sign * 0.036f, -0.014f, 0.000f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.034f, 0.026f, 0.019f, 0.0125f, 42f, 48f, 32f, 0.35f, Vector3.right)
-            };
-
-            Transform[,] joints = new Transform[specs.Length, 3];
-
-            for (int i = 0; i < specs.Length; i++)
-            {
-                FingerSpec spec = specs[i];
-
-                // Une bosse d'articulation a la base de chaque doigt : c'est ce qui fait lire
-                // la forme comme un poing plutot qu'une boule avec des batonnets.
-                EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, prefix + spec.Name + "Knuckle",
-                    palm.transform, spec.Base, Vector3.one * (spec.Radius * 2.6f), materials.Skin, false);
-
-                GameObject proximal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "1", palm.transform, spec.Base);
-                proximal.transform.localRotation = Quaternion.Euler(spec.BaseEuler);
-
-                GameObject middle = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "2", proximal.transform,
-                    new Vector3(0f, 0f, spec.Proximal));
-                GameObject distal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "3", middle.transform,
-                    new Vector3(0f, 0f, spec.Middle));
-
-                CreateBoneVisual(proximal.transform, prefix + spec.Name + "1Visual", spec.Proximal, spec.Radius, materials.Skin);
-                CreateBoneVisual(middle.transform, prefix + spec.Name + "2Visual", spec.Middle, spec.Radius * 0.92f, materials.Skin);
-                CreateBoneVisual(distal.transform, prefix + spec.Name + "3Visual", spec.Distal, spec.Radius * 0.85f, materials.Skin);
-
-                joints[i, 0] = proximal.transform;
-                joints[i, 1] = middle.transform;
-                joints[i, 2] = distal.transform;
+                // Sequence de test prete a l'emploi, mais desactivee : cocher "Use Scripted
+                // Sequence" suffit a obtenir un adversaire au timing parfaitement previsible.
+                sequence.arraySize = 3;
+                SetScriptedStep(sequence.GetArrayElementAtIndex(0), 2f, straight);
+                SetScriptedStep(sequence.GetArrayElementAtIndex(1), 1.5f, hook);
+                SetScriptedStep(sequence.GetArrayElementAtIndex(2), 3f, uppercut);
             }
 
-            HandRig handRig = wrist.gameObject.AddComponent<HandRig>();
-            SerializedWiring.SetEnum(handRig, "_side", side == HandSide.Left ? 0 : 1);
-            SerializedWiring.SetObject(handRig, "_palm", palm.transform);
-
-            SerializedObject so = SerializedWiring.Open(handRig);
-            SerializedProperty fingers = so.FindProperty("_fingers");
-            if (fingers != null)
-            {
-                fingers.arraySize = specs.Length;
-
-                for (int i = 0; i < specs.Length; i++)
-                {
-                    SerializedProperty element = fingers.GetArrayElementAtIndex(i);
-                    element.FindPropertyRelative("name").stringValue = specs[i].Name;
-                    element.FindPropertyRelative("proximal").objectReferenceValue = joints[i, 0];
-                    element.FindPropertyRelative("middle").objectReferenceValue = joints[i, 1];
-                    element.FindPropertyRelative("distal").objectReferenceValue = joints[i, 2];
-                    element.FindPropertyRelative("proximalCurl").floatValue = specs[i].ProximalCurl;
-                    element.FindPropertyRelative("middleCurl").floatValue = specs[i].MiddleCurl;
-                    element.FindPropertyRelative("distalCurl").floatValue = specs[i].DistalCurl;
-                    element.FindPropertyRelative("curlAxis").vector3Value = specs[i].CurlAxis;
-                    element.FindPropertyRelative("closeDelay").floatValue = specs[i].CloseDelay;
-                    element.FindPropertyRelative("curlScale").floatValue = 1f;
-                }
-
-                so.ApplyModifiedPropertiesWithoutUndo();
-            }
-
-            return knuckles.transform;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static FingerSpec MakeFinger(string name, Vector3 basePosition, Vector3 baseEuler,
-            float proximal, float middle, float distal, float radius,
-            float proximalCurl, float middleCurl, float distalCurl, float closeDelay, Vector3 curlAxis)
+        private static void SetAttackOption(SerializedProperty element, AttackData attack,
+            float weight, float minDistance, float maxDistance, float cooldown)
         {
-            FingerSpec spec = new FingerSpec();
-            spec.Name = name;
-            spec.Base = basePosition;
-            spec.BaseEuler = baseEuler;
-            spec.Proximal = proximal;
-            spec.Middle = middle;
-            spec.Distal = distal;
-            spec.Radius = radius;
-            spec.ProximalCurl = proximalCurl;
-            spec.MiddleCurl = middleCurl;
-            spec.DistalCurl = distalCurl;
-            spec.CloseDelay = closeDelay;
-            spec.CurlAxis = curlAxis;
-            return spec;
+            element.FindPropertyRelative("attack").objectReferenceValue = attack;
+            element.FindPropertyRelative("weight").floatValue = weight;
+            element.FindPropertyRelative("minDistance").floatValue = minDistance;
+            element.FindPropertyRelative("maxDistance").floatValue = maxDistance;
+            element.FindPropertyRelative("cooldown").floatValue = cooldown;
+        }
+
+        private static void SetScriptedStep(SerializedProperty element, float delay, AttackData attack)
+        {
+            element.FindPropertyRelative("delay").floatValue = delay;
+            element.FindPropertyRelative("attack").objectReferenceValue = attack;
+            element.FindPropertyRelative("holdPosition").boolValue = true;
+        }
+
+        // ------------------------------------------------------------------ pièces communes
+
+        private static Combatant AddCombatant(GameObject go, Faction faction, string displayName,
+            Transform aimOrigin, float health, float stamina, float strength, float defence)
+        {
+            HealthSystem healthSystem = go.AddComponent<HealthSystem>();
+            SerializedWiring.SetFloat(healthSystem, "_maxHealth", health);
+
+            StaminaSystem staminaSystem = go.AddComponent<StaminaSystem>();
+            SerializedWiring.SetFloat(staminaSystem, "_maxStamina", stamina);
+
+            CombatantStats stats = go.AddComponent<CombatantStats>();
+            SerializedWiring.SetFloat(stats, "_fallbackMaxHealth", health);
+            SerializedWiring.SetFloat(stats, "_fallbackMaxStamina", stamina);
+            SerializedWiring.SetFloat(stats, "_fallbackStrength", strength);
+            SerializedWiring.SetFloat(stats, "_fallbackDefense", defence);
+
+            Combatant combatant = go.AddComponent<Combatant>();
+            SerializedWiring.SetEnum(combatant, "_faction", (int)faction);
+            SetString(combatant, "_displayName", displayName);
+            SerializedWiring.SetObject(combatant, "_health", healthSystem);
+            SerializedWiring.SetObject(combatant, "_stamina", staminaSystem);
+            SerializedWiring.SetObject(combatant, "_stats", stats);
+            SerializedWiring.SetObject(combatant, "_aimOrigin", aimOrigin);
+
+            return combatant;
         }
 
         /// <summary>
-        /// Segment d'os visuel. La capsule d'Unity est orientée sur son axe Y et mesure 2 unités :
-        /// on la couche sur +Z et on la met à l'échelle pour couvrir exactement la longueur de l'os.
+        /// Deux zones touchables : tête et corps. Les colliders sont en trigger — ils servent
+        /// uniquement à être touchés, jamais à bloquer un déplacement, ce dont s'occupe déjà
+        /// le CharacterController.
         /// </summary>
-        private static void CreateBoneVisual(Transform bone, string name, float length, float radius, Material material)
+        private static void AddHurtboxes(GameObject go, Combatant combatant, Faction faction, float height)
         {
-            GameObject visual = EditorBuildUtility.CreatePrimitive(PrimitiveType.Capsule, name, bone,
-                new Vector3(0f, 0f, length * 0.5f),
-                new Vector3(radius * 2f, length * 0.5f, radius * 2f), material, false);
+            GameObject bodyBox = EditorBuildUtility.CreateEmpty("Hurtbox_Corps", go.transform,
+                new Vector3(0f, height * 0.55f, 0f));
 
-            visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            CapsuleCollider bodyCollider = bodyBox.AddComponent<CapsuleCollider>();
+            bodyCollider.isTrigger = true;
+            bodyCollider.radius = 0.28f;
+            bodyCollider.height = height * 0.75f;
+
+            Hurtbox bodyHurtbox = bodyBox.AddComponent<Hurtbox>();
+            SerializedWiring.SetObject(bodyHurtbox, "_health", combatant.Health);
+            SerializedWiring.SetObject(bodyHurtbox, "_stats", combatant.Stats);
+            SerializedWiring.SetEnum(bodyHurtbox, "_faction", (int)faction);
+            SerializedWiring.SetEnum(bodyHurtbox, "_zone", (int)HitZone.Body);
+            SerializedWiring.SetFloat(bodyHurtbox, "_damageMultiplier", 1f);
+
+            GameObject headBox = EditorBuildUtility.CreateEmpty("Hurtbox_Tete", go.transform,
+                new Vector3(0f, height * 0.90f, 0f));
+
+            SphereCollider headCollider = headBox.AddComponent<SphereCollider>();
+            headCollider.isTrigger = true;
+            headCollider.radius = 0.15f;
+
+            Hurtbox headHurtbox = headBox.AddComponent<Hurtbox>();
+            SerializedWiring.SetObject(headHurtbox, "_health", combatant.Health);
+            SerializedWiring.SetObject(headHurtbox, "_stats", combatant.Stats);
+            SerializedWiring.SetEnum(headHurtbox, "_faction", (int)faction);
+            SerializedWiring.SetEnum(headHurtbox, "_zone", (int)HitZone.Head);
+            SerializedWiring.SetFloat(headHurtbox, "_damageMultiplier", 1.6f);
+        }
+
+        private static void WireHudAndDebug(GameObject player, GameObject enemy)
+        {
+            Combatant playerCombatant = player.GetComponent<Combatant>();
+            Combatant enemyCombatant = enemy.GetComponent<Combatant>();
+
+            CombatHud hud = player.AddComponent<CombatHud>();
+            SerializedWiring.SetObject(hud, "_playerHealth", playerCombatant.Health);
+            SerializedWiring.SetObject(hud, "_playerStamina", playerCombatant.Stamina);
+            SerializedWiring.SetObject(hud, "_player", playerCombatant);
+
+            CombatDebugOverlay overlay = player.AddComponent<CombatDebugOverlay>();
+            SerializedWiring.SetObject(overlay, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(overlay, "_player", playerCombatant);
+            SerializedWiring.SetObject(overlay, "_playerExecutor", player.GetComponent<AttackExecutor>());
+            SerializedWiring.SetObject(overlay, "_playerDodge", player.GetComponent<DodgeSystem>());
+            SerializedWiring.SetObject(overlay, "_enemy", enemyCombatant);
+            SerializedWiring.SetObject(overlay, "_enemyExecutor", enemy.GetComponent<AttackExecutor>());
+            SerializedWiring.SetObject(overlay, "_enemyBrain", enemy.GetComponent<EnemyBrain>());
         }
 
         private static InputBindings GetOrCreateInputBindings()
@@ -681,19 +559,22 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ spawn
 
-        private static void BuildSpawnSystem(GameObject player, out SpawnPoint playerSpawn, out SpawnPoint enemySpawn)
+        private static void BuildSpawnSystem(GameObject player, GameObject enemy)
         {
+            // Le resetter a besoin du directeur de spawn et des deux combattants : il est donc
+            // construit ici, une fois que les deux existent.
+
             GameObject root = new GameObject("=== Systemes ===");
 
             GameObject playerSpawnGo = EditorBuildUtility.CreateEmpty("PlayerSpawn", root.transform,
                 new Vector3(0f, 0f, -SpawnDistance * 0.5f));
-            playerSpawn = playerSpawnGo.AddComponent<SpawnPoint>();
+            SpawnPoint playerSpawn = playerSpawnGo.AddComponent<SpawnPoint>();
             SetString(playerSpawn, "_label", "Joueur");
 
             GameObject enemySpawnGo = EditorBuildUtility.CreateEmpty("EnemySpawn", root.transform,
                 new Vector3(0f, 0f, SpawnDistance * 0.5f));
             enemySpawnGo.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
-            enemySpawn = enemySpawnGo.AddComponent<SpawnPoint>();
+            SpawnPoint enemySpawn = enemySpawnGo.AddComponent<SpawnPoint>();
             SetString(enemySpawn, "_label", "Ennemi");
 
             GameObject directorGo = EditorBuildUtility.CreateEmpty("SpawnDirector", root.transform, Vector3.zero);
@@ -701,16 +582,38 @@ namespace UberBagarre.EditorTools
 
             SerializedObject so = SerializedWiring.Open(director);
             SerializedProperty requests = so.FindProperty("_requests");
-            if (requests != null)
+            if (requests == null) return;
+
+            requests.arraySize = 2;
+
+            SerializedProperty playerEntry = requests.GetArrayElementAtIndex(0);
+            playerEntry.FindPropertyRelative("label").stringValue = "Joueur";
+            playerEntry.FindPropertyRelative("spawnPoint").objectReferenceValue = playerSpawn;
+            playerEntry.FindPropertyRelative("prefab").objectReferenceValue = null;
+            playerEntry.FindPropertyRelative("existingInstance").objectReferenceValue = player;
+            playerEntry.FindPropertyRelative("faceTarget").objectReferenceValue = enemySpawn;
+
+            SerializedProperty enemyEntry = requests.GetArrayElementAtIndex(1);
+            enemyEntry.FindPropertyRelative("label").stringValue = "Ennemi";
+            enemyEntry.FindPropertyRelative("spawnPoint").objectReferenceValue = enemySpawn;
+            enemyEntry.FindPropertyRelative("prefab").objectReferenceValue = null;
+            enemyEntry.FindPropertyRelative("existingInstance").objectReferenceValue = enemy;
+            enemyEntry.FindPropertyRelative("faceTarget").objectReferenceValue = playerSpawn;
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            FightResetter resetter = directorGo.AddComponent<FightResetter>();
+            SerializedWiring.SetObject(resetter, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(resetter, "_spawnDirector", director);
+
+            SerializedObject resetterObject = SerializedWiring.Open(resetter);
+            SerializedProperty combatants = resetterObject.FindProperty("_combatants");
+            if (combatants != null)
             {
-                requests.arraySize = 1;
-                SerializedProperty entry = requests.GetArrayElementAtIndex(0);
-                entry.FindPropertyRelative("label").stringValue = "Joueur";
-                entry.FindPropertyRelative("spawnPoint").objectReferenceValue = playerSpawn;
-                entry.FindPropertyRelative("prefab").objectReferenceValue = null;
-                entry.FindPropertyRelative("existingInstance").objectReferenceValue = player;
-                entry.FindPropertyRelative("faceTarget").objectReferenceValue = enemySpawn;
-                so.ApplyModifiedPropertiesWithoutUndo();
+                combatants.arraySize = 2;
+                combatants.GetArrayElementAtIndex(0).objectReferenceValue = player.GetComponent<Combatant>();
+                combatants.GetArrayElementAtIndex(1).objectReferenceValue = enemy.GetComponent<Combatant>();
+                resetterObject.ApplyModifiedPropertiesWithoutUndo();
             }
         }
 
@@ -724,20 +627,17 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // ------------------------------------------------------------------ build settings
-
         private static void RegisterSceneInBuildSettings()
         {
             List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
 
             for (int i = 0; i < scenes.Count; i++)
             {
-                if (scenes[i].path == ScenePath)
-                {
-                    if (!scenes[i].enabled) scenes[i] = new EditorBuildSettingsScene(ScenePath, true);
-                    EditorBuildSettings.scenes = scenes.ToArray();
-                    return;
-                }
+                if (scenes[i].path != ScenePath) continue;
+
+                if (!scenes[i].enabled) scenes[i] = new EditorBuildSettingsScene(ScenePath, true);
+                EditorBuildSettings.scenes = scenes.ToArray();
+                return;
             }
 
             scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));

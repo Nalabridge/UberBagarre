@@ -19,6 +19,10 @@ namespace UberBagarre.Combat
     public class AttackExecutor : MonoBehaviour
     {
         [Header("References")]
+        [SerializeField]
+        [Tooltip("Optionnel. S'il est renseigne, l'etat et l'endurance conditionnent les coups.")]
+        private Combatant _combatant;
+
         [SerializeField] private FirstPersonHands _hands;
         [SerializeField] private ProceduralLocomotion _locomotion;
         [SerializeField] private CameraPunch _cameraPunch;
@@ -45,7 +49,15 @@ namespace UberBagarre.Combat
         public event Action<AttackData, Hurtbox, Vector3> HitLanded;
 
         public bool IsAttacking { get { return _attack != null; } }
-        public bool IsReady { get { return _attack == null && _cooldown <= 0f; } }
+
+        public bool IsReady
+        {
+            get
+            {
+                if (_attack != null || _cooldown > 0f) return false;
+                return _combatant == null || _combatant.CanAct;
+            }
+        }
         public AttackData CurrentAttack { get { return _attack; } }
 
         /// <summary>Progression du coup en cours, 0 à 1.</summary>
@@ -75,6 +87,18 @@ namespace UberBagarre.Combat
                 Debug.LogError("[UberBagarre] AttackExecutor sur " + name + " n'a pas de FirstPersonHands : " +
                                "aucun coup ne peut etre joue.", this);
                 return false;
+            }
+
+            // L'endurance se verifie AVANT de s'engager : un coup a moitie paye ne veut rien dire.
+            if (_combatant != null && _combatant.Stamina != null)
+            {
+                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return false;
+                _combatant.Stamina.TrySpend(attack.staminaCost);
+            }
+
+            if (_combatant != null)
+            {
+                _combatant.State.TryEnter(CombatantState.Attacking, attack.duration);
             }
 
             _attack = attack;
@@ -180,7 +204,9 @@ namespace UberBagarre.Combat
             if (hitbox == null) return;
 
             DamageInfo template = new DamageInfo();
-            template.Amount = _attack.damage;
+            template.Amount = _combatant != null
+                ? DamageCalculator.ComputeOutgoing(_attack, _combatant.Stats)
+                : _attack.damage;
             template.ImpactForce = _attack.impactForce;
             template.Direction = transform.forward;
             template.Attack = _attack;

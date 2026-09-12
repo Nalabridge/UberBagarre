@@ -80,6 +80,7 @@ namespace UberBagarre.EditorTools
             sb.AppendLine("  Esquive               : " + b.dodge);
             sb.AppendLine("  Liberer le curseur    : " + b.releaseCursor);
             sb.AppendLine("  Overlay de debug      : " + b.toggleDebugOverlay);
+            sb.AppendLine("  Relancer le combat    : " + b.restartFight);
             return sb.ToString();
         }
     }

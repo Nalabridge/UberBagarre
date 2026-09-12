@@ -47,6 +47,9 @@ namespace UberBagarre.Core
         [Tooltip("Affiche / masque l'overlay de debug de combat.")]
         public InputBinding toggleDebugOverlay = InputBinding.FromKey(KeyCode.F1);
 
+        [Tooltip("Relance le combat : tout le monde revient a plein et retourne a son spawn.")]
+        public InputBinding restartFight = InputBinding.FromKey(KeyCode.R);
+
 #if UNITY_EDITOR
         /// <summary>
         /// Restaure toutes les touches par défaut.

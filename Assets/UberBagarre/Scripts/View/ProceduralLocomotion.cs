@@ -128,6 +128,14 @@ namespace UberBagarre.View
         /// </summary>
         public Vector3 CombatBodyEuler { get; set; }
 
+        /// <summary>
+        /// Rotation du buste due à un coup ENCAISSÉ, en degrés. Additive elle aussi.
+        ///
+        /// Séparée de CombatBodyEuler pour une raison concrète : on peut être touché au milieu
+        /// de son propre coup. Les deux doivent pouvoir coexister sans que l'un efface l'autre.
+        /// </summary>
+        public Vector3 HitReactionEuler { get; set; }
+
         private void Start()
         {
             if (_root == null) _root = transform;
@@ -287,7 +295,7 @@ namespace UberBagarre.View
 
             // Le buste encaisse la moitié de la rotation de combat, la poitrine l'autre moitié :
             // la torsion se répartit le long de la colonne au lieu de casser à un seul endroit.
-            Vector3 combat = CombatBodyEuler * 0.5f;
+            Vector3 combat = (CombatBodyEuler + HitReactionEuler) * 0.5f;
 
             if (_rig.Spine != null)
             {

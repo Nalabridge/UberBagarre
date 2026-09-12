@@ -53,6 +53,7 @@ namespace UberBagarre.Player
         // sinon on ne pourrait plus libérer le curseur quand le gameplay est désactivé.
         public bool ReleaseCursorPressed { get; private set; }
         public bool ToggleDebugOverlayPressed { get; private set; }
+        public bool RestartFightPressed { get; private set; }
 
         public InputBindings Bindings
         {
@@ -88,6 +89,7 @@ namespace UberBagarre.Player
         {
             ReleaseCursorPressed = _provider.GetPressedThisFrame(_bindings.releaseCursor);
             ToggleDebugOverlayPressed = _provider.GetPressedThisFrame(_bindings.toggleDebugOverlay);
+            RestartFightPressed = _provider.GetPressedThisFrame(_bindings.restartFight);
 
             if (!_gameplayInputEnabled)
             {

@@ -20,6 +20,8 @@ namespace UberBagarre.Player
         [SerializeField] private PlayerInputReader _input;
         [SerializeField] private AttackExecutor _executor;
         [SerializeField] private PlayerMotor _motor;
+        [SerializeField] private DodgeSystem _dodge;
+        [SerializeField] private Combatant _combatant;
 
         [Header("Coups")]
         [SerializeField] private AttackData _straight;
@@ -45,8 +47,30 @@ namespace UberBagarre.Player
         {
             if (_input == null || _executor == null) return;
 
+            // Mort : plus d'entrees de gameplay, mais la camera reste libre pour voir ce qui se passe.
+            bool dead = _combatant != null && !_combatant.IsAlive;
+            if (_motor != null) _motor.InputLocked = dead;
+            if (dead) return;
+
+            if (_input.DodgePressed) TryDodge();
             if (_input.AttackPressed) TryAttack();
             UpdateMovementPenalty();
+        }
+
+        /// <summary>
+        /// L'esquive part de la direction de déplacement voulue. Sans direction, on esquive
+        /// vers l'arrière : c'est le réflexe naturel, et ça évite une esquive immobile.
+        /// </summary>
+        private void TryDodge()
+        {
+            if (_dodge == null) return;
+
+            Vector2 move = _input.Move;
+            Vector3 direction = transform.right * move.x + transform.forward * move.y;
+
+            if (direction.sqrMagnitude < 0.01f) direction = -transform.forward;
+
+            _dodge.TryDodge(direction);
         }
 
         private void TryAttack()

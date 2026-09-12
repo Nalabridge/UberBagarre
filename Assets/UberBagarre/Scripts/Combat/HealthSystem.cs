@@ -73,6 +73,13 @@ namespace UberBagarre.Combat
             if (healed != null) healed(amount);
         }
 
+        /// <summary>Change le maximum, typiquement quand les statistiques évoluent.</summary>
+        public void SetMaxHealth(float value, bool refill)
+        {
+            _maxHealth = Mathf.Max(1f, value);
+            _current = refill ? _maxHealth : Mathf.Min(_current, _maxHealth);
+        }
+
         [ContextMenu("Remettre a plein")]
         public void ResetToFull()
         {

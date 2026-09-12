@@ -11,6 +11,11 @@ namespace UberBagarre.Combat
     public class Hurtbox : MonoBehaviour
     {
         [SerializeField] private HealthSystem _health;
+
+        [SerializeField]
+        [Tooltip("Statistiques du defenseur. C'est ici qu'intervient la defense.")]
+        private CombatantStats _stats;
+
         [SerializeField] private Faction _faction = Faction.Enemy;
         [SerializeField] private HitZone _zone = HitZone.Body;
 
@@ -32,6 +37,7 @@ namespace UberBagarre.Combat
         private void Awake()
         {
             if (_health == null) _health = GetComponentInParent<HealthSystem>();
+            if (_stats == null) _stats = GetComponentInParent<CombatantStats>();
         }
 
         public void Receive(DamageInfo info)
@@ -40,6 +46,11 @@ namespace UberBagarre.Combat
 
             info.Zone = _zone;
             info.Amount *= _damageMultiplier;
+
+            // La defense s'applique ici, apres le multiplicateur de zone : une tete reste une
+            // tete, mais un combattant resistant encaisse mieux partout.
+            info.Amount = DamageCalculator.ApplyDefence(info.Amount, _stats);
+
             _health.ApplyDamage(info);
         }
     }

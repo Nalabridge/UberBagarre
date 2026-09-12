@@ -74,7 +74,10 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Ctrl + clic gauche** | **Crochet** |
 | **Alt + clic gauche** | **Uppercut** |
 | **Clic droit** (maintenu) | Garde serrée (les poings remontent vers le visage) |
+| **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
+| **F1** | Overlay de debug (états, cooldowns, distances) |
+| **R** | Relancer le combat (tout le monde à plein, retour au spawn) |
 | **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
 | Clic dans la vue | Recapturer le curseur |
 
@@ -87,18 +90,19 @@ Tu peux les changer sans toucher à une ligne de code.
 
 | Phase | Contenu | État |
 |---|---|---|
-| 1 | Structure du projet, scène sandbox, rig joueur, déplacement FPS, visée, spawn | ✅ fait |
-| 2 | Mains FPS temporaires, position de garde, respiration | ✅ fait |
-| 2b | Corps complet, mains à 5 doigts, cycle de marche, accroupi, glissade | ✅ fait |
-| 3 | Architecture de combat, données d'attaque, jab, hitbox, dégâts | ✅ fait |
-| 4 | Crochets, uppercut, timings différenciés | ✅ fait |
-| 5 | Variantes d'animation, mouvement du corps, retour en garde | ⬜ |
-| 6 | Système de vie, réactions aux dégâts, HUD | ⬜ |
-| 7 | Camera shake, vignette rouge, feedback d'impact, sons | ⬜ |
-| 8 | Esquive du joueur, stamina | ⬜ |
-| 9 | Ennemi, IA, attaques configurables | ⬜ |
-| 10 | Esquive ennemie, réactions, polish du ressenti | ⬜ |
-| 11 | Nettoyage, documentation, préparation des stats | ⬜ |
+| 1 | Structure du projet, scène sandbox, rig joueur, déplacement FPS, visée, spawn | ✅ |
+| 2 | Mains FPS, position de garde, respiration | ✅ |
+| 2b | Corps complet, cycle de marche avec appui des pieds, accroupi, glissade | ✅ |
+| 3 | Architecture de combat, données d'attaque, hitbox, dégâts | ✅ |
+| 4 | Direct, crochet, uppercut, timings différenciés, variantes | ✅ |
+| 4b | IK agnostique au squelette + branchement d'un modèle 3D en un clic | ✅ |
+| 5 | Maillages générés (segments coniques, boîtes adoucies) au lieu des primitives | ✅ |
+| 6 | Vie, statistiques, calcul de dégâts centralisé, réactions aux coups | ✅ |
+| 7 | Camera shake, vignette rouge, arrêt sur impact, sons générés | ✅ |
+| 8 | Esquive avec fenêtre d'invulnérabilité, stamina | ✅ |
+| 9 | Ennemi complet : IA, répertoire de coups configurable, séquence scriptée | ✅ |
+| 10 | Esquive de l'ennemi, machine à états, HUD, overlay de debug | ✅ |
+| 11 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -110,8 +114,10 @@ Assets/UberBagarre/
     Core/        input (backend-agnostique), interfaces partagées
     Player/      déplacement, visée, curseur, head bob, pilotage des mains
     View/        squelette, IK deux os, cycle de marche, mains articulées
-    Combat/      données d'attaque, exécuteur, hitbox, hurtbox, vie
-    Feedback/    recul de caméra, arrêt sur impact
+    Combat/      combattant, états, attaques, hitbox/hurtbox, vie, stamina, stats, esquive
+    Enemy/       moteur, IA, répertoire de coups, séquence de test
+    Feedback/    camera shake, recul, arrêt sur impact, vignette, sons générés
+    UI/          HUD de combat, overlay de debug (F1)
     Sandbox/     points de spawn, directeur de spawn
   Editor/        outils de génération (scène, validation)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)

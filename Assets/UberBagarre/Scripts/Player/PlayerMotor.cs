@@ -13,7 +13,7 @@ namespace UberBagarre.Player
     /// - ApplyImpulse    : esquive et recul des coups passeront par là.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
-    public class PlayerMotor : MonoBehaviour, ISpawnReceiver
+    public class PlayerMotor : MonoBehaviour, ISpawnReceiver, IImpulseReceiver
     {
         [Header("References")]
         [SerializeField] private PlayerInputReader _input;

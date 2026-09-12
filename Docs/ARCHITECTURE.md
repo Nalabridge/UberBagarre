@@ -310,3 +310,79 @@ gênant — ce n'est pas une contrainte d'architecture.
   la main (normale du dos de la main × direction du doigt), car il est impossible à deviner.
 - **Les primitives sont masquées et non détruites** : un branchement raté se défait en
   recochant les Mesh Renderer.
+
+---
+
+## 9. Le combat complet (phases 5 à 10)
+
+### Le moteur est réellement partagé
+
+```
+        PILOTAGE            PlayerCombat  ·  PlayerAvatarDriver     EnemyBrain  ·  EnemyAvatarDriver
+                                        \                           /
+                                         ── TryPlay / TryDodge ────
+                                                    │
+        COMBAT (identique)          Combatant · CombatantStateMachine · AttackExecutor
+                                    HealthSystem · StaminaSystem · CombatantStats · DodgeSystem
+                                                    │
+        CORPS (identique)           BodyRig · IkLimb ×4 · HandRig ×2 · ProceduralLocomotion
+                                                    │
+        RESTITUTION                 FighterHands · CameraShake · CameraPunch · HitStop
+                                    DamageVignette · ImpactAudio · CombatHud
+```
+
+Le générateur de scène construit le corps du joueur et celui de l'ennemi avec **le même code**
+(`FighterBuilder.BuildBody`). C'est la vérification concrète de la promesse : s'il avait fallu
+deux implémentations, c'est que le moteur n'aurait pas été partagé.
+
+Seules trois choses diffèrent entre eux :
+- le **repère de visée** des poings (caméra pour le joueur, ancrage sur le corps pour l'ennemi) ;
+- le **pilote** (entrées contre IA) ;
+- la **tête** — le joueur ne voit jamais la sienne.
+
+### Décisions de cette étape
+
+- **Maillages générés plutôt que primitives.** Un cube reste un cube et une capsule reste un tube
+  d'épaisseur constante. Il manquait deux formes : le **segment conique à bouts arrondis** (une
+  phalange est plus épaisse à la base qu'à la pointe — sans ça, des saucisses) et la **boîte
+  adoucie** (un poing n'a ni arête vive ni forme sphérique). Les maillages sont unitaires et
+  réutilisés par mise à l'échelle : une poignée d'assets pour tout le corps.
+- **Ordre des triangles.** Générer un maillage avec l'ordre `a,c,b` produit des faces tournées
+  vers l'intérieur, donc invisibles. C'est l'erreur classique et elle est silencieuse.
+- **Machine à états à priorités**, pas table de transitions. Deux lignes de règle : un état
+  s'impose s'il est au moins aussi prioritaire que l'actuel. Ajouter une parade ou un contre
+  ne demandera que de leur donner une priorité.
+- **Un coup encaissé interrompt le coup qu'on portait** (`Hit` est prioritaire sur `Attacking`).
+  Sans ça, se faire toucher n'a aucune conséquence et le combat devient un échange de dégâts.
+- **La fenêtre d'invulnérabilité d'esquive ne couvre pas toute l'esquive.** C'est ce qui en fait
+  une compétence de timing plutôt qu'un bouton d'invincibilité.
+- **La secousse de caméra suit le carré du « traumatisme ».** Proportionnelle, elle tremblerait
+  en permanence dès qu'on échange des coups ; au carré, deux petits coups ne font presque rien
+  et un gros se sent nettement.
+- **Encaisser secoue plus fort que frapper.** Sinon on ne distingue pas les deux à l'écran.
+- **Le calcul des dégâts est à un seul endroit** (`DamageCalculator`) : force de l'attaquant en
+  pourcentage, défense du défenseur à rendement décroissant. Équilibrer le jeu se fera là, pas
+  dans quinze fichiers.
+- **La séquence scriptée de l'ennemi** (« après 2 s, direct ; après 1,5 s, crochet ») est le seul
+  moyen de vérifier au timing près une esquive ou une fenêtre d'impact. Une IA aléatoire rend ce
+  test impossible.
+- **L'ennemi réagit au démarrage réel du coup adverse**, en écoutant l'exécuteur de sa cible, avec
+  un temps de réaction réglable. Il ne triche pas sur une intention cachée.
+- **HUD et vignette en IMGUI.** Un projet Unity neuf n'a ni police, ni TextMeshPro, ni sprite, ni
+  post-processing. Cette interface ne dépend de rien et s'affiche identiquement dans les trois
+  render pipelines. Le passage à un Canvas ne touchera que ces deux composants.
+- **Portées calibrées sur la géométrie réelle** : le poing atteint ~0,55 m devant le centre du
+  corps, la hurtbox fait 0,28 m de rayon, donc l'ennemi doit se tenir à ~0,95 m. Une portée
+  d'attaque réglée à vue laissait l'ennemi frapper dans le vide.
+
+### Ce qui est prêt pour la suite
+
+| Ajout futur | Ce qu'il faudra toucher |
+|---|---|
+| Coup de pied, coude, coup de tête | Un asset `AttackData` de plus. Aucun code. |
+| Parade, contre, projection | Un état de plus dans la machine + sa priorité |
+| Combo | Un `ComboResolver` qui enchaîne des `AttackData` ; l'exécuteur ne change pas |
+| Esquive parfaite | Mesurer l'écart entre le début d'esquive et l'ouverture de la fenêtre adverse |
+| Améliorations, équipement, buffs | `StatModifier` : tout le reste suit sans modification |
+| Plusieurs ennemis | Rien : aucun singleton, et le registre `Combatant.All` gère déjà la cible |
+| Vrais modèles 3D | `Uber Bagarre → 5 - Brancher le modele 3D`, voir MODELE_3D.md |
