@@ -351,6 +351,7 @@ namespace UberBagarre.EditorTools
 
             List<Vector3> vertices = new List<Vector3>();
             List<Vector3> normals = new List<Vector3>();
+            List<Vector2> uv = new List<Vector2>();
             List<int> triangles = new List<int>();
 
             Vector3[] faces =
@@ -385,6 +386,12 @@ namespace UberBagarre.EditorTools
                         // direction radiale dans la MEME proportion que la geometrie : l'ombrage
                         // suit alors la forme reelle, et un poing cesse d'avoir des facettes.
                         normals.Add(Vector3.Lerp(normal, cube.normalized, roundness).normalized);
+
+                        // Coordonnees de texture, une par face. Sans elles tous les sommets sont
+                        // en (0,0) : une texture appliquee sur un torse n'afficherait qu'UN SEUL
+                        // pixel, etire sur tout le corps — autrement dit un aplat de couleur,
+                        // exactement ce qu'on cherchait a eviter.
+                        uv.Add(new Vector2(x / (float)subdivisions, y / (float)subdivisions));
                     }
                 }
 
@@ -408,6 +415,7 @@ namespace UberBagarre.EditorTools
             Mesh mesh = new Mesh();
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
+            mesh.SetUVs(0, uv);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateTangents();
             mesh.RecalculateBounds();

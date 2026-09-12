@@ -285,14 +285,29 @@ namespace UberBagarre.UI
 
             if (_playerStamina != null)
             {
+                bool empty = _playerStamina.IsEmpty;
+
+                // Endurance vide = coups refuses, sprint coupe, glissade interdite. C'est la
+                // premiere cause de "je ne peux plus rien faire", et elle etait signalee par une
+                // barre grise de 11 pixels. Elle clignote maintenant et se nomme, parce qu'une
+                // regle qui bloque le joueur doit lui dire qu'elle le bloque.
+                float blink = empty ? 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 9f) : 1f;
+
+                Color staminaColor = empty
+                    ? new Color(0.95f, 0.32f, 0.25f, blink)
+                    : _staminaColor;
+
                 GuiKit.Bar(new Rect(barX, panel.y + 62f, barWidth * 0.86f, 11f),
                     _playerStamina.Normalized, _playerStamina.Normalized,
-                    _playerStamina.IsEmpty ? new Color(0.45f, 0.45f, 0.5f) : _staminaColor,
-                    _trailColor, _barBackground, _barBorder, 2f, 0f);
+                    staminaColor, _trailColor, _barBackground, _barBorder, 2f, 0f);
 
                 GUIStyle small = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
-                GuiKit.OutlinedLabel(new Rect(barX, panel.y + 78f, 200f, 16f), "ENDURANCE", small,
-                    new Color(1f, 1f, 1f, 0.45f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+                GuiKit.OutlinedLabel(new Rect(barX, panel.y + 78f, 200f, 16f),
+                    empty ? "ENDURANCE EPUISEE" : "ENDURANCE  " + Mathf.CeilToInt(_playerStamina.Current),
+                    small,
+                    empty ? new Color(1f, 0.45f, 0.38f, blink) : new Color(1f, 1f, 1f, 0.5f),
+                    new Color(0f, 0f, 0f, 0.8f), 1f);
             }
 
             GUI.matrix = previousMatrix;

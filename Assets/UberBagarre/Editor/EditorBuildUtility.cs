@@ -163,6 +163,125 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>
+        /// Texture de MATIÈRE : un grain fin par-dessus une teinte de base.
+        ///
+        /// C'est le levier graphique le plus rentable de tout le projet, et celui qui manquait.
+        /// Une couleur plate ne réagit à la lumière que par son orientation : deux surfaces
+        /// tournées pareil sont rigoureusement identiques, et le résultat se lit comme une
+        /// maquette en plastique — ce que « trop vieux, trop low poly » décrit en réalité.
+        /// Un grain, même discret, donne à chaque centimètre carré une valeur légèrement
+        /// différente, donc de la matière.
+        ///
+        /// Trois échelles de bruit superposées, parce qu'une seule se lit comme une trame :
+        /// des taches larges (les variations de teinte), un grain moyen (le relief), et un bruit
+        /// par pixel très faible (la micro-texture). C'est le même principe que la peau réelle.
+        /// </summary>
+        public static Texture2D CreateOrUpdateGrainTexture(string folder, string textureName, int size,
+            Color baseColor, float patchStrength, float grainStrength, float pixelStrength,
+            float patchScale, int seed)
+        {
+            EnsureFolder(folder);
+            string path = folder + "/" + textureName + ".asset";
+
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            bool isNew = texture == null;
+            if (isNew) texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
+
+            Color[] pixels = new Color[size * size];
+            Random.State previous = Random.state;
+            Random.InitState(seed);
+
+            float offset = seed % 97 * 3.7f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float patch = Mathf.PerlinNoise(offset + x * patchScale, offset + y * patchScale) - 0.5f;
+                    float grain = Mathf.PerlinNoise(offset + x * patchScale * 7f, offset + y * patchScale * 7f) - 0.5f;
+                    float pixel = Random.value - 0.5f;
+
+                    float delta = patch * patchStrength + grain * grainStrength + pixel * pixelStrength;
+
+                    pixels[y * size + x] = new Color(
+                        Mathf.Clamp01(baseColor.r + delta),
+                        Mathf.Clamp01(baseColor.g + delta * 0.96f),
+                        Mathf.Clamp01(baseColor.b + delta * 0.92f),
+                        1f);
+                }
+            }
+
+            Random.state = previous;
+            return Store(texture, pixels, path, isNew);
+        }
+
+        /// <summary>
+        /// Texture de TISSU : un tissage régulier, plus du grain.
+        ///
+        /// Le tissage suffit à ce qu'un vêtement ne soit plus confondu avec de la peau peinte
+        /// d'une autre couleur. La trame est volontairement fine : à l'échelle d'un combat au
+        /// corps à corps, on ne doit pas voir des carreaux mais sentir une surface.
+        /// </summary>
+        public static Texture2D CreateOrUpdateFabricTexture(string folder, string textureName, int size,
+            Color baseColor, int threadSize, float weaveStrength, int seed)
+        {
+            EnsureFolder(folder);
+            string path = folder + "/" + textureName + ".asset";
+
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            bool isNew = texture == null;
+            if (isNew) texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
+
+            threadSize = Mathf.Max(2, threadSize);
+
+            Color[] pixels = new Color[size * size];
+            Random.State previous = Random.state;
+            Random.InitState(seed);
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    // Un fil sur deux passe dessus : c'est ce damier d'un fil de cote qui fait
+                    // lire "tisse" plutot que "quadrille".
+                    bool warp = ((x / threadSize) + (y / threadSize)) % 2 == 0;
+
+                    float along = (warp ? y : x) % threadSize / (float)threadSize;
+                    float round = Mathf.Sin(along * Mathf.PI);
+
+                    float weave = (round - 0.5f) * weaveStrength;
+                    float grain = (Random.value - 0.5f) * 0.035f;
+                    float patch = (Mathf.PerlinNoise(x * 0.02f, y * 0.02f) - 0.5f) * 0.08f;
+
+                    float delta = weave + grain + patch;
+
+                    pixels[y * size + x] = new Color(
+                        Mathf.Clamp01(baseColor.r + delta),
+                        Mathf.Clamp01(baseColor.g + delta),
+                        Mathf.Clamp01(baseColor.b + delta),
+                        1f);
+                }
+            }
+
+            Random.state = previous;
+            return Store(texture, pixels, path, isNew);
+        }
+
+        private static Texture2D Store(Texture2D texture, Color[] pixels, string path, bool isNew)
+        {
+            texture.SetPixels(pixels);
+            texture.wrapMode = TextureWrapMode.Repeat;
+            texture.filterMode = FilterMode.Bilinear;
+            texture.anisoLevel = 8;
+            texture.Apply(true);
+
+            if (isNew) AssetDatabase.CreateAsset(texture, path);
+            else EditorUtility.SetDirty(texture);
+
+            return texture;
+        }
+
+        /// <summary>
         /// Génère une texture en damier et la sauvegarde en asset.
         /// Pourquoi : sur un sol uni, on ne perçoit pas son propre déplacement.
         /// Un damier rend le réglage des vitesses et de l'inertie immédiatement lisible.

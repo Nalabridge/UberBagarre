@@ -85,7 +85,8 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Ctrl gauche** (tapé au bon moment) | **Parade** : les 0,26 s qui suivent la levée de garde annulent le coup *et* déséquilibrent l'attaquant |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
-| **F1** | Overlay de debug (états, cooldowns, distances) |
+| **Tab** | **Menu de bac à sable** : PV et dégâts (les tiens et les leurs), faire apparaître des adversaires, tout remettre à neuf — et le rappel des commandes |
+| **F1** | Overlay de debug (états, zones, cooldowns, distances) |
 | **R** | Relancer le combat (tout le monde à plein, retour au spawn) |
 | **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
 | Clic dans la vue | Recapturer le curseur |
@@ -114,7 +115,9 @@ Tu peux les changer sans toucher à une ligne de code.
 | 11 | Zones de frappe (jambes / corps / tête), chute et relevé, bleus | ✅ |
 | 12 | Coups de pied, garde et parade, recul qui se voit, glissade payante | ✅ |
 | 13 | Soleil chaud + reflets d'objectif, antialiasing, vignette progressive, maillages affinés | ✅ |
-| 14 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 14 | Zone décidée par la visée, enchaînements, ragdoll à la mort, tête en un seul maillage | ✅ |
+| 15 | Menu de bac à sable (PV / dégâts / apparitions), matières texturées, refonte audio | ✅ |
+| 16 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -157,22 +160,32 @@ et c'est là tout l'intérêt :
 - **Le coup de pied bas est l'ouvre-boîte.** 11 dégâts seulement, mais c'est la façon la plus
   fiable d'atteindre les jambes, donc d'enclencher ces 70 %.
 
-### Où part chaque coup, et comment viser les trois zones
+### Viser décide la zone
 
-La hauteur du membre qui frappe décide de la zone. Un poing part de la tête, donc **debout, il ne
-peut pas atteindre les jambes** — c'est vrai dans la vie aussi. Les quatre moyens :
+**Tu touches là où tu vises**, pas là où ton poing se trouve. Le réticule annonce la zone ciblée
+et son multiplicateur **avant** que tu frappes, et la zone est écrite sous le chiffre de dégâts
+après (TETE / CORPS / JAMBES / BLOQUE).
 
-| Ce que tu fais | Hauteur du membre | Zone touchée |
+| Ce que tu vises | Zone | Dégâts |
 |---|---|---|
-| Poing, regard droit devant | 1,57 m | **Tête** (× 1,6) |
-| Poing, regard vers le bas | 1,27 → 1,40 m | **Corps** (× 1,0) |
-| Poing **accroupi** (C) + regard vers le bas | 0,65 m | **Jambes** (× 0,55) |
-| **V** — coup de pied bas | 0,17 m | **Jambes**, toujours |
-| **F** — coup de pied de face | 0,99 m | **Corps**, toujours |
+| Droit devant | **Tête** | × 1,6 |
+| Légèrement sous l'horizon | **Corps** | × 1,0 |
+| Franchement vers le bas | **Jambes** | × 0,55 — mais 70 % de chute |
 
-La zone touchée est écrite sous le chiffre de dégâts (TETE / CORPS / JAMBES / BLOQUE), et **F1**
-affiche les trois zones de l'adversaire avec leur multiplicateur, plus la hauteur exacte de ton
-poing pendant le coup.
+C'était d'abord la position du poing qui décidait, et ça ne pouvait pas marcher : un poing part de
+la tête et ne descend pas sous 1,27 m quand on est debout, borné par la longueur du bras. Aucune
+position du poing ne pouvait donc atteindre une zone qui s'arrête à 0,92 m. Le détail est dans
+[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
+
+### Enchaîner
+
+Chaque coup a une **fenêtre d'enchaînement** qui s'ouvre juste après sa fenêtre d'impact (vers
+60-70 % du coup). Relancer dans cette fenêtre interrompt le coup en cours **sans temps de repos** :
+un direct peut repartir à 0,14 s au lieu d'attendre les 0,24 s + repos. C'est ça qui fait la
+nervosité, pas la durée des coups.
+
+Ce qui te limite, c'est l'**endurance** — et quand elle est vide, le HUD le dit en rouge
+clignotant, parce que c'est la première cause de « je ne peux plus rien faire ».
 
 ### Les chances de chute, exactement
 
@@ -198,8 +211,11 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 - **L'adversaire se défend aussi.** Il esquive, et sinon il **bloque** : ses poings se collent au
   menton juste avant. Matraquer la même touche finit par ne plus rien donner.
 - **Ce que tu lui fais se voit.** Il recule réellement (25 cm sur un direct, un bon demi-mètre sur
-  un crochet, plus d'un mètre sur un coup de pied), il tombe, il se relève, et les **bleus**
-  restent là où tu as frappé.
+  un crochet, plus d'un mètre sur un coup de pied), il tombe, il se relève en deux temps, et les
+  **bleus** restent là où tu as frappé.
+- **Et quand il meurt, il s'effondre pour de vrai.** Un ragdoll physique articulé se construit à
+  l'instant du K.O. — 11 segments, articulations, masses. Le coup fatal marque la zone qu'il a
+  touchée, donc aucune mort ne ressemble à la précédente sans une seule animation.
 - **Ta vie se voit aussi** : plus elle descend, plus les bords de l'écran se referment. À 20 % de
   vie, tu ne vois plus que le centre.
 
@@ -219,6 +235,8 @@ réécrire le combat.
 | HUD et vignette en `OnGUI` | Pas de TextMeshPro, pas de police, pas de post-processing requis. Paramétrable dans l'Inspector. | Canvas uGUI / UI Toolkit |
 | Sons générés par code | Aucun fichier audio dans le projet | Vrais samples |
 | Primitives Unity pour le corps et les mains | Aucun modèle 3D disponible | **Un clic** : `Uber Bagarre → 5 - Brancher le modele 3D`, voir [Docs/MODELE_3D.md](Docs/MODELE_3D.md) |
-| Chute **procédurale** et non ragdoll physique | Le squelette est piloté en permanence par l'IK et le cycle de marche : un ragdoll se battrait avec eux à chaque image, et il faudrait désactiver puis resynchroniser toute la chaîne. La chute procédurale est déterministe, donc réglable au degré près. | Ragdoll sur un vrai rig importé, avec un mélange de sortie |
+| Chute sur coup bas **procédurale**, ragdoll **seulement à la mort** | Tant que le combattant est vivant, son squelette est piloté à chaque image par l'IK et le cycle de marche : un ragdoll se battrait avec eux, et la chute doit finir par un relevé reproductible. La mort, elle, est définitive — plus rien n'a besoin d'être reproductible, et c'est le seul moment où la physique peut prendre la main sans rien casser. | Ragdoll sur un vrai rig importé, avec un mélange de sortie |
+| Matières **texturées par code** (grain, tissage) plutôt que couleurs plates | Une couleur plate ne réagit à la lumière que par son orientation : deux surfaces tournées pareil sont identiques, et l'ensemble se lit comme une maquette en plastique. C'est ça que « trop low poly » décrit en réalité. | Vraies textures + normal maps importées |
+| Sons **synthétisés sans oscillateur audible** | Un sinus a une hauteur, donc on entend une note — et un corps frappé ne joue pas de note. Tout est du bruit filtré, dont seules l'enveloppe et l'ouverture du filtre changent. | Vrais échantillons |
 | Anticrénelage et brume réglés **par code** (`VisualQuality`) | Un projet Unity neuf démarre sans MSAA, avec des ombres courtes et un filtrage minimal. Le générateur de scène ne touche à aucun réglage global du projet. | Quality Settings du projet, ou un volume de post-process |
 | Reflets d'objectif dessinés en `OnGUI` (`SunFlare`) | Le composant de flare d'Unity dépend du render pipeline (asset `Flare` en Built-in, composant différent en URP/HDRP). Dessiner les halos soi-même donne le même rendu partout. | Lens flare natif du pipeline choisi |

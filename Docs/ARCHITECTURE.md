@@ -770,3 +770,183 @@ README, avec le tableau complet.
 La leçon n'est pas sur le chiffre : c'est qu'**une documentation écrite de mémoire juste après
 avoir codé est aussi peu fiable qu'une estimation à l'œil.** Elle se relit sur le code, comme
 tout le reste.
+
+---
+
+## 14. Quand le système est juste et le résultat inexistant
+
+Passe de corrections après un test complet. Sept reproches, dont trois portaient sur des features
+que je croyais livrées. Les trois ont la même forme, déjà rencontrée en phase 9, 12 et 13 : **le
+code est écrit, branché, correct, et ne produit rien d'observable.** Aucun ne provoque d'erreur.
+
+À ce stade, ce n'est plus une coïncidence mais un type de bug à part entière, et il mérite son nom :
+une panne où la chaîne fonctionne et où le dernier maillon — celui qui atteint l'œil ou l'oreille du
+joueur — est faux d'un ordre de grandeur.
+
+### 14.1 Les bleus existaient, à 19 cm de la peau
+
+`DamageInfo.Point` vient de `collider.ClosestPoint()` sur la **hurtbox**, dont le rayon est
+volontairement généreux : 38 cm pour le torse, pour pardonner l'imprécision du joueur. Le torse
+visible, lui, fait 19 cm de rayon.
+
+Les marques apparaissaient donc systématiquement à une vingtaine de centimètres de la peau, en
+suspension dans le vide à côté du personnage. Elles étaient bien créées, animées, accrochées à un
+os, et invisibles — parce que personne ne regarde l'air à côté d'un combattant.
+
+Deux corrections, et la seconde est moins évidente :
+
+1. Le point est reprojeté sur `Renderer.bounds.ClosestPoint()` du morceau de corps **visible** le
+   plus proche. Ça ne demande aucun collider sur la chair et ça marche aussi sur un modèle importé.
+2. La marque est accrochée à l'**os**, pas au visuel. Les morceaux de chair sont des maillages
+   unitaires mis à l'échelle — un torse, c'est la boîte adoucie redimensionnée en
+   (0,34 ; 0,30 ; 0,22). Accrochée au visuel, la marque héritait de cette échelle non uniforme :
+   étirée en largeur, écrasée en profondeur, et d'autant plus déformée qu'elle est posée en biais.
+
+### 14.2 « La cible c'est que la tête » : le bon critère n'était pas géométrique
+
+La phase 12 avait remplacé un choix de zone non déterministe par « la zone la plus proche du point
+d'impact ». C'était mieux, et c'était encore faux.
+
+**Une zone large rayonne plus loin qu'une zone petite.** Le torse (38 cm de rayon) a sa surface plus
+près du poing que la tête (18 cm) sous presque tous les angles, y compris quand le poing arrive par
+le haut. Plus une zone est grosse, plus elle vole les coups destinées aux autres. Le critère
+favorisait mécaniquement le torse, et réduire la tête n'y changeait rien : ça ne faisait que
+déplacer le seuil.
+
+Et un calcul a montré que le problème était plus profond. La hauteur du poing vaut
+
+```
+hauteur = yeux + (y_pose · cos θ − z_pose · sin θ)      θ = tangage × influence
+```
+
+Avec la pose d'extension (z = 0,50 m), le terme soustrait est borné par la longueur du bras :
+**même à 100 % d'influence du tangage, un combattant debout ne descend pas son poing sous 1,07 m.**
+La zone « jambes » s'arrêtant à 0,92 m, aucune position du poing ne pouvait l'atteindre. Le critère
+géométrique condamnait donc une zone sur trois, définitivement.
+
+La règle correcte en vue première personne est la seule qu'un joueur puisse apprendre : **je touche
+là où je vise.** `AimResolver` lance un rayon depuis l'origine de visée — pour le joueur, la tête,
+qui porte le tangage de la caméra, donc exactement la direction du réticule — et la première zone
+adverse rencontrée gagne, quelle que soit la position du poing. La géométrie ne sert plus qu'à
+savoir SI le coup porte.
+
+Le même résolveur sert à l'affichage : le réticule annonce la zone visée et son multiplicateur
+**avant** le coup. Il ne peut donc pas y avoir de désaccord entre ce que le joueur lit et ce qu'il
+obtient — et surtout, la règle devient apprenable, ce qui était tout l'objet des zones.
+
+### 14.3 Les bras restaient en l'air au-dessus d'un corps couché
+
+Le nœud qui basculait pendant la chute contenait le corps et ses zones touchables. Il ne contenait
+pas l'**ancrage des bras** de l'adversaire, qui vivait à hauteur d'yeux sur la racine.
+
+Or cet ancrage est le repère dans lequel les poses de main sont exprimées : c'est lui qui donne aux
+bras leur cible d'IK. Résultat, un adversaire couché au sol gardait les deux bras tendus vers le
+ciel à 1,62 m — et sa barre de vie, accrochée au même repère, flottait au-dessus du vide.
+
+La correction est structurelle plutôt que ponctuelle : **un seul nœud d'inclinaison**, et tout ce
+qui doit se coucher vit dessous — corps, zones touchables, repère des bras. Faire basculer trois
+transforms en parallèle finissait forcément par en oublier un, et l'oubli était spectaculaire.
+
+### 14.4 « Pas assez snappy » : il manquait l'annulation d'enchaînement
+
+Les durées n'étaient pas le problème principal. Un direct de 0,30 s n'est pas lent ; ce qui est lent,
+c'est de devoir **attendre le retour à la garde** avant de relancer. Chaque coup se payait de sa
+durée entière plus son temps de repos, soit 0,35 s de latence minimale entre deux coups, quelle que
+soit l'intention du joueur.
+
+`AttackData.comboCancelAt` ouvre une fenêtre juste après la fenêtre d'impact. Un nouveau coup lancé
+dans cette fenêtre interrompt le précédent **sans temps de repos** — c'est la récompense d'avoir
+laissé le coup aller au bout de sa chance de toucher. L'état `Attacking` ne bloque plus un
+enchaînement, mais uniquement le sien : tout autre état (touché, étourdi, esquive) refuse toujours.
+
+Avec ça, un direct repart à 0,14 s. Les durées ont aussi été resserrées (0,30 → 0,24 s), l'armement
+raccourci de 22 % à 8 % du coup, et le plateau d'animation tenu jusqu'à 84 % au lieu de 78 % — un
+coup passait un quart de sa durée à n'être ni en garde ni en extension, et c'est exactement la
+sensation de mollesse.
+
+### 14.5 Pourquoi les sons faisaient jouet
+
+Les impacts étaient construits autour d'un **sinus**. Un sinus a une hauteur, donc on entend une
+**note** — et un corps frappé ne joue pas de note. Le cri de douleur, lui, empilait deux sinus
+harmoniques pour imiter des cordes vocales : une voix synthétisée par deux oscillateurs ne ressemble
+à aucune voix humaine, et c'est le seul son que tout le monde remarque.
+
+Toute la synthèse est refaite sur une règle unique : **du bruit filtré, jamais d'oscillateur
+audible.** Ce qui distingue deux sons d'impact n'est pas leur hauteur mais leur enveloppe et leur
+contenu spectral. Le filtre se **ferme** au fil de l'impact — clair puis sourd, comme une surface
+qui absorbe —, le cri devient une expiration, la parade un claquement sec au lieu d'un « ting »
+musical.
+
+Détail qui n'en est pas un : tous les clips sont **normalisés**. Un son construit à partir de bruit
+a une amplitude qui dépend du tirage aléatoire, donc deux générations du même clip ne sortent pas au
+même volume — et les réglages de volume dans l'Inspector ne veulent alors rien dire.
+
+### 14.6 Pourquoi une tête faite de boîtes ne marchera jamais
+
+Dix boîtes adoucies empilées se lisent comme dix boîtes adoucies empilées, quelles que soient les
+proportions : les jointures entre les blocs sont visibles sous tous les angles, et aucune n'existe
+sur un visage.
+
+Le crâne est maintenant un maillage unique (660 sommets, moins que les dix boîtes qu'il remplace),
+obtenu en déformant une sphère. Deux asymétries portent tout le reste :
+
+- le **menton**, qui se resserre fortement et avance ;
+- l'**arrière du crâne**, plus volumineux que le front.
+
+Ce sont elles, et pas le détail, qui font lire instantanément de quel côté quelqu'un regarde —
+l'information la plus utile en combat. Les normales sont calculées analytiquement : une sphère UV
+duplique ses sommets sur la couture de longitude, et `RecalculateNormals` y laisserait une ligne
+d'ombrage verticale en plein milieu du visage.
+
+### 14.7 « Trop low poly » parlait surtout des matières
+
+Après MSAA, les ombres et les subdivisions de la phase 13, il restait le défaut le plus coûteux :
+**tout était en couleur plate.** Une couleur plate ne réagit à la lumière que par son orientation,
+donc deux surfaces tournées pareil sont rigoureusement identiques. Le résultat se lit comme une
+maquette en plastique, et c'est probablement ce que « trop vieux » désignait depuis le début.
+
+Chaque matière du corps a maintenant une texture générée : grain de peau, tissage de chemise, denim,
+cuir. Trois échelles de bruit superposées, parce qu'une seule se lit comme une trame.
+
+Un piège a failli annuler tout le gain : **la boîte adoucie n'avait aucune coordonnée de texture.**
+Tous ses sommets étaient en (0,0), donc une texture appliquée sur un torse n'en aurait affiché qu'un
+seul pixel, étiré sur tout le corps — autrement dit un aplat de couleur, exactement ce qu'on
+cherchait à remplacer. C'est le genre de détail qui fait conclure « les textures ne servent à rien »
+alors qu'elles n'ont jamais été échantillonnées.
+
+### 14.8 Le ragdoll, et pourquoi il est réservé à la mort
+
+Deux mécaniques différentes, pour une raison qui n'est pas esthétique :
+
+- une chute sur coup aux jambes doit **se terminer par un relevé reproductible**. Elle reste donc
+  procédurale, déterministe, réglable au degré ;
+- une mort n'a rien à reproduire ni à relever. C'est le seul moment où la physique peut prendre la
+  main sans entrer en conflit avec l'IK — et le moment où ça compte le plus.
+
+`DeathRagdoll` construit 11 segments à l'instant du K.O. : Rigidbody, capsules, `CharacterJoint` aux
+limites serrées, projection activée (un ragdoll généré à la volée finit sinon régulièrement avec un
+membre à deux mètres du corps). Les pilotes sont coupés depuis une **liste explicite**, pas par une
+recherche automatique : un seul pilote oublié écraserait la physique à chaque image et le ragdoll
+resterait figé debout, sans qu'aucune erreur apparaisse.
+
+Le joueur, qui ne voit pas son propre corps, n'a pas de ragdoll mais un effondrement définitif
+(`KnockdownSystem.Collapse`) : son point de vue descend et ne se relève plus. C'est la seule façon de
+sentir sa propre mort en première personne.
+
+### 14.9 Le mécanisme qui manquait : la version des données
+
+Le générateur ne réécrit jamais un asset d'attaque existant, pour ne pas effacer les réglages faits
+à la main. C'est la bonne règle, et elle avait une conséquence que je n'avais pas vue : **affiner un
+timing dans le code n'avait aucun effet pour quiconque avait déjà ouvert le projet une fois.**
+
+Le symptôme n'était pas « mon asset n'est pas à jour ». C'était « tu n'as pas fait ce que j'ai
+demandé » — parce que de l'extérieur, les deux sont indiscernables.
+
+`AttackData.dataVersion` distingue désormais les deux cas qui se ressemblaient : un asset **réglé
+par l'utilisateur** (on n'y touche pas) et un asset **créé par une version antérieure du code** (on
+le met à jour, en le disant dans la console). Le tampon de version est posé après la configuration,
+donc impossible à oublier dans un nouveau coup.
+
+La leçon générale : **un mécanisme de préservation sans mécanisme de migration est un mécanisme de
+gel.** Dès qu'on décide de ne pas écraser les données de l'utilisateur, il faut décider dans le même
+mouvement comment on y apporte les corrections.

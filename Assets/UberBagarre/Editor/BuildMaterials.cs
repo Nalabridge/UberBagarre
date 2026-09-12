@@ -38,29 +38,63 @@ namespace UberBagarre.EditorTools
             m.Wall = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_SandboxWall",
                 new Color(0.52f, 0.51f, 0.49f), 0.1f, 0f);
 
-            m.Prop = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_SandboxProp",
-                new Color(0.42f, 0.33f, 0.26f), 0.2f, 0f);
+            Texture2D canvas = EditorBuildUtility.CreateOrUpdateFabricTexture(TexturesFolder, "TissuSac", 256,
+                new Color(0.42f, 0.33f, 0.26f), 5, 0.13f, 2024);
 
-            // Teintes sobres : le jeu vise un rendu credible, pas cartoon.
+            m.Prop = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_SandboxProp",
+                Color.white, 0.18f, 0f, canvas, new Vector2(4f, 4f));
+
+            // ----------------------------------------------------------------- matieres
+            //
+            // Chaque matiere du corps a desormais une TEXTURE, et c'est le changement visuel le
+            // plus important de tout le projet. Une couleur plate ne reagit a la lumiere que par
+            // son orientation : deux surfaces tournees pareil sont rigoureusement identiques,
+            // et l'ensemble se lit comme une maquette en plastique. C'est ca que « trop vieux,
+            // trop low poly » decrit en realite — pas le nombre de triangles.
+            //
+            // Le tiling est serre (8 a 14 repetitions) parce que les maillages sont unitaires et
+            // mis a l'echelle : un torse et une phalange partagent le meme materiau, donc la
+            // trame doit rester fine pour ne jamais devenir un motif visible.
+
+            Texture2D skinGrain = EditorBuildUtility.CreateOrUpdateGrainTexture(TexturesFolder, "GrainPeau", 256,
+                new Color(0.74f, 0.57f, 0.47f), 0.07f, 0.045f, 0.022f, 0.045f, 1771);
+
+            Texture2D enemySkinGrain = EditorBuildUtility.CreateOrUpdateGrainTexture(TexturesFolder, "GrainPeauEnnemi", 256,
+                new Color(0.66f, 0.50f, 0.42f), 0.075f, 0.05f, 0.024f, 0.045f, 4242);
+
+            Texture2D shirtWeave = EditorBuildUtility.CreateOrUpdateFabricTexture(TexturesFolder, "TissuChemise", 256,
+                new Color(0.17f, 0.18f, 0.21f), 4, 0.10f, 909);
+
+            Texture2D enemyShirtWeave = EditorBuildUtility.CreateOrUpdateFabricTexture(TexturesFolder, "TissuChemiseEnnemi", 256,
+                new Color(0.36f, 0.12f, 0.13f), 4, 0.11f, 313);
+
+            Texture2D denim = EditorBuildUtility.CreateOrUpdateFabricTexture(TexturesFolder, "TissuDenim", 256,
+                new Color(0.20f, 0.23f, 0.31f), 3, 0.14f, 77);
+
+            Texture2D leather = EditorBuildUtility.CreateOrUpdateGrainTexture(TexturesFolder, "GrainCuir", 256,
+                new Color(0.10f, 0.10f, 0.11f), 0.05f, 0.06f, 0.018f, 0.085f, 515);
+
+            // La peau accroche un peu la lumiere : une peau parfaitement mate ressemble a de la
+            // craie. Un peu seulement — trop, et ca devient du plastique.
             m.Skin = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Skin",
-                new Color(0.74f, 0.57f, 0.47f), 0.22f, 0f);
+                Color.white, 0.30f, 0f, skinGrain, new Vector2(10f, 10f));
 
             m.Shirt = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Shirt",
-                new Color(0.17f, 0.18f, 0.21f), 0.12f, 0f);
+                Color.white, 0.10f, 0f, shirtWeave, new Vector2(12f, 12f));
 
             m.Pants = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Pants",
-                new Color(0.20f, 0.23f, 0.31f), 0.10f, 0f);
+                Color.white, 0.08f, 0f, denim, new Vector2(14f, 14f));
 
             m.Shoe = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Shoe",
-                new Color(0.10f, 0.10f, 0.11f), 0.25f, 0f);
+                Color.white, 0.34f, 0f, leather, new Vector2(8f, 8f));
 
             // L'ennemi est teinte differemment : en plein combat, il faut le distinguer
             // instantanement de ses propres mains.
             m.EnemySkin = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_EnemySkin",
-                new Color(0.66f, 0.50f, 0.42f), 0.22f, 0f);
+                Color.white, 0.30f, 0f, enemySkinGrain, new Vector2(10f, 10f));
 
             m.EnemyShirt = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_EnemyShirt",
-                new Color(0.36f, 0.12f, 0.13f), 0.14f, 0f);
+                Color.white, 0.12f, 0f, enemyShirtWeave, new Vector2(12f, 12f));
 
             // Hematome : violet sombre tirant sur le rouge, et mat. Un bleu brillant ferait
             // tache de peinture ; c'est l'absence de reflet qui le fait lire comme de la peau.

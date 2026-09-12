@@ -261,7 +261,7 @@ namespace UberBagarre.Sandbox
         {
             if (!_open || !_initialised) return;
 
-            float width = Mathf.Min(430f, Screen.width - 40f);
+            float width = Mathf.Min(790f, Screen.width - 40f);
             float height = Mathf.Min(486f, Screen.height - 40f);
 
             Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
@@ -282,7 +282,15 @@ namespace UberBagarre.Sandbox
 
             float y = panel.y + 46f;
             float left = panel.x + 18f;
-            float innerWidth = panel.width - 36f;
+
+            // Deux colonnes : les reglages a gauche, les commandes a droite. Les commandes vivent
+            // ici et pas dans le HUD parce qu'elles ne servent qu'une fois — un rappel permanent a
+            // l'ecran est du bruit des qu'on les connait, mais les chercher dans un README en
+            // pleine partie est pire.
+            float helpWidth = panel.width > 600f ? 300f : 0f;
+            float innerWidth = panel.width - 36f - (helpWidth > 0f ? helpWidth + 18f : 0f);
+
+            if (helpWidth > 0f) DrawHelp(new Rect(panel.xMax - helpWidth - 18f, y, helpWidth, height - 64f));
 
             y = Section(left, y, innerWidth, "TOI", _playerAccent);
 
@@ -344,6 +352,67 @@ namespace UberBagarre.Sandbox
                 "sur le terrain. Changer un maximum de vie ne soigne pas : c'est un\n" +
                 "reglage, pas un bonus.",
                 hint, new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.75f), 1f);
+        }
+
+        /// <summary>Rappel des commandes. Utile une fois, mais cette fois-là, indispensable.</summary>
+        private void DrawHelp(Rect rect)
+        {
+            GuiKit.Fill(rect, new Color(0f, 0f, 0f, 0.30f));
+            GuiKit.Outline(rect, 1f, new Color(1f, 1f, 1f, 0.12f));
+
+            GuiKit.OutlinedLabel(new Rect(rect.x + 12f, rect.y + 6f, rect.width - 24f, 20f),
+                "COMMANDES", GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleLeft),
+                _accent, new Color(0f, 0f, 0f, 0.85f), 1f);
+
+            string[,] rows =
+            {
+                { "WASD / ZQSD", "Se deplacer" },
+                { "Maj", "Courir  (13 end./s)" },
+                { "C", "S'accroupir" },
+                { "C en courant", "Glissade  (18 end.)" },
+                { "Espace", "Sauter" },
+                { "", "" },
+                { "Clic gauche", "Direct" },
+                { "Clic droit", "Crochet" },
+                { "Clic molette", "Uppercut" },
+                { "F", "Coup de pied de face" },
+                { "V", "Coup de pied bas" },
+                { "", "" },
+                { "Ctrl maintenu", "Garde  (-72 %)" },
+                { "Ctrl au bon moment", "PARADE  (0,26 s)" },
+                { "Alt", "Esquive" },
+                { "", "" },
+                { "F1", "Overlay de diagnostic" },
+                { "R", "Relancer le combat" },
+                { "Echap", "Liberer le curseur" }
+            };
+
+            GUIStyle key = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GUIStyle action = GuiKit.Style(11, FontStyle.Normal, TextAnchor.MiddleLeft);
+
+            float y = rect.y + 28f;
+
+            for (int i = 0; i < rows.GetLength(0); i++)
+            {
+                if (string.IsNullOrEmpty(rows[i, 0]))
+                {
+                    y += 7f;
+                    continue;
+                }
+
+                GuiKit.OutlinedLabel(new Rect(rect.x + 12f, y, 122f, 16f), rows[i, 0], key,
+                    new Color(1f, 1f, 1f, 0.85f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+                GuiKit.OutlinedLabel(new Rect(rect.x + 138f, y, rect.width - 150f, 16f), rows[i, 1], action,
+                    new Color(1f, 1f, 1f, 0.58f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+                y += 16f;
+            }
+
+            GuiKit.OutlinedLabel(new Rect(rect.x + 12f, rect.yMax - 44f, rect.width - 24f, 38f),
+                "Viser decide la ZONE touchee. Le reticule\nannonce laquelle, avant de frapper.",
+                GuiKit.Style(11, FontStyle.Italic, TextAnchor.UpperLeft),
+                new Color(_accent.r, _accent.g, _accent.b, 0.75f), new Color(0f, 0f, 0f, 0.8f), 1f);
         }
 
         private void ResetToDefaults()
