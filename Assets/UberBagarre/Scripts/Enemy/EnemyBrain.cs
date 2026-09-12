@@ -50,12 +50,14 @@ namespace UberBagarre.Enemy
         private float _attackRange = 1.10f;
 
         [Header("Rythme")]
-        [SerializeField, Min(0f)] private float _attackDelayMin = 0.55f;
-        [SerializeField, Min(0f)] private float _attackDelayMax = 1.5f;
+        [SerializeField, Min(0f)] private float _attackDelayMin = 0.30f;
+        [SerializeField, Min(0f)] private float _attackDelayMax = 0.85f;
 
         [SerializeField, Min(0f)]
-        [Tooltip("Temps d'immobilite apres un coup, avant de reprendre l'initiative.")]
-        private float _postAttackPause = 0.35f;
+        [Tooltip("Temps d'immobilite apres un coup, avant de reprendre l'initiative. Resserre en " +
+                 "meme temps que les coups du joueur : un adversaire qui attend une seconde entre " +
+                 "deux coups transforme le combat en tour par tour.")]
+        private float _postAttackPause = 0.18f;
 
         [SerializeField, Range(0f, 1f)]
         [Tooltip("Part du temps passee a tourner autour de la cible plutot qu'a rester face a elle.")]

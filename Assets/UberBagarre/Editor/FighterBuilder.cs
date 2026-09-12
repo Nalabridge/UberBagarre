@@ -75,9 +75,22 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        public static Result BuildBody(Transform parent, Skin skin, bool withHead, Faction faction, GameObject owner)
+        /// <summary>
+        /// Construit le corps.
+        ///
+        /// <paramref name="parent"/> est l'objet SOUS lequel le corps vit — en pratique le nœud
+        /// d'inclinaison, qui basculera quand le combattant tombe.
+        /// <paramref name="motionRoot"/> est la racine du personnage, qui reste TOUJOURS debout.
+        ///
+        /// Les deux sont distincts volontairement : le cycle de marche mesure le sol et
+        /// l'orientation depuis la racine. S'il les mesurait depuis un nœud qui bascule, les
+        /// cibles de pied partiraient à l'horizontale pendant la chute.
+        /// </summary>
+        public static Result BuildBody(Transform parent, Transform motionRoot, Skin skin, bool withHead,
+            Faction faction, GameObject owner)
         {
             ProceduralMeshFactory.EnsureLibrary();
+            if (motionRoot == null) motionRoot = parent;
 
             Result result = new Result();
             result.Body = EditorBuildUtility.CreateEmpty("Body", parent, Vector3.zero);
@@ -128,7 +141,7 @@ namespace UberBagarre.EditorTools
 
             result.Locomotion = result.Body.AddComponent<ProceduralLocomotion>();
             SerializedWiring.SetObject(result.Locomotion, "_rig", result.Rig);
-            SerializedWiring.SetObject(result.Locomotion, "_root", parent);
+            SerializedWiring.SetObject(result.Locomotion, "_root", motionRoot);
 
             return result;
         }
@@ -348,48 +361,64 @@ namespace UberBagarre.EditorTools
         // ------------------------------------------------------------------ tête
 
         /// <summary>
-        /// Tête de l'adversaire : crâne, mâchoire, arcade, nez, oreilles, yeux, cheveux.
+        /// Tête de l'adversaire : un crâne d'un seul maillage, plus les quelques détails qui
+        /// portent réellement une information.
         ///
-        /// Une boîte unique suffisait à prouver que la hurtbox de tête fonctionnait, mais pas à
-        /// se battre contre quelqu'un : sans mâchoire ni arcade, impossible de dire de quel côté
-        /// l'adversaire regarde, donc impossible de lire ses intentions. L'ASYMÉTRIE
-        /// avant / arrière est ce qui compte ici, pas le détail.
+        /// La version précédente empilait dix boîtes adoucies. Le résultat se lisait pour ce qu'il
+        /// était — dix boîtes — parce que les jointures entre les blocs sont visibles sous tous
+        /// les angles et qu'aucune n'existe sur un visage. Le crâne est donc maintenant une
+        /// surface continue (voir <see cref="ProceduralMeshFactory.Head"/>), et on n'y ajoute que
+        /// ce qui change la lecture du combat :
         ///
-        /// Le sommet du crâne arrive vers 1,73 m pour un corps de 1,80 m, et les yeux à 1,62 m,
-        /// exactement à la hauteur de caméra du joueur — les deux combattants se regardent
-        /// réellement dans les yeux.
+        /// - les YEUX, seuls éléments sombres : ils donnent la direction du regard de loin ;
+        /// - les SOURCILS, qui cadrent les yeux et évitent le visage inexpressif ;
+        /// - la BOUCHE, une simple fente : sans elle le bas du visage est vide ;
+        /// - le NEZ et les OREILLES, qui cassent la silhouette et donnent l'échelle.
+        ///
+        /// Sommet du crâne vers 1,72 m pour un corps de 1,80 m, et yeux à 1,62 m — exactement la
+        /// hauteur de caméra du joueur. Les deux combattants se regardent donc vraiment.
         /// </summary>
         private static void BuildHead(Transform neck, Skin skin)
         {
-            Box("JawVisual", neck, new Vector3(0f, 0.105f, 0.020f),
-                new Vector3(0.128f, 0.085f, 0.150f), skin.Flesh);
+            // Le crane : un seul maillage, legerement avance par rapport a la nuque.
+            ProceduralMeshFactory.CreateVisual(ProceduralMeshFactory.Head, "SkullVisual", neck,
+                new Vector3(0f, 0.186f, 0.012f), Quaternion.identity,
+                new Vector3(0.176f, 0.238f, 0.208f), skin.Flesh);
 
-            Box("SkullVisual", neck, new Vector3(0f, 0.185f, 0.002f),
-                new Vector3(0.172f, 0.195f, 0.195f), skin.Flesh);
+            // Calotte de cheveux : le meme crane, a peine plus grand, mais ECRASE en hauteur pour
+            // ne couvrir que le sommet. Epouser la forme du crane est ce qui la distingue d'un
+            // chapeau pose dessus.
+            ProceduralMeshFactory.CreateVisual(ProceduralMeshFactory.Head, "HairVisual", neck,
+                new Vector3(0f, 0.252f, -0.004f), Quaternion.identity,
+                new Vector3(0.182f, 0.132f, 0.214f), skin.Shirt);
 
-            Box("BrowVisual", neck, new Vector3(0f, 0.216f, 0.080f),
-                new Vector3(0.150f, 0.030f, 0.050f), skin.Flesh);
+            // Nez : segment conique vers l'avant et le bas. Petit - un nez trop marque fait
+            // caricature, et ce n'est pas le style vise.
+            BoneAt("NoseVisual", neck, new Vector3(0f, 0.178f, 0.076f), Quaternion.Euler(28f, 0f, 0f),
+                0.034f, 0.013f, skin.Flesh);
 
-            // Nez : segment conique oriente vers l'avant et legerement vers le bas.
-            BoneAt("NoseVisual", neck, new Vector3(0f, 0.170f, 0.072f), Quaternion.Euler(22f, 0f, 0f),
-                0.038f, 0.014f, skin.Flesh);
+            Box("MouthVisual", neck, new Vector3(0f, 0.128f, 0.082f),
+                new Vector3(0.050f, 0.011f, 0.014f), skin.Shoe);
 
             for (int i = 0; i < 2; i++)
             {
                 float sign = i == 0 ? -1f : 1f;
                 string side = i == 0 ? "Left" : "Right";
 
-                Box(side + "EarVisual", neck, new Vector3(sign * 0.086f, 0.176f, -0.006f),
-                    new Vector3(0.020f, 0.058f, 0.042f), skin.Flesh);
+                // Oreille : tres aplatie contre le crane, a hauteur des tempes.
+                Box(side + "EarVisual", neck, new Vector3(sign * 0.084f, 0.186f, -0.002f),
+                    new Vector3(0.016f, 0.054f, 0.038f), skin.Flesh);
 
-                // Les yeux sont le seul element sombre du visage : c'est ce qui donne
-                // instantanement la direction du regard, meme de loin.
-                Box(side + "EyeVisual", neck, new Vector3(sign * 0.040f, 0.198f, 0.084f),
-                    new Vector3(0.030f, 0.022f, 0.020f), skin.Shoe);
+                // Oeil : quasi spherique et sombre, legerement enfonce dans l'orbite.
+                ProceduralMeshFactory.CreateVisual(ProceduralMeshFactory.Knuckle, side + "EyeVisual", neck,
+                    new Vector3(sign * 0.039f, 0.206f, 0.074f), Quaternion.identity,
+                    Vector3.one * 0.027f, skin.Shoe);
+
+                // Sourcil : legerement incline vers l'interieur, ce qui suffit a donner un regard
+                // un peu dur plutot qu'un visage neutre.
+                Box(side + "BrowVisual", neck, new Vector3(sign * 0.040f, 0.228f, 0.076f),
+                    new Vector3(0.052f, 0.013f, 0.022f), skin.Shirt);
             }
-
-            Box("HairVisual", neck, new Vector3(0f, 0.252f, -0.010f),
-                new Vector3(0.180f, 0.112f, 0.200f), skin.Shirt);
         }
 
         // ------------------------------------------------------------------ formes

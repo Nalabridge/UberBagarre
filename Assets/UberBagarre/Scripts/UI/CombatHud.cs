@@ -58,6 +58,16 @@ namespace UberBagarre.UI
         [SerializeField, Min(1f)] private float _crosshairLength = 7f;
         [SerializeField] private Color _crosshairColor = new Color(1f, 1f, 1f, 0.6f);
 
+        [Header("Zone visee")]
+        [SerializeField]
+        [Tooltip("Annonce sous le reticule la zone du corps actuellement visee. A laisser actif : " +
+                 "c'est la seule facon pour le joueur d'apprendre ou viser.")]
+        private bool _showAimedZone = true;
+
+        [SerializeField] private Color _zoneHeadColor = new Color(1f, 0.45f, 0.35f);
+        [SerializeField] private Color _zoneBodyColor = new Color(1f, 0.93f, 0.72f);
+        [SerializeField] private Color _zoneLegColor = new Color(0.58f, 0.86f, 1f);
+
         [Header("Garde")]
         [SerializeField] private Color _guardColor = new Color(0.55f, 0.75f, 1f, 0.75f);
         [SerializeField] private Color _parryColor = new Color(1f, 0.95f, 0.55f);
@@ -112,8 +122,59 @@ namespace UberBagarre.UI
             if (!_visible) return;
 
             DrawCrosshair();
+            DrawAimedZone();
             DrawGuard();
             DrawPlayerPanel();
+        }
+
+        /// <summary>
+        /// Nom de la zone visée, juste sous le réticule.
+        ///
+        /// C'est l'information qui rend le système de zones jouable. Trois multiplicateurs de
+        /// dégâts différents ne valent rien si le joueur ne sait pas, AVANT de frapper, lequel
+        /// il est en train de cibler : il frapperait au hasard et conclurait que les dégâts
+        /// sont aléatoires. Le chiffre affiché après le coup arrive trop tard pour viser.
+        ///
+        /// Le même résolveur sert ici et au combat, donc ce qui est annoncé est exactement ce
+        /// qui sera touché — il ne peut pas y avoir de désaccord entre les deux.
+        /// </summary>
+        private void DrawAimedZone()
+        {
+            if (!_showAimedZone || _player == null) return;
+
+            Hurtbox zone = AimResolver.Resolve(_player);
+            if (zone == null) return;
+
+            Color color = ZoneColor(zone.Zone);
+            float cx = Screen.width * 0.5f;
+            float cy = Screen.height * 0.5f;
+
+            GUIStyle style = GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter);
+
+            GuiKit.OutlinedLabel(new Rect(cx - 90f, cy + 22f, 180f, 18f),
+                ZoneName(zone.Zone) + "   x" + zone.DamageMultiplier.ToString("0.0"), style,
+                new Color(color.r, color.g, color.b, 0.9f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
+        }
+
+        private Color ZoneColor(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return _zoneHeadColor;
+                case HitZone.Leg: return _zoneLegColor;
+                default: return _zoneBodyColor;
+            }
+        }
+
+        private static string ZoneName(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return "TETE";
+                case HitZone.Leg: return "JAMBES";
+                case HitZone.Arm: return "BRAS";
+                default: return "CORPS";
+            }
         }
 
         /// <summary>

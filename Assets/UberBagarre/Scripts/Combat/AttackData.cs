@@ -108,6 +108,15 @@ namespace UberBagarre.Combat
         [Tooltip("Temps mort avant de pouvoir relancer un coup, apres la fin de celui-ci.")]
         [Min(0f)] public float cooldown = 0.04f;
 
+        [Header("Enchainement")]
+        [Range(0.3f, 1f)]
+        [Tooltip("A partir de quelle fraction du coup un AUTRE coup peut l'interrompre. " +
+                 "C'est ce qui rend le combat nerveux : sans annulation d'enchainement, il faut " +
+                 "attendre que la main soit revenue a la garde avant de relancer, et chaque coup " +
+                 "se paie de sa duree complete. A garder superieur a hitWindowEnd, sinon on " +
+                 "peut annuler son propre coup avant qu'il ne touche.")]
+        public float comboCancelAt = 0.68f;
+
         [Header("Fenetre d'impact (fraction de la duree)")]
         [Range(0f, 1f)] public float hitWindowStart = 0.42f;
         [Range(0f, 1f)] public float hitWindowEnd = 0.62f;
@@ -133,6 +142,21 @@ namespace UberBagarre.Combat
         [Header("Animation")]
         [Tooltip("Plusieurs variantes evitent que chaque coup soit rigoureusement identique.")]
         public List<AttackVariant> variants = new List<AttackVariant>();
+
+        /// <summary>
+        /// Version du format de données.
+        ///
+        /// Elle existe pour une raison très concrète : le générateur ne réécrit jamais un asset
+        /// existant, pour ne pas effacer les réglages faits à la main. Conséquence, affiner un
+        /// timing dans le code n'avait AUCUN effet pour qui avait déjà ouvert le projet une fois —
+        /// et le symptôme était « tu n'as pas fait ce que j'ai demandé ». En comparant cette
+        /// version, le générateur sait distinguer « asset réglé par l'utilisateur » de « asset
+        /// créé par une version antérieure du code ».
+        /// </summary>
+        public const int CurrentVersion = 2;
+
+        [HideInInspector]
+        public int dataVersion;
 
         /// <summary>Nom d'asset des coups de base, pour le chargement de secours depuis Resources.</summary>
         public const string ResourceFolder = "Attaques";

@@ -79,11 +79,23 @@ namespace UberBagarre.Combat
             }
         }
 
+        /// <summary>
+        /// Vrai si le coup en cours est assez avancé pour qu'un autre l'interrompe.
+        ///
+        /// La fenêtre s'ouvre après la fenêtre d'impact : on ne peut donc pas annuler un coup
+        /// avant qu'il ait eu sa chance de toucher.
+        /// </summary>
+        public bool CanChain
+        {
+            get { return _attack != null && Progress >= _attack.comboCancelAt; }
+        }
+
         public bool IsReady
         {
             get
             {
-                if (_attack != null || _cooldown > 0f) return false;
+                if (_cooldown > 0f) return false;
+                if (_attack != null) return CanChain;
                 return _combatant == null || _combatant.CanAct;
             }
         }
@@ -123,10 +135,26 @@ namespace UberBagarre.Combat
         {
             if (attack == null) return Refuse("aucune donnee d'attaque assignee (champ vide dans PlayerCombat ?)");
             if (_hands == null) return Refuse("pas de FirstPersonHands assigne sur l'executeur");
-            if (_attack != null) return Refuse("un coup est deja en cours");
             if (_cooldown > 0f) return Refuse("temps de repos : " + _cooldown.ToString("0.00") + " s");
 
-            if (_combatant != null && !_combatant.CanAct)
+            bool chaining = false;
+
+            if (_attack != null)
+            {
+                if (!CanChain)
+                {
+                    return Refuse("coup en cours a " + (Progress * 100f).ToString("0") + " %, " +
+                                  "enchainable a partir de " + (_attack.comboCancelAt * 100f).ToString("0") + " %");
+                }
+
+                chaining = true;
+            }
+
+            // L'etat Attacking ne doit pas bloquer un enchainement : c'est NOTRE propre coup qui
+            // le tient. Tout autre etat (touche, etourdi, esquive, mort) refuse toujours.
+            bool ownAttackState = _combatant != null && _combatant.State.Current == CombatantState.Attacking;
+
+            if (_combatant != null && !_combatant.CanAct && !(chaining && ownAttackState))
             {
                 return Refuse("etat du combattant : " + _combatant.State.Current);
             }
@@ -145,9 +173,13 @@ namespace UberBagarre.Combat
                 _combatant.Stamina.TrySpend(attack.staminaCost);
             }
 
+            // Le coup precedent est clos SANS temps de repos : l'enchainement est la recompense
+            // d'avoir laisse le coup aller au bout de sa fenetre d'impact, il ne doit pas se payer.
+            if (chaining) EndCurrent(false);
+
             if (_combatant != null)
             {
-                _combatant.State.TryEnter(CombatantState.Attacking, attack.duration);
+                _combatant.State.Enter(CombatantState.Attacking, attack.duration);
             }
 
             _attack = attack;
@@ -183,14 +215,27 @@ namespace UberBagarre.Combat
         /// <summary>Interrompt le coup en cours (touché, étourdi, mort).</summary>
         public void Cancel()
         {
+            EndCurrent(false);
+        }
+
+        /// <summary>
+        /// Clôt le coup en cours. <paramref name="applyCooldown"/> distingue les trois fins
+        /// possibles : le coup est allé au bout (repos normal), il est annulé par un coup reçu
+        /// (pas de repos, on est déjà puni par l'état Hit), ou il est enchaîné (pas de repos non
+        /// plus, c'est la récompense).
+        /// </summary>
+        private void EndCurrent(bool applyCooldown)
+        {
             if (_attack == null) return;
 
             CloseHitWindow();
             ClearLimbPose();
+
             if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
             if (_cameraPunch != null) _cameraPunch.SetDriven(Vector3.zero, Vector3.zero);
 
             AttackData finished = _attack;
+            if (applyCooldown) _cooldown = finished.cooldown;
             _attack = null;
 
             Action<AttackData> ended = AttackEnded;
@@ -371,7 +416,10 @@ namespace UberBagarre.Combat
             template.Direction = transform.forward;
             template.Attack = _attack;
 
-            hitbox.Open(template, _attack.hitRadius);
+            // La zone visee est resolue A L'OUVERTURE du coup, pas a l'impact : c'est ce que le
+            // joueur visait quand il a engage son poing qui doit compter, pas ce qui se trouve
+            // sous son reticule deux dixiemes de seconde plus tard.
+            hitbox.Open(template, _attack.hitRadius, AimResolver.Resolve(_combatant));
             _hitWindowOpen = true;
         }
 
@@ -414,18 +462,7 @@ namespace UberBagarre.Combat
 
         private void Finish()
         {
-            CloseHitWindow();
-            ClearLimbPose();
-
-            if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
-            if (_cameraPunch != null) _cameraPunch.SetDriven(Vector3.zero, Vector3.zero);
-
-            AttackData finished = _attack;
-            _cooldown = finished.cooldown;
-            _attack = null;
-
-            Action<AttackData> ended = AttackEnded;
-            if (ended != null) ended(finished);
+            EndCurrent(true);
         }
     }
 }

@@ -36,14 +36,10 @@ namespace UberBagarre.Combat
         [SerializeField] private AttackExecutor _executor;
 
         [SerializeField]
-        [Tooltip("Le transform du corps. Il bascule autour de sa base, c'est-a-dire des pieds.")]
+        [Tooltip("Le noeud d'inclinaison : il contient TOUT ce qui doit se coucher avec le " +
+                 "combattant - le corps, ses zones touchables et le repere de ses bras. Il " +
+                 "bascule autour de sa base, c'est-a-dire des pieds.")]
         private Transform _bodyRoot;
-
-        [SerializeField]
-        [Tooltip("Le parent des zones touchables. Il bascule AVEC le corps : sans ca, un " +
-                 "combattant couche garderait ses zones debout, et sa tete resterait frappable " +
-                 "a 1,60 m au-dessus d'un corps allonge au sol.")]
-        private Transform _hurtboxRoot;
 
         [SerializeField] private MonoBehaviour _impulseReceiver;
 
@@ -75,6 +71,14 @@ namespace UberBagarre.Combat
         [SerializeField, Min(0f)]
         [Tooltip("Delai minimal entre deux chutes. Sans lui, un adversaire au sol n'en sort jamais.")]
         private float _cooldown = 3f;
+
+        [Header("Mort")]
+        [SerializeField]
+        [Tooltip("A la mort, s'effondrer et NE PAS se relever. A activer pour un combattant vu en " +
+                 "premiere personne, qui n'a pas de ragdoll : sans ca, mourir ne se voit pas du " +
+                 "tout puisqu'on ne voit pas son propre corps. A laisser decoche quand un " +
+                 "DeathRagdoll prend le relais, pour que les deux ne se disputent pas le corps.")]
+        private bool _collapseOnDeath;
 
         [Header("Timings (secondes)")]
         [SerializeField, Min(0.05f)] private float _fallDuration = 0.42f;
@@ -113,10 +117,10 @@ namespace UberBagarre.Combat
         private Vector3 _fallEuler;
         private float _weight;
         private float _getUpProgress;
+        private bool _terminal;
         private Quaternion _restRotation = Quaternion.identity;
         private Vector3 _cameraRestPosition;
         private Quaternion _cameraRestRotation = Quaternion.identity;
-        private Quaternion _hurtboxRestRotation = Quaternion.identity;
 
         public bool IsDown { get { return _phase != Phase.Standing; } }
         public float Weight { get { return _weight; } }
@@ -134,7 +138,6 @@ namespace UberBagarre.Combat
             // importe peut tres bien arriver avec une orientation de base non identitaire, et se
             // relever le remettrait alors de travers.
             if (_bodyRoot != null) _restRotation = _bodyRoot.localRotation;
-            if (_hurtboxRoot != null) _hurtboxRestRotation = _hurtboxRoot.localRotation;
 
             if (_cameraRoot != null)
             {
@@ -145,12 +148,49 @@ namespace UberBagarre.Combat
 
         private void OnEnable()
         {
-            if (_health != null) _health.Damaged += OnDamaged;
+            if (_health == null) return;
+
+            _health.Damaged += OnDamaged;
+            _health.Died += OnDied;
         }
 
         private void OnDisable()
         {
-            if (_health != null) _health.Damaged -= OnDamaged;
+            if (_health == null) return;
+
+            _health.Damaged -= OnDamaged;
+            _health.Died -= OnDied;
+        }
+
+        private void OnDied(DamageInfo info)
+        {
+            if (_collapseOnDeath) Collapse(info.Direction);
+        }
+
+        /// <summary>
+        /// Chute définitive : on tombe et on ne se relève plus.
+        ///
+        /// Sert à la mort d'un combattant qui n'a pas de ragdoll. Le relevé est le seul chemin de
+        /// sortie de la chute, donc il suffit de le condamner.
+        /// </summary>
+        public void Collapse(Vector3 direction)
+        {
+            _terminal = true;
+
+            if (IsDown)
+            {
+                // Deja au sol : on empeche simplement le releve.
+                if (_phase == Phase.GettingUp)
+                {
+                    _phase = Phase.Grounded;
+                    _weight = 1f;
+                }
+
+                _timer = float.MaxValue;
+                return;
+            }
+
+            Knockdown(direction);
         }
 
         private void OnDamaged(DamageInfo info)
@@ -221,7 +261,7 @@ namespace UberBagarre.Combat
             {
                 case Phase.Falling:
                     _phase = Phase.Grounded;
-                    _timer = _groundedDuration;
+                    _timer = _terminal ? float.MaxValue : _groundedDuration;
                     break;
 
                 case Phase.Grounded:
@@ -297,11 +337,12 @@ namespace UberBagarre.Combat
             Quaternion tilt = Quaternion.Euler(
                 _fallEuler * _weight + new Vector3(settle, 0f, settle * 0.4f + roll));
 
+            // Un SEUL transform bascule, et tout ce qui doit tomber est dessous : le corps, les
+            // zones touchables, le repere des bras. Faire basculer trois transforms en parallele
+            // finissait forcement par en oublier un — et l'oubli etait spectaculaire : les bras
+            // de l'adversaire restaient tendus vers le ciel a hauteur d'yeux pendant qu'il etait
+            // couche au sol, parce que la cible de leur IK vivait hors du corps.
             if (_bodyRoot != null) _bodyRoot.localRotation = _restRotation * tilt;
-
-            // Les zones touchables suivent exactement la meme bascule que le corps : ce qui est
-            // au sol doit etre au sol pour la detection aussi, sinon la chute n'est qu'un effet.
-            if (_hurtboxRoot != null) _hurtboxRoot.localRotation = _hurtboxRestRotation * tilt;
 
             if (_locomotion != null)
             {
@@ -344,6 +385,7 @@ namespace UberBagarre.Combat
         public void ForceStand()
         {
             _phase = Phase.Standing;
+            _terminal = false;
             _timer = 0f;
             _cooldownTimer = 0f;
             _weight = 0f;
@@ -352,7 +394,6 @@ namespace UberBagarre.Combat
             _getUpProgress = 0f;
 
             if (_bodyRoot != null) _bodyRoot.localRotation = _restRotation;
-            if (_hurtboxRoot != null) _hurtboxRoot.localRotation = _hurtboxRestRotation;
 
             if (_locomotion != null)
             {

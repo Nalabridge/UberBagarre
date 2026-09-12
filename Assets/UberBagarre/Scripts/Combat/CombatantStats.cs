@@ -70,6 +70,17 @@ namespace UberBagarre.Combat
 
         private readonly List<StatModifier> _modifiers = new List<StatModifier>();
 
+        /// <summary>
+        /// Valeurs de base écrasées à l'exécution.
+        ///
+        /// Distinct des modificateurs, et c'est important : un modificateur s'AJOUTE à la base et
+        /// sert aux bonus d'équipement ou de buff. Un override REMPLACE la base, ce qui est la
+        /// seule façon correcte de répondre à « mets-moi 250 PV » — avec un modificateur il
+        /// faudrait connaître la base pour calculer l'écart, et le réglage casserait dès que la
+        /// base change.
+        /// </summary>
+        private readonly Dictionary<StatType, float> _overrides = new Dictionary<StatType, float>();
+
         public event Action Changed;
 
         public float Get(StatType stat)
@@ -87,6 +98,31 @@ namespace UberBagarre.Combat
             }
 
             return value * (1f + percent);
+        }
+
+        /// <summary>Remplace la valeur de base d'une stat. Les modificateurs continuent de s'y ajouter.</summary>
+        public void SetOverride(StatType stat, float value)
+        {
+            _overrides[stat] = value;
+            Raise();
+        }
+
+        public void ClearOverride(StatType stat)
+        {
+            if (_overrides.Remove(stat)) Raise();
+        }
+
+        public void ClearAllOverrides()
+        {
+            if (_overrides.Count == 0) return;
+
+            _overrides.Clear();
+            Raise();
+        }
+
+        public bool HasOverride(StatType stat)
+        {
+            return _overrides.ContainsKey(stat);
         }
 
         public void AddModifier(StatModifier modifier)
@@ -109,6 +145,9 @@ namespace UberBagarre.Combat
 
         private float Base(StatType stat)
         {
+            float overridden;
+            if (_overrides.TryGetValue(stat, out overridden)) return overridden;
+
             if (_baseStats != null)
             {
                 switch (stat)

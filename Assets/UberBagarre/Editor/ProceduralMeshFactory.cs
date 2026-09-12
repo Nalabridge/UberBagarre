@@ -28,6 +28,7 @@ namespace UberBagarre.EditorTools
         public const string EvenSegment = "M_SegmentDroit";
         public const string RoundedBox = "M_BoiteAdoucie";
         public const string Knuckle = "M_Articulation";
+        public const string Head = "M_Tete";
 
         /// <summary>Crée (ou récupère) la bibliothèque de formes de base.</summary>
         public static void EnsureLibrary()
@@ -46,6 +47,7 @@ namespace UberBagarre.EditorTools
             GetOrCreate(EvenSegment, () => BuildTaperedCapsule(1f, 0.5f, 0.46f, 24, 6, 8));
             GetOrCreate(RoundedBox, () => BuildRoundedBox(0.62f, 16));
             GetOrCreate(Knuckle, () => BuildRoundedBox(0.85f, 12));
+            GetOrCreate(Head, () => BuildHeadMesh(30, 22));
         }
 
         public static Mesh Load(string meshName)
@@ -217,6 +219,120 @@ namespace UberBagarre.EditorTools
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return mesh;
+        }
+
+        // ------------------------------------------------------------------ tête
+
+        // Proportions du crâne, en fractions du diamètre. Une tête humaine n'est ni sphérique
+        // ni symétrique : elle est plus haute que large, plus profonde que large, et son volume
+        // est derrière les oreilles, pas devant.
+        private const float SkullWidth = 0.86f;
+        private const float SkullHeight = 1.06f;
+        private const float SkullDepth = 0.98f;
+
+        /// <summary>
+        /// Tête d'un seul maillage, obtenue en déformant une sphère.
+        ///
+        /// Pourquoi ça remplace un assemblage de boîtes : une tête faite de six primitives
+        /// empilées — crâne, mâchoire, arcade, nez — se lit toujours comme six primitives
+        /// empilées, quelles que soient les proportions. Les jointures entre les blocs sont
+        /// visibles sous tous les angles, et aucune d'elles n'existe sur un vrai visage.
+        ///
+        /// Une surface continue ne coûte pas plus cher (660 sommets) et la forme peut alors porter
+        /// ce qui compte vraiment : le MENTON, qui se resserre et avance, et l'ARRIÈRE DU CRÂNE,
+        /// plus volumineux que le front. Ces deux asymétries suffisent à ce qu'on lise
+        /// instantanément de quel côté quelqu'un regarde — l'information la plus utile en combat.
+        /// </summary>
+        private static Mesh BuildHeadMesh(int longitudeSegments, int latitudeSegments)
+        {
+            longitudeSegments = Mathf.Max(8, longitudeSegments);
+            latitudeSegments = Mathf.Max(6, latitudeSegments);
+
+            int perRow = longitudeSegments + 1;
+            Vector3[] vertices = new Vector3[perRow * (latitudeSegments + 1)];
+            Vector3[] normals = new Vector3[vertices.Length];
+            Vector2[] uv = new Vector2[vertices.Length];
+
+            for (int lat = 0; lat <= latitudeSegments; lat++)
+            {
+                float v = lat / (float)latitudeSegments;
+                float phi = v * Mathf.PI;
+
+                for (int lon = 0; lon <= longitudeSegments; lon++)
+                {
+                    float u = lon / (float)longitudeSegments;
+                    float theta = u * Mathf.PI * 2f;
+
+                    Vector3 unit = new Vector3(
+                        Mathf.Sin(phi) * Mathf.Sin(theta),
+                        Mathf.Cos(phi),
+                        Mathf.Sin(phi) * Mathf.Cos(theta));
+
+                    int index = lat * perRow + lon;
+                    vertices[index] = ShapeSkull(unit);
+                    uv[index] = new Vector2(u, 1f - v);
+
+                    // Normale de l'ellipsoide, calculee et non deduite des triangles. Une sphere
+                    // UV duplique ses sommets sur la couture de longitude : RecalculateNormals y
+                    // laisserait une ligne d'ombrage verticale en plein milieu du visage.
+                    normals[index] = new Vector3(
+                        unit.x / (SkullWidth * SkullWidth),
+                        unit.y / (SkullHeight * SkullHeight),
+                        unit.z / (SkullDepth * SkullDepth)).normalized;
+                }
+            }
+
+            List<int> triangles = new List<int>(latitudeSegments * longitudeSegments * 6);
+
+            for (int lat = 0; lat < latitudeSegments; lat++)
+            {
+                for (int lon = 0; lon < longitudeSegments; lon++)
+                {
+                    int a = lat * perRow + lon;
+                    int b = a + 1;
+                    int c = a + perRow;
+                    int d = c + 1;
+
+                    triangles.Add(a); triangles.Add(c); triangles.Add(b);
+                    triangles.Add(b); triangles.Add(c); triangles.Add(d);
+                }
+            }
+
+            Mesh mesh = new Mesh();
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.uv = uv;
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateTangents();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>Déforme un point de la sphère unitaire en forme de crâne. Résultat de diamètre 1.</summary>
+        private static Vector3 ShapeSkull(Vector3 unit)
+        {
+            Vector3 p = new Vector3(unit.x * SkullWidth, unit.y * SkullHeight, unit.z * SkullDepth);
+
+            // Arriere du crane plus volumineux que le front : c'est la premiere asymetrie qui
+            // fait lire une tete comme une tete et non comme un ballon.
+            if (p.z < 0f) p.z *= 1f + 0.12f * (-unit.z) * Mathf.Clamp01(unit.y + 0.5f);
+
+            // Menton : la tete se resserre fortement vers le bas et avance. Deuxieme asymetrie,
+            // et celle qui donne la direction du regard quand on ne voit pas les yeux.
+            float low = Mathf.Clamp01(-unit.y);
+            p.x *= 1f - 0.36f * low * low;
+            p.z += 0.13f * low * low;
+            p.y *= 1f + 0.08f * low;
+
+            // Front legerement aplati : un front spherique fait visage de nourrisson.
+            if (unit.z > 0.45f && unit.y > 0.25f) p.z -= 0.06f * (unit.z - 0.45f);
+
+            // Creux des tempes, juste au-dessus des oreilles.
+            float temple = Mathf.Clamp01(1f - Mathf.Abs(unit.y - 0.2f) * 4.5f) *
+                           Mathf.Clamp01(Mathf.Abs(unit.x) * 1.7f - 0.55f);
+            p.x *= 1f - 0.09f * temple;
+
+            return p * 0.5f;
         }
 
         // ------------------------------------------------------------------ boîte adoucie

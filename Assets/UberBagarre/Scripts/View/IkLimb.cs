@@ -59,6 +59,7 @@ namespace UberBagarre.View
 
         public Transform End { get { return _end; } }
         public Transform Upper { get { return _upper; } }
+        public Transform Lower { get { return _lower; } }
         public float TotalLength { get { return _upperLength + _lowerLength; } }
 
         /// <summary>Position de l'articulation de base (épaule ou hanche).</summary>

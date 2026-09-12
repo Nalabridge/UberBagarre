@@ -11,8 +11,16 @@ namespace UberBagarre.View
     /// barre de vie est une abstraction : les bleus, eux, racontent où on a frappé. Ils rendent
     /// aussi lisible qu'on travaille au corps plutôt qu'à la tête.
     ///
-    /// Chaque marque est attachée à l'OS le plus proche du point d'impact : elle suit donc le
-    /// mouvement du combattant au lieu de flotter en l'air.
+    /// Chaque marque est attachée au MORCEAU DE CORPS VISIBLE le plus proche du point d'impact,
+    /// et posée sur sa surface. C'est le point crucial, et la première version s'est trompée
+    /// dessus : le point d'impact transporté par le coup est calculé sur la zone touchable, dont
+    /// le rayon est volontairement généreux — 38 cm pour le torse, alors que le torse visible en
+    /// fait 19. Les marques apparaissaient donc à une vingtaine de centimètres de la peau, en
+    /// suspension dans le vide à côté du personnage. Elles étaient bien là, simplement nulle part
+    /// où on pouvait les voir.
+    ///
+    /// On reprojette donc le point sur la boîte englobante du rendu le plus proche. Ça ne demande
+    /// aucun collider sur la chair, et ça marche aussi avec un modèle 3D importé.
     /// </summary>
     public class BruiseSystem : MonoBehaviour
     {
@@ -22,12 +30,12 @@ namespace UberBagarre.View
         [SerializeField] private Material _bruiseMaterial;
 
         [Header("Apparence")]
-        [SerializeField, Min(0.01f)] private float _minSize = 0.055f;
-        [SerializeField, Min(0.01f)] private float _maxSize = 0.115f;
+        [SerializeField, Min(0.01f)] private float _minSize = 0.085f;
+        [SerializeField, Min(0.01f)] private float _maxSize = 0.170f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Decalage vers l'exterieur, pour eviter que la marque ne disparaisse dans la peau.")]
-        private float _surfaceOffset = 0.012f;
+        private float _surfaceOffset = 0.008f;
 
         [SerializeField, Min(1)] private int _maxBruises = 16;
 
@@ -36,7 +44,7 @@ namespace UberBagarre.View
         private float _fadeInDuration = 0.5f;
 
         private readonly List<Transform> _bruises = new List<Transform>();
-        private readonly List<Transform> _bones = new List<Transform>();
+        private readonly List<Renderer> _surfaces = new List<Renderer>();
         private readonly List<float> _ages = new List<float>();
         private readonly List<Vector3> _targetScales = new List<Vector3>();
 
@@ -45,7 +53,7 @@ namespace UberBagarre.View
             if (_combatant == null) _combatant = GetComponent<Combatant>();
             if (_rig == null) _rig = GetComponentInChildren<BodyRig>(true);
 
-            CollectBones();
+            CollectSurfaces();
         }
 
         private void OnEnable()
@@ -58,67 +66,93 @@ namespace UberBagarre.View
             if (_combatant != null) _combatant.Damaged -= OnDamaged;
         }
 
-        /// <summary>Os candidats pour accrocher une marque. Volontairement peu nombreux : il s'agit de trouver la zone, pas la position exacte.</summary>
-        private void CollectBones()
+        /// <summary>
+        /// Tous les morceaux de corps visibles. On cherche une SURFACE, pas un os.
+        ///
+        /// Le rendu le plus proche du point d'impact donne à la fois l'endroit où coller la
+        /// marque et le transform auquel l'accrocher, donc elle suit forcément le mouvement du
+        /// membre touché. Chercher l'os le plus proche laissait le choix de la position ouvert,
+        /// et c'est là que la première version posait les marques dans le vide.
+        /// </summary>
+        private void CollectSurfaces()
         {
-            if (_rig == null) return;
+            Transform root = _rig != null ? _rig.transform : transform;
 
-            AddBone(_rig.Pelvis);
-            AddBone(_rig.Spine);
-            AddBone(_rig.Chest);
-            AddBone(_rig.Neck);
+            Renderer[] found = root.GetComponentsInChildren<Renderer>(true);
 
-            AddLimbBones(_rig.LeftArm);
-            AddLimbBones(_rig.RightArm);
-            AddLimbBones(_rig.LeftLeg);
-            AddLimbBones(_rig.RightLeg);
-        }
+            for (int i = 0; i < found.Length; i++)
+            {
+                if (found[i] == null) continue;
+                if (found[i].GetComponent<ParticleSystem>() != null) continue;
 
-        private void AddLimbBones(IkLimb limb)
-        {
-            if (limb == null) return;
+                _surfaces.Add(found[i]);
+            }
 
-            AddBone(limb.Upper);
-            AddBone(limb.End);
-        }
-
-        private void AddBone(Transform bone)
-        {
-            if (bone != null) _bones.Add(bone);
+            if (_surfaces.Count == 0)
+            {
+                Debug.LogWarning("[UberBagarre] BruiseSystem sur " + name + " ne trouve aucune surface " +
+                                 "visible : aucune marque ne pourra etre posee.", this);
+            }
         }
 
         private void OnDamaged(Combatant combatant, DamageInfo info)
         {
-            if (_bruiseMaterial == null || _bones.Count == 0) return;
+            if (_bruiseMaterial == null || _surfaces.Count == 0) return;
             if (info.Point == Vector3.zero) return;
 
             // Un coup pris sur les avant-bras ne marque pas la peau.
             if (info.Blocked) return;
 
-            Transform bone = NearestBone(info.Point);
-            if (bone == null) return;
+            Vector3 surfacePoint;
+            Renderer surface = NearestSurface(info.Point, out surfacePoint);
+            if (surface == null) return;
 
-            SpawnBruise(bone, info);
+            SpawnBruise(AttachPointOf(surface), surfacePoint, info);
         }
 
-        private Transform NearestBone(Vector3 worldPoint)
+        /// <summary>
+        /// Le morceau de corps visible dont la surface est la plus proche du point d'impact, et
+        /// le point de cette surface où poser la marque.
+        /// </summary>
+        private Renderer NearestSurface(Vector3 worldPoint, out Vector3 surfacePoint)
         {
-            Transform best = null;
+            Renderer best = null;
+            surfacePoint = worldPoint;
             float bestSqr = float.MaxValue;
 
-            for (int i = 0; i < _bones.Count; i++)
+            for (int i = 0; i < _surfaces.Count; i++)
             {
-                float sqr = (_bones[i].position - worldPoint).sqrMagnitude;
+                Renderer renderer = _surfaces[i];
+                if (renderer == null) continue;
+
+                Vector3 candidate = renderer.bounds.ClosestPoint(worldPoint);
+                float sqr = (candidate - worldPoint).sqrMagnitude;
                 if (sqr >= bestSqr) continue;
 
                 bestSqr = sqr;
-                best = _bones[i];
+                surfacePoint = candidate;
+                best = renderer;
             }
 
             return best;
         }
 
-        private void SpawnBruise(Transform bone, DamageInfo info)
+        /// <summary>
+        /// À quel transform accrocher la marque : l'OS qui porte le visuel, pas le visuel.
+        ///
+        /// Les morceaux de chair sont des maillages unitaires mis à l'échelle — un torse, c'est la
+        /// boîte adoucie redimensionnée en (0,34 ; 0,30 ; 0,22). Accrocher la marque dessus la
+        /// ferait hériter de cette échelle non uniforme : elle serait étirée en largeur et écrasée
+        /// en profondeur, et d'autant plus déformée qu'elle est posée en biais. Les os, eux, sont
+        /// à l'échelle 1.
+        /// </summary>
+        private static Transform AttachPointOf(Renderer surface)
+        {
+            Transform visual = surface.transform;
+            return visual.parent != null ? visual.parent : visual;
+        }
+
+        private void SpawnBruise(Transform surface, Vector3 surfacePoint, DamageInfo info)
         {
             GameObject bruise = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             bruise.name = "Bleu";
@@ -130,21 +164,24 @@ namespace UberBagarre.View
             renderer.sharedMaterial = _bruiseMaterial;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-            bruise.transform.SetParent(bone, true);
+            // On repousse legerement la marque vers l'exterieur, sinon elle se noie dans la
+            // surface et devient invisible sous certains angles. La direction vient du coup
+            // lui-meme : c'est la normale la plus juste qu'on ait sans collider sur la chair.
+            Vector3 outward = -info.Direction;
+            if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
+            outward.Normalize();
 
-            // On repousse legerement la marque vers l'exterieur du corps, sinon elle se noie
-            // dans la surface et devient invisible sous certains angles.
-            Vector3 outward = (info.Point - bone.position);
-            outward = outward.sqrMagnitude > 0.0001f ? outward.normalized : -info.Direction.normalized;
-
-            bruise.transform.position = info.Point + outward * _surfaceOffset;
+            // Le parent est pris APRES avoir fixe la pose monde, pour que l'echelle locale du
+            // membre ne deforme pas la marque.
+            bruise.transform.position = surfacePoint + outward * _surfaceOffset;
             bruise.transform.rotation = Quaternion.LookRotation(outward, Vector3.up);
+            bruise.transform.SetParent(surface, true);
 
             float severity = Mathf.Clamp01(info.Amount / 20f);
             float size = Mathf.Lerp(_minSize, _maxSize, severity);
 
             // Aplatie contre la peau plutot que spherique : une bosse ferait verrue.
-            Vector3 target = new Vector3(size, size * 0.85f, size * 0.32f);
+            Vector3 target = new Vector3(size, size * 0.85f, size * 0.30f);
             bruise.transform.localScale = Vector3.zero;
 
             _bruises.Add(bruise.transform);

@@ -11,7 +11,8 @@ namespace UberBagarre.Combat
     /// - la hitbox n'est active que pendant la fenêtre définie par l'attaque, jamais en permanence ;
     /// - chaque cible n'est comptée QU'UNE FOIS par attaque, sinon un coup qui balaye 6 frames
     ///   infligerait six fois ses dégâts ;
-    /// - parmi les zones touchables d'une même cible, on retient LA PLUS PROCHE du point d'impact.
+    /// - la zone touchée est celle que l'attaquant VISAIT, et seulement à défaut la plus proche
+    ///   du point d'impact.
     ///
     /// Détection par sphère plutôt que par collider physique : le poing traverse beaucoup de
     /// distance en une frame, et une sphère testée à chaque frame sur la position réelle du poing
@@ -54,11 +55,27 @@ namespace UberBagarre.Combat
             get { return _origin != null ? _origin : transform; }
         }
 
+        /// <summary>
+        /// Zone que l'attaquant visait au moment d'ouvrir le coup, ou null s'il ne visait personne.
+        ///
+        /// Elle prime sur la géométrie, et c'est le cœur du problème que ça résout. Choisir la
+        /// zone « la plus proche du poing » paraît juste et ne l'est pas : une zone large rayonne
+        /// plus loin qu'une zone petite, donc le torse (38 cm de rayon) gagnait contre la tête
+        /// (18 cm) même quand le joueur visait franchement la tête. Autrement dit, plus une zone
+        /// est grosse, plus elle volait les coups des autres — et le torse gagnait toujours.
+        ///
+        /// En vue première personne, la seule règle que le joueur puisse apprendre est « je touche
+        /// là où je vise ». Le réticule décide donc, et la géométrie ne sert plus qu'à savoir SI
+        /// le coup porte.
+        /// </summary>
+        public Hurtbox AimedZone { get; set; }
+
         /// <summary>Ouvre la fenêtre d'impact pour une attaque donnée.</summary>
-        public void Open(DamageInfo template, float radius)
+        public void Open(DamageInfo template, float radius, Hurtbox aimedZone)
         {
             _template = template;
             _radius = Mathf.Max(0.01f, radius);
+            AimedZone = aimedZone;
             _open = true;
             _alreadyHit.Clear();
             _hasPreviousPosition = false;
@@ -97,15 +114,14 @@ namespace UberBagarre.Combat
         }
 
         /// <summary>
-        /// Teste une sphère et retient, pour chaque combattant touché, la zone la plus proche.
+        /// Teste une sphère et retient UNE zone par combattant touché : celle qui était visée si
+        /// elle fait partie des candidates, sinon la plus proche du point d'impact.
         ///
-        /// Ce tri est indispensable dès qu'un combattant a plusieurs zones touchables qui se
-        /// recouvrent — et elles se recouvrent forcément, parce qu'il ne doit pas exister de
-        /// trou entre la cuisse et le bas du torse. Sans tri, c'est l'ORDRE de retour de
-        /// Physics.OverlapSphere qui décidait de la zone : le même coup au même endroit pouvait
-        /// compter comme jambe, corps ou tête d'une fois sur l'autre, avec des dégâts et des
-        /// conséquences différents. Le système de zones était donc inutilisable, sans qu'aucune
-        /// erreur n'apparaisse nulle part.
+        /// Un tri est indispensable dès qu'un combattant a plusieurs zones touchables qui se
+        /// recouvrent — et elles se recouvrent forcément, parce qu'il ne doit pas exister de trou
+        /// entre la cuisse et le bas du torse. Sans tri, c'est l'ORDRE de retour de
+        /// Physics.OverlapSphere qui décidait : le même coup au même endroit pouvait compter
+        /// comme jambe, corps ou tête d'une fois sur l'autre, sans qu'aucune erreur apparaisse.
         /// </summary>
         private void TestSphere(Vector3 position)
         {
@@ -128,6 +144,12 @@ namespace UberBagarre.Combat
 
                 Vector3 point = collider.ClosestPoint(position);
                 float distance = (point - position).sqrMagnitude;
+
+                // La zone visee gagne quelle que soit la distance : c'est elle qui porte
+                // l'intention du joueur. On lui donne une distance negative pour qu'aucune autre
+                // ne puisse la remplacer.
+                bool aimed = AimedZone != null && hurtbox == AimedZone;
+                if (aimed) distance = -1f;
 
                 int existing = _candidateOwners.IndexOf(hurtbox.Owner);
 

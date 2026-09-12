@@ -6,8 +6,17 @@ namespace UberBagarre.Feedback
     /// Sons de combat générés par code.
     ///
     /// Le projet ne contient aucun fichier audio, et le silence est le pire retour d'impact
-    /// possible : sans son, un coup qui touche et un coup qui rate se ressemblent. Ces clips
-    /// sont synthétisés au démarrage — ils sont grossiers, mais ils portent l'information.
+    /// possible : sans son, un coup qui touche et un coup qui rate se ressemblent.
+    ///
+    /// La première version sonnait comme un jouet, et la raison est précise : ses impacts étaient
+    /// construits autour d'un SINUS. Un sinus a une hauteur, donc on entend une NOTE — et un corps
+    /// frappé ne joue pas de note. Le cri de douleur, lui, était deux sinus harmoniques : une voix
+    /// synthétique, c'est-à-dire la chose la plus ridicule qu'on puisse produire par accident.
+    ///
+    /// Règle appliquée partout ici : **du bruit filtré, jamais d'oscillateur audible.** Ce qui
+    /// distingue un son d'impact d'un autre n'est pas sa hauteur mais son enveloppe (attaque,
+    /// décroissance) et son contenu spectral (à quel point il est sourd). Un poing qui touche, un
+    /// avant-bras qui bloque et une expiration ne diffèrent que par ces deux choses.
     ///
     /// Remplacer par de vrais échantillons se fera en assignant les champs ci-dessous ;
     /// la génération ne sert que de secours.
@@ -26,15 +35,16 @@ namespace UberBagarre.Feedback
         [SerializeField] private AudioClip _parryClip;
 
         [Header("Volumes")]
-        [SerializeField, Range(0f, 1f)] private float _impactVolume = 0.8f;
-        [SerializeField, Range(0f, 1f)] private float _whooshVolume = 0.3f;
-        [SerializeField, Range(0f, 1f)] private float _hurtVolume = 0.6f;
+        [SerializeField, Range(0f, 1f)] private float _impactVolume = 0.85f;
+        [SerializeField, Range(0f, 1f)] private float _whooshVolume = 0.22f;
+        [SerializeField, Range(0f, 1f)] private float _hurtVolume = 0.45f;
         [SerializeField, Range(0f, 1f)] private float _blockVolume = 0.7f;
-        [SerializeField, Range(0f, 1f)] private float _parryVolume = 0.85f;
+        [SerializeField, Range(0f, 1f)] private float _parryVolume = 0.8f;
 
         [SerializeField, Range(0f, 0.5f)]
-        [Tooltip("Variation aleatoire de hauteur : deux coups identiques ne sonnent jamais pareil.")]
-        private float _pitchVariation = 0.12f;
+        [Tooltip("Variation aleatoire de hauteur : deux coups identiques ne sonnent jamais pareil. " +
+                 "C'est le seul remede contre l'effet mitraillette quand on enchaine.")]
+        private float _pitchVariation = 0.17f;
 
         private AudioSource _source;
 
@@ -44,11 +54,13 @@ namespace UberBagarre.Feedback
             _source.playOnAwake = false;
             _source.spatialBlend = 0f;
 
-            if (_lightImpactClip == null) _lightImpactClip = BuildImpact("Impact_Leger", 0.18f, 150f, 0.55f);
-            if (_heavyImpactClip == null) _heavyImpactClip = BuildImpact("Impact_Lourd", 0.32f, 85f, 0.8f);
-            if (_whooshClip == null) _whooshClip = BuildWhoosh("Whoosh");
-            if (_hurtClip == null) _hurtClip = BuildGrunt("Douleur");
-            if (_blockClip == null) _blockClip = BuildBlock("Blocage");
+            // Les deux impacts partagent leur construction et ne diffèrent que par la masse
+            // apparente : plus le coup est lourd, plus il est sourd et plus il traîne.
+            if (_lightImpactClip == null) _lightImpactClip = BuildImpact("Impact_Leger", 0.085f, 0.30f, 0.10f, 0.55f);
+            if (_heavyImpactClip == null) _heavyImpactClip = BuildImpact("Impact_Lourd", 0.200f, 0.12f, 0.045f, 0.85f);
+            if (_whooshClip == null) _whooshClip = BuildWhoosh("Souffle_Poing");
+            if (_hurtClip == null) _hurtClip = BuildBreath("Expiration");
+            if (_blockClip == null) _blockClip = BuildImpact("Blocage", 0.070f, 0.18f, 0.10f, 0.25f);
             if (_parryClip == null) _parryClip = BuildParry("Parade");
         }
 
@@ -71,8 +83,7 @@ namespace UberBagarre.Feedback
         /// Bloquer et parer DOIVENT s'entendre différemment d'un coup encaissé.
         ///
         /// C'est le seul retour immédiat dont dispose le joueur pour savoir si sa garde a servi :
-        /// la barre de vie ne bouge pas dans les deux cas, et un coup bloqué à 28 % ressemble
-        /// beaucoup à un coup qui rate. Le son est donc l'information, pas une décoration.
+        /// la barre de vie ne bouge presque pas dans les deux cas.
         /// </summary>
         public void PlayBlock()
         {
@@ -95,145 +106,178 @@ namespace UberBagarre.Feedback
         // ------------------------------------------------------------------ synthèse
 
         /// <summary>
-        /// Un impact = un « corps » grave qui donne le poids, plus un claquement bruité bref
-        /// qui donne la netteté. L'un sans l'autre sonne soit mou, soit creux.
+        /// Impact : un transitoire de bruit, et rien d'autre.
+        ///
+        /// Trois paramètres suffisent à couvrir tout l'éventail entre un jab sur la joue et un
+        /// coup de pied dans les côtes :
+        /// - <paramref name="duration"/> : combien de temps ça traîne ;
+        /// - <paramref name="brightness"/> : ouverture du filtre. Haut = claquement de peau,
+        ///   bas = masse sourde. C'est ce réglage, et lui seul, qui porte le poids du coup ;
+        /// - <paramref name="attack"/> : temps de montée. Quelques millisecondes, sinon on perd
+        ///   la sensation de choc et le son devient un « wouf » ;
+        /// - <paramref name="weight"/> : part de grondement très grave sous le transitoire.
+        ///
+        /// Aucune hauteur n'est imposée nulle part : le son n'a donc pas de note, ce qui est la
+        /// condition pour qu'il ne sonne pas comme un jouet.
         /// </summary>
-        private static AudioClip BuildImpact(string clipName, float duration, float baseFrequency, float bodyMix)
+        private static AudioClip BuildImpact(string clipName, float duration, float brightness,
+            float attack, float weight)
         {
             int samples = Mathf.CeilToInt(duration * SampleRate);
             float[] data = new float[samples];
 
-            float phase = 0f;
+            int attackSamples = Mathf.Max(1, Mathf.CeilToInt(attack * 0.1f * SampleRate));
+
+            // Deux poles de passe-bas : un seul laisse passer un souffle de radio trop aigu.
+            float lowA = 0f;
+            float lowB = 0f;
+
+            // Passe-haut tres bas, pour que le grondement ne devienne pas un bourdonnement continu.
+            float rumble = 0f;
+            float rumblePrevious = 0f;
 
             for (int i = 0; i < samples; i++)
             {
                 float t = i / (float)samples;
-
-                // La hauteur descend pendant l'impact : c'est ce qui fait "thump" et non "bip".
-                float frequency = baseFrequency * Mathf.Lerp(1f, 0.45f, t);
-                phase += frequency / SampleRate * Mathf.PI * 2f;
-
-                float body = Mathf.Sin(phase) * Mathf.Exp(-t * 9f);
-                float crack = (Random.value * 2f - 1f) * Mathf.Exp(-t * 55f);
-
-                data[i] = Mathf.Clamp(body * bodyMix + crack * (1f - bodyMix * 0.5f), -1f, 1f);
-            }
-
-            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
-            clip.SetData(data, 0);
-            return clip;
-        }
-
-        /// <summary>Bruit filtré avec une enveloppe en cloche : le déplacement d'air d'un poing.</summary>
-        private static AudioClip BuildWhoosh(string clipName)
-        {
-            int samples = Mathf.CeilToInt(0.22f * SampleRate);
-            float[] data = new float[samples];
-            float previous = 0f;
-
-            for (int i = 0; i < samples; i++)
-            {
-                float t = i / (float)samples;
-
                 float noise = Random.value * 2f - 1f;
 
-                // Filtre passe-bas du pauvre : un bruit brut serait un sifflement de radio.
-                previous = Mathf.Lerp(previous, noise, 0.22f);
+                // Le filtre se FERME au fil du son : l'impact commence clair et devient sourd,
+                // comme une surface qui absorbe. Un filtre fixe donne un son plat et synthetique.
+                float cutoff = Mathf.Lerp(brightness, brightness * 0.18f, t);
+                lowA = Mathf.Lerp(lowA, noise, cutoff);
+                lowB = Mathf.Lerp(lowB, lowA, cutoff);
 
-                float envelope = Mathf.Sin(t * Mathf.PI);
-                data[i] = previous * envelope * envelope * 0.8f;
+                // Grondement : du bruit tres fortement filtre, donc sans hauteur identifiable.
+                rumble = Mathf.Lerp(rumble, noise, 0.012f);
+                float body = rumble - rumblePrevious * 0.5f;
+                rumblePrevious = rumble;
+
+                float envelope = i < attackSamples
+                    ? i / (float)attackSamples
+                    : Mathf.Exp(-(t - attackSamples / (float)samples) * 14f);
+
+                data[i] = Mathf.Clamp((lowB * (1f - weight * 0.45f) + body * weight * 5.5f) * envelope, -1f, 1f);
             }
 
-            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
-            clip.SetData(data, 0);
-            return clip;
+            return Finish(clipName, data);
         }
 
-        /// <summary>
-        /// Blocage : un « tac » mat et sourd, sans résonance. Le coup s'arrête sur l'avant-bras,
-        /// donc pas de claquement — c'est l'absence de brillance qui dit « absorbé ».
-        /// </summary>
-        private static AudioClip BuildBlock(string clipName)
+        /// <summary>Bruit filtré en cloche : le déplacement d'air d'un poing qui passe. Discret, sinon il masque l'impact.</summary>
+        private static AudioClip BuildWhoosh(string clipName)
         {
-            int samples = Mathf.CeilToInt(0.14f * SampleRate);
+            int samples = Mathf.CeilToInt(0.18f * SampleRate);
             float[] data = new float[samples];
-            float phase = 0f;
+            float low = 0f;
             float previous = 0f;
 
             for (int i = 0; i < samples; i++)
             {
                 float t = i / (float)samples;
+                float noise = Random.value * 2f - 1f;
 
-                float frequency = 190f * Mathf.Lerp(1f, 0.55f, t);
-                phase += frequency / SampleRate * Mathf.PI * 2f;
+                // Le filtre s'ouvre puis se referme : le souffle passe devant l'oreille.
+                float cutoff = 0.04f + Mathf.Sin(t * Mathf.PI) * 0.16f;
+                low = Mathf.Lerp(low, noise, cutoff);
 
-                // Le bruit est fortement filtre : un claquement net sonnerait comme un impact
-                // reussi, et le joueur croirait avoir pris le coup.
-                previous = Mathf.Lerp(previous, Random.value * 2f - 1f, 0.10f);
+                // Difference premiere : enleve les tres basses, qui feraient un grondement.
+                float band = low - previous;
+                previous = low;
 
-                float envelope = Mathf.Exp(-t * 22f);
-                data[i] = Mathf.Clamp((Mathf.Sin(phase) * 0.7f + previous * 0.5f) * envelope, -1f, 1f);
+                float envelope = Mathf.Sin(t * Mathf.PI);
+                data[i] = Mathf.Clamp(band * envelope * envelope * 7f, -1f, 1f);
             }
 
-            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
-            clip.SetData(data, 0);
-            return clip;
+            return Finish(clipName, data);
         }
 
         /// <summary>
-        /// Parade : un « ting » clair et montant. À l'opposé exact du blocage — une parade est
-        /// une réussite, et ça doit s'entendre dès la première fois, sans explication.
+        /// Expiration de celui qui encaisse. Du souffle, pas de voix.
+        ///
+        /// La version précédente empilait deux sinus pour imiter des cordes vocales. Une voix
+        /// synthétisée par deux oscillateurs ne ressemble à aucune voix humaine — elle ressemble à
+        /// un jouet, et c'est le seul son que tout le monde remarque. Ici il n'y a que du bruit
+        /// filtré : l'information « il a pris le coup » passe par le souffle, qui est d'ailleurs
+        /// ce qu'on entend vraiment quand quelqu'un se fait toucher au corps.
         /// </summary>
-        private static AudioClip BuildParry(string clipName)
+        private static AudioClip BuildBreath(string clipName)
         {
             int samples = Mathf.CeilToInt(0.26f * SampleRate);
             float[] data = new float[samples];
-            float phase = 0f;
-            float harmonicPhase = 0f;
+            float low = 0f;
+            float previous = 0f;
 
             for (int i = 0; i < samples; i++)
             {
                 float t = i / (float)samples;
+                float noise = Random.value * 2f - 1f;
 
-                // La hauteur MONTE : c'est ce qui distingue une reussite d'un impact, dont la
-                // hauteur descend toujours.
-                float frequency = 780f * Mathf.Lerp(1f, 1.35f, Mathf.Sqrt(t));
-                phase += frequency / SampleRate * Mathf.PI * 2f;
-                harmonicPhase += frequency * 2.51f / SampleRate * Mathf.PI * 2f;
+                // Le souffle part ouvert et se ferme : une expiration, pas un sifflement continu.
+                float cutoff = Mathf.Lerp(0.13f, 0.02f, t);
+                low = Mathf.Lerp(low, noise, cutoff);
 
-                float tone = Mathf.Sin(phase) + Mathf.Sin(harmonicPhase) * 0.30f;
-                float click = (Random.value * 2f - 1f) * Mathf.Exp(-t * 120f) * 0.4f;
+                float band = low - previous * 0.35f;
+                previous = low;
 
-                data[i] = Mathf.Clamp(tone * 0.5f * Mathf.Exp(-t * 11f) + click, -1f, 1f);
+                // Attaque rapide, longue queue : le souffle s'echappe d'un coup puis s'eteint.
+                float envelope = Mathf.Min(1f, t * 12f) * Mathf.Exp(-t * 4.2f);
+                data[i] = Mathf.Clamp(band * envelope * 4.5f, -1f, 1f);
             }
 
-            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
-            clip.SetData(data, 0);
-            return clip;
+            return Finish(clipName, data);
         }
 
-        /// <summary>Souffle grave et court : la réaction de celui qui encaisse.</summary>
-        private static AudioClip BuildGrunt(string clipName)
+        /// <summary>
+        /// Parade : un claquement net et très court.
+        ///
+        /// Il doit se distinguer d'un impact sans pour autant jouer une note — la version
+        /// précédente était un « ting » musical montant, exactement le genre de son qui fait
+        /// dessin animé. Ici c'est le même transitoire qu'un impact, mais beaucoup plus bref et
+        /// beaucoup plus clair : l'oreille lit « sec et réussi » sans qu'aucune hauteur soit jouée.
+        /// </summary>
+        private static AudioClip BuildParry(string clipName)
         {
-            int samples = Mathf.CeilToInt(0.30f * SampleRate);
+            int samples = Mathf.CeilToInt(0.075f * SampleRate);
             float[] data = new float[samples];
-            float phase = 0f;
+            float low = 0f;
+            float previous = 0f;
 
             for (int i = 0; i < samples; i++)
             {
                 float t = i / (float)samples;
+                float noise = Random.value * 2f - 1f;
 
-                float frequency = 115f * Mathf.Lerp(1.1f, 0.75f, t) * (1f + Mathf.Sin(t * 40f) * 0.03f);
-                phase += frequency / SampleRate * Mathf.PI * 2f;
+                low = Mathf.Lerp(low, noise, 0.55f);
 
-                float voice = Mathf.Sin(phase) + Mathf.Sin(phase * 2f) * 0.35f;
-                float breath = (Random.value * 2f - 1f) * 0.25f;
-                float envelope = Mathf.Sin(Mathf.Clamp01(t * 1.4f) * Mathf.PI) * Mathf.Exp(-t * 2.5f);
+                float bright = low - previous * 0.6f;
+                previous = low;
 
-                data[i] = Mathf.Clamp((voice * 0.45f + breath) * envelope, -1f, 1f);
+                float envelope = Mathf.Min(1f, t * 60f) * Mathf.Exp(-t * 26f);
+                data[i] = Mathf.Clamp(bright * envelope * 1.6f, -1f, 1f);
             }
 
-            AudioClip clip = AudioClip.Create(clipName, samples, 1, SampleRate, false);
+            return Finish(clipName, data);
+        }
+
+        /// <summary>
+        /// Normalise et termine le clip.
+        ///
+        /// La normalisation n'est pas cosmétique : un son synthétisé à partir de bruit a une
+        /// amplitude qui dépend du tirage aléatoire, donc deux générations du même clip ne
+        /// sortiraient pas au même volume. Régler les volumes dans l'Inspector serait alors
+        /// impossible.
+        /// </summary>
+        private static AudioClip Finish(string clipName, float[] data)
+        {
+            float peak = 0f;
+            for (int i = 0; i < data.Length; i++) peak = Mathf.Max(peak, Mathf.Abs(data[i]));
+
+            if (peak > 0.0001f)
+            {
+                float gain = 0.92f / peak;
+                for (int i = 0; i < data.Length; i++) data[i] *= gain;
+            }
+
+            AudioClip clip = AudioClip.Create(clipName, data.Length, 1, SampleRate, false);
             clip.SetData(data, 0);
             return clip;
         }
