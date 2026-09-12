@@ -90,6 +90,9 @@ namespace UberBagarre.Player
         public float SpeedMultiplier { get; set; }
         public bool InputLocked { get; set; }
 
+        /// <summary>Coupé de l'extérieur quand l'endurance est vide.</summary>
+        public bool SprintBlocked { get; set; }
+
         public bool IsGrounded { get; private set; }
         public bool IsSprinting { get; private set; }
         public bool IsCrouching { get; private set; }
@@ -157,7 +160,7 @@ namespace UberBagarre.Player
 
         private bool EvaluateSprint(Vector2 moveInput)
         {
-            if (_input == null || InputLocked || IsSliding || IsCrouching) return false;
+            if (_input == null || InputLocked || IsSliding || IsCrouching || SprintBlocked) return false;
             if (!_input.SprintHeld || !IsGrounded) return false;
             if (moveInput.sqrMagnitude < 0.01f) return false;
 

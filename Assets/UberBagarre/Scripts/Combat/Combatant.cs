@@ -57,6 +57,16 @@ namespace UberBagarre.Combat
         public event Action<Combatant, DamageInfo> Damaged;
         public event Action<Combatant> Died;
 
+        /// <summary>
+        /// Émis pour N'IMPORTE quel combattant touché.
+        ///
+        /// Un événement statique plutôt qu'un singleton : l'affichage des dégâts et le compteur
+        /// de combos doivent réagir à tout le monde, y compris à des combattants apparus après
+        /// eux. Les câbler un par un obligerait à re-câbler à chaque nouvel ennemi. Ce n'est pas
+        /// un gestionnaire global — juste une notification, sans état ni logique.
+        /// </summary>
+        public static event Action<Combatant, DamageInfo> AnyDamaged;
+
         private void Awake()
         {
             if (_health == null) _health = GetComponent<HealthSystem>();
@@ -146,6 +156,9 @@ namespace UberBagarre.Combat
         {
             Action<Combatant, DamageInfo> damaged = Damaged;
             if (damaged != null) damaged(this, info);
+
+            Action<Combatant, DamageInfo> anyDamaged = AnyDamaged;
+            if (anyDamaged != null) anyDamaged(this, info);
         }
 
         private void OnDied(DamageInfo info)

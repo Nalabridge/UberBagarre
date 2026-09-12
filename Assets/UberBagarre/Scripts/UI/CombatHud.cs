@@ -4,58 +4,60 @@ using UnityEngine;
 namespace UberBagarre.UI
 {
     /// <summary>
-    /// Interface de combat : vie et endurance du joueur, vie de l'adversaire, réticule.
+    /// HUD de combat stylisé, inspiré des jeux de combat : plaque inclinée, gros chiffre à
+    /// contour épais, jauges biseautées.
     ///
-    /// Dessinée en IMGUI et non avec un Canvas, volontairement : un projet Unity neuf n'a ni
-    /// police, ni TextMeshPro, ni sprite. Cette interface ne dépend donc de RIEN et s'affiche
-    /// identiquement dans les trois render pipelines. Tout est réglable dans l'Inspector.
+    /// Le gros chiffre existe pour une raison précise : en pleine action, on ne lit pas une
+    /// barre, on la perçoit. Un chiffre qui change de couleur et qui tressaute donne l'état de
+    /// santé d'un coup d'œil périphérique, sans quitter l'adversaire des yeux.
     ///
-    /// Le passage à un vrai Canvas se fera en remplaçant ce seul composant : rien d'autre ne
-    /// lit ces valeurs.
+    /// Dessiné en IMGUI : aucune police importée, aucun sprite, aucun Canvas — donc rendu
+    /// identique dans les trois render pipelines d'un projet neuf.
     /// </summary>
     public class CombatHud : MonoBehaviour
     {
-        [Header("Joueur")]
+        [Header("References")]
         [SerializeField] private HealthSystem _playerHealth;
         [SerializeField] private StaminaSystem _playerStamina;
         [SerializeField] private Combatant _player;
 
         [Header("Affichage")]
         [SerializeField] private bool _visible = true;
-        [SerializeField, Min(40f)] private float _barWidth = 320f;
-        [SerializeField, Min(6f)] private float _barHeight = 18f;
-        [SerializeField, Min(0f)] private float _margin = 26f;
-        [SerializeField, Min(1f)] private float _borderThickness = 2f;
+        [SerializeField, Min(0f)] private float _margin = 30f;
+        [SerializeField, Min(80f)] private float _panelWidth = 330f;
+        [SerializeField, Min(50f)] private float _panelHeight = 116f;
+
+        [SerializeField, Range(-12f, 12f)]
+        [Tooltip("Inclinaison de la plaque. C'est ce qui donne le cachet 'jeu de combat'.")]
+        private float _tiltAngle = -3.5f;
 
         [Header("Couleurs")]
-        [SerializeField] private Color _healthColor = new Color(0.78f, 0.17f, 0.14f);
-        [SerializeField] private Color _healthLowColor = new Color(0.95f, 0.45f, 0.1f);
-        [SerializeField] private Color _staminaColor = new Color(0.85f, 0.73f, 0.25f);
-        [SerializeField] private Color _backgroundColor = new Color(0.05f, 0.05f, 0.06f, 0.72f);
-        [SerializeField] private Color _borderColor = new Color(0f, 0f, 0f, 0.85f);
-        [SerializeField] private Color _enemyColor = new Color(0.72f, 0.2f, 0.2f);
+        [SerializeField] private Color _panelColor = new Color(0.07f, 0.08f, 0.11f, 0.88f);
+        [SerializeField] private Color _panelBorder = new Color(0.95f, 0.85f, 0.45f, 0.95f);
+        [SerializeField] private Color _healthColor = new Color(0.36f, 0.82f, 0.38f);
+        [SerializeField] private Color _healthMidColor = new Color(0.95f, 0.78f, 0.2f);
+        [SerializeField] private Color _healthLowColor = new Color(0.92f, 0.25f, 0.2f);
+        [SerializeField] private Color _staminaColor = new Color(0.35f, 0.7f, 0.95f);
+        [SerializeField] private Color _trailColor = new Color(1f, 0.95f, 0.85f, 0.9f);
+        [SerializeField] private Color _barBackground = new Color(0.03f, 0.03f, 0.05f, 0.92f);
+        [SerializeField] private Color _barBorder = new Color(0f, 0f, 0f, 0.95f);
 
         [Header("Reticule")]
         [SerializeField] private bool _showCrosshair = true;
-        [SerializeField, Min(1f)] private float _crosshairSize = 4f;
-        [SerializeField] private Color _crosshairColor = new Color(1f, 1f, 1f, 0.55f);
+        [SerializeField, Min(1f)] private float _crosshairSize = 3f;
+        [SerializeField, Min(1f)] private float _crosshairGap = 7f;
+        [SerializeField, Min(1f)] private float _crosshairLength = 7f;
+        [SerializeField] private Color _crosshairColor = new Color(1f, 1f, 1f, 0.6f);
 
-        [Header("Adversaire")]
-        [SerializeField, Min(0f)]
-        [Tooltip("Distance au-dela de laquelle la barre de vie adverse disparait.")]
-        private float _enemyBarRange = 14f;
+        [Header("Animation de degats")]
+        [SerializeField, Min(0f)] private float _trailDelay = 0.4f;
+        [SerializeField, Min(0.01f)] private float _trailSpeed = 0.45f;
+        [SerializeField, Min(0f)] private float _shakeAmplitude = 9f;
 
-        [SerializeField, Min(40f)] private float _enemyBarWidth = 260f;
-
-        private Texture2D _pixel;
-
-        /// <summary>Vitesse à laquelle la barre de vie « retardée » rattrape la vraie valeur.</summary>
-        [Header("Effet de retard")]
-        [SerializeField, Min(0f)] private float _trailSpeed = 0.35f;
-        [SerializeField] private Color _trailColor = new Color(0.95f, 0.85f, 0.8f, 0.5f);
-
-        private float _playerTrail = 1f;
-        private float _enemyTrail = 1f;
+        private float _trail = 1f;
+        private float _trailHold;
+        private float _flash;
+        private float _shake;
 
         public bool Visible
         {
@@ -63,112 +65,122 @@ namespace UberBagarre.UI
             set { _visible = value; }
         }
 
-        private void Awake()
+        private void OnEnable()
         {
-            _pixel = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _pixel.SetPixel(0, 0, Color.white);
-            _pixel.Apply();
+            if (_playerHealth != null) _playerHealth.Damaged += OnDamaged;
         }
 
-        private void OnDestroy()
+        private void OnDisable()
         {
-            if (_pixel != null) Destroy(_pixel);
+            if (_playerHealth != null) _playerHealth.Damaged -= OnDamaged;
+        }
+
+        private void OnDamaged(DamageInfo info)
+        {
+            _flash = 1f;
+            _shake = 1f;
+            _trailHold = _trailDelay;
         }
 
         private void Update()
         {
             float dt = Time.unscaledDeltaTime;
 
-            if (_playerHealth != null)
-            {
-                _playerTrail = Mathf.MoveTowards(_playerTrail, _playerHealth.Normalized, _trailSpeed * dt);
-            }
+            _flash = Mathf.MoveTowards(_flash, 0f, dt * 6f);
+            _shake = Mathf.MoveTowards(_shake, 0f, dt * 3.2f);
 
-            Combatant enemy = FindEnemy();
-            float enemyNormalized = enemy != null && enemy.Health != null ? enemy.Health.Normalized : 1f;
-            _enemyTrail = Mathf.MoveTowards(_enemyTrail, enemyNormalized, _trailSpeed * dt);
+            if (_trailHold > 0f) _trailHold -= dt;
+            else if (_playerHealth != null) _trail = Mathf.MoveTowards(_trail, _playerHealth.Normalized, _trailSpeed * dt);
         }
 
         private void OnGUI()
         {
-            if (!_visible || _pixel == null) return;
+            if (!_visible) return;
 
-            DrawPlayerBars();
-            DrawEnemyBar();
             DrawCrosshair();
+            DrawPlayerPanel();
         }
 
-        private void DrawPlayerBars()
+        private void DrawPlayerPanel()
         {
-            float x = _margin;
-            float y = Screen.height - _margin - _barHeight * 2f - 8f;
+            if (_playerHealth == null) return;
 
-            if (_playerHealth != null)
-            {
-                Color fill = _playerHealth.Normalized <= 0.3f ? _healthLowColor : _healthColor;
-                DrawBar(new Rect(x, y, _barWidth, _barHeight), _playerHealth.Normalized, _playerTrail, fill);
-                y += _barHeight + 8f;
-            }
+            float shakeX = Mathf.Sin(Time.unscaledTime * 55f) * _shakeAmplitude * _shake;
+            float shakeY = Mathf.Cos(Time.unscaledTime * 47f) * _shakeAmplitude * 0.5f * _shake;
+
+            Rect panel = new Rect(
+                _margin + shakeX,
+                Screen.height - _margin - _panelHeight + shakeY,
+                _panelWidth, _panelHeight);
+
+            Matrix4x4 previousMatrix = GUI.matrix;
+            GUIUtility.RotateAroundPivot(_tiltAngle, panel.center);
+
+            GuiKit.Fill(new Rect(panel.x + 4f, panel.y + 5f, panel.width, panel.height), new Color(0f, 0f, 0f, 0.4f));
+            GuiKit.Outline(panel, 3f, _panelBorder);
+            GuiKit.Fill(panel, _panelColor);
+
+            // Bandeau superieur : rappelle la plaque de nom des jeux de combat.
+            GuiKit.Fill(new Rect(panel.x, panel.y, panel.width, 22f), new Color(1f, 1f, 1f, 0.07f));
+
+            GUIStyle nameStyle = GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 2f, 200f, 20f), "JOUEUR", nameStyle,
+                new Color(0.95f, 0.9f, 0.75f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
+
+            float normalized = _playerHealth.Normalized;
+            Color healthColor = normalized > 0.55f
+                ? _healthColor
+                : normalized > 0.28f ? _healthMidColor : _healthLowColor;
+
+            // Gros chiffre : on le percoit en vision peripherique, contrairement a une barre.
+            int fontSize = Mathf.RoundToInt(46f + _flash * 8f);
+            GUIStyle bigStyle = GuiKit.Style(fontSize, FontStyle.Bold, TextAnchor.MiddleLeft);
+
+            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 26f, 160f, 52f),
+                Mathf.CeilToInt(_playerHealth.Current).ToString(), bigStyle,
+                Color.Lerp(healthColor, Color.white, _flash * 0.8f), new Color(0f, 0f, 0f, 0.95f), 3f);
+
+            GUIStyle maxStyle = GuiKit.Style(16, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 62f, 160f, 20f),
+                "/ " + Mathf.RoundToInt(_playerHealth.MaxHealth), maxStyle,
+                new Color(1f, 1f, 1f, 0.55f), new Color(0f, 0f, 0f, 0.8f), 1.5f);
+
+            float barX = panel.x + 118f;
+            float barWidth = panel.width - 132f;
+
+            GuiKit.Bar(new Rect(barX, panel.y + 34f, barWidth, 20f), normalized, _trail,
+                healthColor, _trailColor, _barBackground, _barBorder, 2.5f, _flash);
 
             if (_playerStamina != null)
             {
-                DrawBar(new Rect(x, y, _barWidth * 0.78f, _barHeight * 0.62f),
-                    _playerStamina.Normalized, _playerStamina.Normalized, _staminaColor);
+                GuiKit.Bar(new Rect(barX, panel.y + 62f, barWidth * 0.86f, 11f),
+                    _playerStamina.Normalized, _playerStamina.Normalized,
+                    _playerStamina.IsEmpty ? new Color(0.45f, 0.45f, 0.5f) : _staminaColor,
+                    _trailColor, _barBackground, _barBorder, 2f, 0f);
+
+                GUIStyle small = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
+                GuiKit.OutlinedLabel(new Rect(barX, panel.y + 78f, 200f, 16f), "ENDURANCE", small,
+                    new Color(1f, 1f, 1f, 0.45f), new Color(0f, 0f, 0f, 0.8f), 1f);
             }
+
+            GUI.matrix = previousMatrix;
         }
 
-        private void DrawEnemyBar()
-        {
-            Combatant enemy = FindEnemy();
-            if (enemy == null || enemy.Health == null || !enemy.Health.IsAlive) return;
-
-            float width = _enemyBarWidth;
-            Rect rect = new Rect((Screen.width - width) * 0.5f, _margin, width, _barHeight * 0.8f);
-
-            DrawBar(rect, enemy.Health.Normalized, _enemyTrail, _enemyColor);
-        }
-
+        /// <summary>Réticule en quatre traits : il marque le centre sans masquer la cible.</summary>
         private void DrawCrosshair()
         {
             if (!_showCrosshair) return;
 
-            float size = _crosshairSize;
-            Rect rect = new Rect((Screen.width - size) * 0.5f, (Screen.height - size) * 0.5f, size, size);
+            float cx = Screen.width * 0.5f;
+            float cy = Screen.height * 0.5f;
+            float t = _crosshairSize;
+            float gap = _crosshairGap;
+            float length = _crosshairLength;
 
-            Fill(rect, _crosshairColor);
-        }
-
-        /// <summary>
-        /// Barre à deux couches : la couche « retard » descend lentement derrière la vraie valeur.
-        /// C'est ce qui rend un gros coup lisible — on voit combien on vient de perdre.
-        /// </summary>
-        private void DrawBar(Rect rect, float value, float trail, Color fillColor)
-        {
-            Fill(new Rect(rect.x - _borderThickness, rect.y - _borderThickness,
-                rect.width + _borderThickness * 2f, rect.height + _borderThickness * 2f), _borderColor);
-
-            Fill(rect, _backgroundColor);
-
-            if (trail > value)
-            {
-                Fill(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(trail), rect.height), _trailColor);
-            }
-
-            Fill(new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(value), rect.height), fillColor);
-        }
-
-        private void Fill(Rect rect, Color color)
-        {
-            Color previous = GUI.color;
-            GUI.color = color;
-            GUI.DrawTexture(rect, _pixel);
-            GUI.color = previous;
-        }
-
-        private Combatant FindEnemy()
-        {
-            if (_player == null) return null;
-            return _player.FindNearestOpponent(_enemyBarRange);
+            GuiKit.Fill(new Rect(cx - gap - length, cy - t * 0.5f, length, t), _crosshairColor);
+            GuiKit.Fill(new Rect(cx + gap, cy - t * 0.5f, length, t), _crosshairColor);
+            GuiKit.Fill(new Rect(cx - t * 0.5f, cy - gap - length, t, length), _crosshairColor);
+            GuiKit.Fill(new Rect(cx - t * 0.5f, cy + gap, t, length), _crosshairColor);
         }
     }
 }

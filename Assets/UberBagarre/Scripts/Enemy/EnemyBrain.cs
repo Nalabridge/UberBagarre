@@ -37,17 +37,17 @@ namespace UberBagarre.Enemy
         [Header("Distances (metres)")]
         [SerializeField, Min(0.2f)]
         [Tooltip("Distance a laquelle l'ennemi cherche a se tenir.")]
-        private float _preferredRange = 0.95f;
+        private float _preferredRange = 0.85f;
 
-        [SerializeField, Min(0.1f)] private float _rangeTolerance = 0.25f;
+        [SerializeField, Min(0.1f)] private float _rangeTolerance = 0.18f;
 
         [SerializeField, Min(0.2f)]
         [Tooltip("Distance maximale a laquelle il tente un coup.")]
-        private float _attackRange = 1.20f;
+        private float _attackRange = 1.10f;
 
         [Header("Rythme")]
-        [SerializeField, Min(0f)] private float _attackDelayMin = 0.9f;
-        [SerializeField, Min(0f)] private float _attackDelayMax = 2.1f;
+        [SerializeField, Min(0f)] private float _attackDelayMin = 0.55f;
+        [SerializeField, Min(0f)] private float _attackDelayMax = 1.5f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Temps d'immobilite apres un coup, avant de reprendre l'initiative.")]

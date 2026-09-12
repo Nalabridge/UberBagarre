@@ -24,20 +24,20 @@ namespace UberBagarre.Core
         public InputBinding crouch = InputBinding.FromKey(KeyCode.C);
 
         [Header("Combat")]
-        [Tooltip("Attaque principale. Le coup reellement joue est decide par l'AttackInputMap (phase 3).")]
-        public InputBinding attackPrimary = InputBinding.FromMouse(0);
+        [Tooltip("Direct : rapide, alterne gauche et droite.")]
+        public InputBinding attackStraight = InputBinding.FromMouse(0);
+
+        [Tooltip("Crochet : plus lent, plus fort, le buste tourne.")]
+        public InputBinding attackHook = InputBinding.FromMouse(1);
+
+        [Tooltip("Uppercut : le plus lent et le plus lourd.")]
+        public InputBinding attackUppercut = InputBinding.FromMouse(2);
 
         [Tooltip("Garde / blocage (maintenu).")]
-        public InputBinding guard = InputBinding.FromMouse(1);
-
-        [Tooltip("Modificateur maintenu qui change le coup joue (ex. Ctrl + clic = crochet).")]
-        public InputBinding attackModifier = InputBinding.FromKey(KeyCode.LeftControl);
-
-        [Tooltip("Second modificateur, pour une troisieme famille de coups (ex. uppercut).")]
-        public InputBinding attackModifierAlt = InputBinding.FromKey(KeyCode.LeftAlt);
+        public InputBinding guard = InputBinding.FromKey(KeyCode.LeftControl);
 
         [Header("Esquive")]
-        [Tooltip("Phase 8. Shift etant pris par le sprint, l'esquive utilise une autre touche par defaut.")]
+        [Tooltip("Esquive. Direction donnee par les touches de deplacement, arriere par defaut.")]
         public InputBinding dodge = InputBinding.FromKey(KeyCode.LeftAlt);
 
         [Header("Systeme (toujours actif, meme curseur libere)")]

@@ -35,6 +35,12 @@ namespace UberBagarre.Player
 
         [SerializeField, Min(0.5f)] private float _speedRecovery = 4f;
 
+        [Header("Cout du sprint")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Endurance consommee par seconde de course. Courir doit se payer, sinon la " +
+                 "stamina ne limite que le combat et la course devient gratuite.")]
+        private float _sprintStaminaPerSecond = 13f;
+
         private float _currentSpeedMultiplier = 1f;
 
         private void Awake()
@@ -53,7 +59,12 @@ namespace UberBagarre.Player
             if (dead) return;
 
             if (_input.DodgePressed) TryDodge();
-            if (_input.AttackPressed) TryAttack();
+
+            if (_input.UppercutPressed) _executor.TryPlay(_uppercut);
+            else if (_input.HookPressed) _executor.TryPlay(_hook);
+            else if (_input.StraightPressed) _executor.TryPlay(_straight);
+
+            UpdateSprintCost();
             UpdateMovementPenalty();
         }
 
@@ -73,17 +84,23 @@ namespace UberBagarre.Player
             _dodge.TryDodge(direction);
         }
 
-        private void TryAttack()
+        /// <summary>
+        /// Le sprint puise dans l'endurance et s'arrête quand elle est vide.
+        /// Sans ça, la stamina ne limiterait que le combat et courir serait gratuit —
+        /// or fuir sans coût rend toute la gestion d'endurance sans objet.
+        /// </summary>
+        private void UpdateSprintCost()
         {
-            AttackData attack = SelectAttack();
-            if (attack != null) _executor.TryPlay(attack);
-        }
+            if (_motor == null || _combatant == null || _combatant.Stamina == null) return;
 
-        private AttackData SelectAttack()
-        {
-            if (_input.AttackModifierAltHeld && _uppercut != null) return _uppercut;
-            if (_input.AttackModifierHeld && _hook != null) return _hook;
-            return _straight;
+            StaminaSystem stamina = _combatant.Stamina;
+
+            if (_motor.IsSprinting && _sprintStaminaPerSecond > 0f)
+            {
+                stamina.TrySpend(_sprintStaminaPerSecond * Time.deltaTime);
+            }
+
+            _motor.SprintBlocked = stamina.IsEmpty;
         }
 
         private void UpdateMovementPenalty()

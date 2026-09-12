@@ -8,7 +8,7 @@ namespace UberBagarre.Player
     ///
     /// Pourquoi ce composant existe :
     /// - les autres systèmes (déplacement, visée, combat) ne connaissent ni les touches ni le backend ;
-    /// - "AttackPressed" lu par deux systèmes différents dans la même frame renvoie la même valeur
+    /// - une même entrée lue par deux systèmes dans la même frame renvoie la même valeur
     ///   (avec Input.GetKeyDown appelé deux fois, ça marche aussi, mais on perd la possibilité
     ///   de rejouer / simuler / désactiver les entrées, ce qui est très pratique pour tester).
     ///
@@ -45,9 +45,9 @@ namespace UberBagarre.Player
         public bool CrouchHeld { get; private set; }
         public bool CrouchPressed { get; private set; }
         public bool GuardHeld { get; private set; }
-        public bool AttackPressed { get; private set; }
-        public bool AttackModifierHeld { get; private set; }
-        public bool AttackModifierAltHeld { get; private set; }
+        public bool StraightPressed { get; private set; }
+        public bool HookPressed { get; private set; }
+        public bool UppercutPressed { get; private set; }
 
         // Entrées "système" : volontairement non coupées par _gameplayInputEnabled,
         // sinon on ne pourrait plus libérer le curseur quand le gameplay est désactivé.
@@ -109,9 +109,9 @@ namespace UberBagarre.Player
             CrouchHeld = _provider.GetHeld(_bindings.crouch);
             CrouchPressed = _provider.GetPressedThisFrame(_bindings.crouch);
             GuardHeld = _provider.GetHeld(_bindings.guard);
-            AttackPressed = _provider.GetPressedThisFrame(_bindings.attackPrimary);
-            AttackModifierHeld = _provider.GetHeld(_bindings.attackModifier);
-            AttackModifierAltHeld = _provider.GetHeld(_bindings.attackModifierAlt);
+            StraightPressed = _provider.GetPressedThisFrame(_bindings.attackStraight);
+            HookPressed = _provider.GetPressedThisFrame(_bindings.attackHook);
+            UppercutPressed = _provider.GetPressedThisFrame(_bindings.attackUppercut);
         }
 
         private void ClearGameplayInput()
@@ -124,9 +124,9 @@ namespace UberBagarre.Player
             CrouchHeld = false;
             CrouchPressed = false;
             GuardHeld = false;
-            AttackPressed = false;
-            AttackModifierHeld = false;
-            AttackModifierAltHeld = false;
+            StraightPressed = false;
+            HookPressed = false;
+            UppercutPressed = false;
         }
     }
 }

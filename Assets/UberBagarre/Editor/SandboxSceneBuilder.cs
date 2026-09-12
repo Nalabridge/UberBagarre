@@ -30,11 +30,10 @@ namespace UberBagarre.EditorTools
         private const string SettingsFolder = "Assets/UberBagarre/Settings";
 
         private const float ArenaSize = 26f;
-        private const float WallHeight = 4.5f;
-        private const float WallThickness = 0.5f;
+        private const float RingRadius = 3.4f;
 
         private const float PlayerHeight = 1.8f;
-        private const float PlayerRadius = 0.3f;
+        private const float PlayerRadius = 0.28f;
         private const float SpawnDistance = 5f;
 
         [MenuItem("Uber Bagarre/2 - Construire la scene Combat Sandbox", false, 20)]
@@ -72,7 +71,7 @@ namespace UberBagarre.EditorTools
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             BuildLighting();
-            BuildEnvironment(materials);
+            ArenaBuilder.Build(ArenaSize, RingRadius);
             BuildPunchingBag(materials);
 
             GameObject player = BuildPlayer(materials, straight, hook, uppercut);
@@ -93,8 +92,8 @@ namespace UberBagarre.EditorTools
             Debug.Log("[UberBagarre] Scene Combat Sandbox generee.\n" +
                       "  Render pipeline : " + EditorBuildUtility.ActivePipelineName() + "\n" +
                       "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
-                      "  Combat       : clic gauche = direct, Ctrl + clic = crochet, Alt + clic = uppercut\n" +
-                      "  Defense      : clic droit = garde, Alt gauche = esquive (direction = WASD)\n" +
+                      "  Combat       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
+                      "  Defense      : Ctrl gauche = garde, Alt gauche = esquive (direction = WASD)\n" +
                       "  Debug        : F1 = overlay, R = relancer le combat, Echap = liberer le curseur\n" +
                       "  Appuie sur Play.");
         }
@@ -110,8 +109,10 @@ namespace UberBagarre.EditorTools
 
             Light sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.intensity = 1.15f;
-            sun.color = new Color(1f, 0.97f, 0.91f);
+            // Lumiere de fin de journee, volontairement faible : ce sont les lampadaires qui
+            // eclairent le combat, ce qui donne du contraste et des ombres portees lisibles.
+            sun.intensity = 0.62f;
+            sun.color = new Color(0.78f, 0.82f, 0.95f);
             sun.shadows = LightShadows.Soft;
 
             // Lumiere d'appoint faible a l'oppose : evite des ombres totalement noires sans
@@ -121,40 +122,9 @@ namespace UberBagarre.EditorTools
 
             Light fill = fillGo.AddComponent<Light>();
             fill.type = LightType.Directional;
-            fill.intensity = 0.30f;
+            fill.intensity = 0.18f;
             fill.color = new Color(0.75f, 0.82f, 1f);
             fill.shadows = LightShadows.None;
-        }
-
-        private static void BuildEnvironment(BuildMaterials materials)
-        {
-            GameObject root = new GameObject("=== Environnement ===");
-
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Sol", root.transform,
-                new Vector3(0f, -0.25f, 0f), new Vector3(ArenaSize, 0.5f, ArenaSize), materials.Floor, true);
-
-            float offset = ArenaSize * 0.5f - WallThickness * 0.5f;
-
-            Wall(root.transform, "Mur Nord", new Vector3(0f, WallHeight * 0.5f, offset),
-                new Vector3(ArenaSize, WallHeight, WallThickness), materials.Wall);
-            Wall(root.transform, "Mur Sud", new Vector3(0f, WallHeight * 0.5f, -offset),
-                new Vector3(ArenaSize, WallHeight, WallThickness), materials.Wall);
-            Wall(root.transform, "Mur Est", new Vector3(offset, WallHeight * 0.5f, 0f),
-                new Vector3(WallThickness, WallHeight, ArenaSize), materials.Wall);
-            Wall(root.transform, "Mur Ouest", new Vector3(-offset, WallHeight * 0.5f, 0f),
-                new Vector3(WallThickness, WallHeight, ArenaSize), materials.Wall);
-
-            GameObject props = EditorBuildUtility.CreateEmpty("Reperes", root.transform, Vector3.zero);
-
-            Wall(props.transform, "Caisse A", new Vector3(-7.5f, 0.6f, 7f), new Vector3(1.2f, 1.2f, 1.2f), materials.Prop);
-            Wall(props.transform, "Caisse B", new Vector3(-6.2f, 0.35f, 8.4f), new Vector3(0.7f, 0.7f, 0.7f), materials.Prop);
-            Wall(props.transform, "Caisse C", new Vector3(8.2f, 0.9f, -6.5f), new Vector3(1.8f, 1.8f, 1.8f), materials.Prop);
-            Wall(props.transform, "Poteau", new Vector3(7.5f, 1.6f, 7.5f), new Vector3(0.4f, 3.2f, 0.4f), materials.Wall);
-        }
-
-        private static void Wall(Transform parent, string name, Vector3 position, Vector3 scale, Material material)
-        {
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, parent, position, scale, material, true);
         }
 
         // ------------------------------------------------------------------ sac de frappe
@@ -325,6 +295,14 @@ namespace UberBagarre.EditorTools
             DamageVignette vignette = playerGo.AddComponent<DamageVignette>();
             SerializedWiring.SetObject(vignette, "_health", combatant.Health);
 
+            ComboTracker combo = playerGo.AddComponent<ComboTracker>();
+            SerializedWiring.SetObject(combo, "_owner", combatant);
+
+            FloatingCombatText floatingText = playerGo.AddComponent<FloatingCombatText>();
+            SerializedWiring.SetObject(floatingText, "_camera", camera);
+            SerializedWiring.SetObject(floatingText, "_owner", combatant);
+            SerializedWiring.SetObject(floatingText, "_combo", combo);
+
             return playerGo;
         }
 
@@ -338,7 +316,7 @@ namespace UberBagarre.EditorTools
 
             CharacterController controller = enemyGo.AddComponent<CharacterController>();
             controller.height = PlayerHeight;
-            controller.radius = 0.32f;
+            controller.radius = 0.30f;
             controller.center = new Vector3(0f, PlayerHeight * 0.5f, 0f);
             controller.stepOffset = 0.3f;
             controller.skinWidth = 0.02f;
@@ -407,6 +385,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(relay, "_combatant", combatant);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
+            WorldHealthBar bar = enemyGo.AddComponent<WorldHealthBar>();
+            SerializedWiring.SetObject(bar, "_combatant", combatant);
+
             return enemyGo;
         }
 
@@ -423,9 +404,9 @@ namespace UberBagarre.EditorTools
 
             attacks.arraySize = 3;
 
-            SetAttackOption(attacks.GetArrayElementAtIndex(0), straight, 3f, 0f, 1.55f, 0.8f);
-            SetAttackOption(attacks.GetArrayElementAtIndex(1), hook, 1.4f, 0f, 1.35f, 2.2f);
-            SetAttackOption(attacks.GetArrayElementAtIndex(2), uppercut, 0.8f, 0f, 1.2f, 3.4f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(0), straight, 3f, 0f, 1.15f, 0.8f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(1), hook, 1.4f, 0f, 1.05f, 2.2f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(2), uppercut, 0.8f, 0f, 0.95f, 3.4f);
 
             SerializedProperty sequence = so.FindProperty("_scriptedSequence");
             if (sequence != null)
@@ -496,10 +477,13 @@ namespace UberBagarre.EditorTools
             GameObject bodyBox = EditorBuildUtility.CreateEmpty("Hurtbox_Corps", go.transform,
                 new Vector3(0f, height * 0.55f, 0f));
 
+            // Hurtbox volontairement plus large que le corps. En jeu de combat, une zone
+            // touchable genereuse est la norme : elle pardonne l'imprecision du joueur, alors
+            // qu'une zone collee au modele donne l'impression de traverser l'adversaire.
             CapsuleCollider bodyCollider = bodyBox.AddComponent<CapsuleCollider>();
             bodyCollider.isTrigger = true;
-            bodyCollider.radius = 0.28f;
-            bodyCollider.height = height * 0.75f;
+            bodyCollider.radius = 0.38f;
+            bodyCollider.height = height * 0.85f;
 
             Hurtbox bodyHurtbox = bodyBox.AddComponent<Hurtbox>();
             SerializedWiring.SetObject(bodyHurtbox, "_health", combatant.Health);
@@ -509,11 +493,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetFloat(bodyHurtbox, "_damageMultiplier", 1f);
 
             GameObject headBox = EditorBuildUtility.CreateEmpty("Hurtbox_Tete", go.transform,
-                new Vector3(0f, height * 0.90f, 0f));
+                new Vector3(0f, height * 0.89f, 0f));
 
             SphereCollider headCollider = headBox.AddComponent<SphereCollider>();
             headCollider.isTrigger = true;
-            headCollider.radius = 0.15f;
+            headCollider.radius = 0.21f;
 
             Hurtbox headHurtbox = headBox.AddComponent<Hurtbox>();
             SerializedWiring.SetObject(headHurtbox, "_health", combatant.Health);

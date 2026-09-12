@@ -71,9 +71,9 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **C** (maintenu) | S'accroupir |
 | **C** pendant une course | **Glissade** |
 | **Clic gauche** | **Direct** (alterne gauche / droite) |
-| **Ctrl + clic gauche** | **Crochet** |
-| **Alt + clic gauche** | **Uppercut** |
-| **Clic droit** (maintenu) | Garde serrée (les poings remontent vers le visage) |
+| **Clic droit** | **Crochet** |
+| **Clic molette** | **Uppercut** |
+| **Ctrl gauche** (maintenu) | Garde serrée (les poings remontent vers le visage) |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
 | **F1** | Overlay de debug (états, cooldowns, distances) |

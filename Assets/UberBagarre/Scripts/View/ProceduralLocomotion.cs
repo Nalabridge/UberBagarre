@@ -33,7 +33,7 @@ namespace UberBagarre.View
         private float _walkStride = 1.45f;
 
         [SerializeField, Min(0.1f)] private float _runStride = 2.3f;
-        [SerializeField, Min(0.01f)] private float _stepHeight = 0.11f;
+        [SerializeField, Min(0.01f)] private float _stepHeight = 0.075f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Hauteur de la cheville au-dessus du sol. La cible d'IK est la cheville, pas la semelle : " +
@@ -56,18 +56,18 @@ namespace UberBagarre.View
         private float _idleFootAdjustSpeed = 1.4f;
 
         [Header("Bassin")]
-        [SerializeField] private float _pelvisBob = 0.045f;
-        [SerializeField] private float _pelvisSway = 0.035f;
-        [SerializeField] private float _pelvisYaw = 4.5f;
-        [SerializeField] private float _pelvisRoll = 3f;
+        [SerializeField] private float _pelvisBob = 0.020f;
+        [SerializeField] private float _pelvisSway = 0.016f;
+        [SerializeField] private float _pelvisYaw = 2.2f;
+        [SerializeField] private float _pelvisRoll = 1.4f;
 
         [Header("Buste")]
         [SerializeField]
         [Tooltip("Le buste tourne a l'oppose du bassin : c'est la contre-rotation naturelle de la marche.")]
-        private float _torsoCounterYaw = 6f;
+        private float _torsoCounterYaw = 2.8f;
 
-        [SerializeField] private float _torsoLeanPerSpeed = 2.2f;
-        [SerializeField, Min(0f)] private float _maxTorsoLean = 11f;
+        [SerializeField] private float _torsoLeanPerSpeed = 1.1f;
+        [SerializeField, Min(0f)] private float _maxTorsoLean = 6f;
 
         [Header("Accroupi / glissade")]
         [SerializeField] private float _crouchPelvisDrop = 0.42f;
@@ -75,7 +75,7 @@ namespace UberBagarre.View
         [SerializeField] private float _slideLean = 14f;
 
         [Header("Balancement des bras")]
-        [SerializeField, Min(0f)] private float _armSwingAmount = 0.11f;
+        [SerializeField, Min(0f)] private float _armSwingAmount = 0.05f;
 
         [Header("Sol")]
         [SerializeField] private LayerMask _groundMask = ~0;
@@ -160,7 +160,10 @@ namespace UberBagarre.View
 
         private void UpdatePhase(float speed, float dt)
         {
-            float targetWeight = Mathf.Clamp01(speed / Mathf.Max(0.2f, _runSpeedThreshold * 0.55f));
+            // Le poids d'animation atteignait son maximum des la marche, d'ou une demarche
+            // sur-jouee. Il est maintenant cale sur la vitesse de COURSE : marcher donne
+            // environ 60 % d'amplitude, courir 100 %.
+            float targetWeight = Mathf.Clamp01(speed / Mathf.Max(0.2f, _runSpeedThreshold));
             if (!_grounded || _slideAmount > 0.5f) targetWeight = 0f;
 
             _moveWeight = Mathf.MoveTowards(_moveWeight, targetWeight, 5f * dt);

@@ -386,3 +386,78 @@ Seules trois choses diffèrent entre eux :
 | Améliorations, équipement, buffs | `StatModifier` : tout le reste suit sans modification |
 | Plusieurs ennemis | Rien : aucun singleton, et le registre `Combatant.All` gère déjà la cible |
 | Vrais modèles 3D | `Uber Bagarre → 5 - Brancher le modele 3D`, voir MODELE_3D.md |
+
+---
+
+## 10. Correctifs et interface (retour de test)
+
+### Le bug qui rendait le combat impossible
+
+Les portées avaient été réglées à vue. En les calculant :
+
+```
+poing tendu                 0,58 m devant le centre du corps
++ rayon de la hitbox        0,10  →  portée réelle      0,68 m
++ rayon de la hurtbox       0,15  →  distance maximale  0,83 m
+
+distance de combat de l'IA                              0,95 m   ← hors de portée
+```
+
+Personne ne pouvait toucher personne, et l'ennemi paraissait « fixer bêtement » parce qu'il
+frappait dans le vide. Correction en trois points, tous vérifiables par le calcul :
+
+- **hurtbox élargies** (corps 0,28 → 0,38, tête 0,15 → 0,21). Une zone touchable plus large que
+  le modèle est la norme en jeu de combat : elle pardonne l'imprécision, là où une zone collée
+  au personnage donne l'impression de le traverser ;
+- **rayons de hitbox** portés à 0,15 / 0,17 ;
+- **capsules de collision réduites** (0,30/0,32 → 0,28/0,30) et distance de combat à 0,85 m.
+
+**Leçon retenue :** une portée d'attaque n'est pas un réglage de ressenti, c'est une contrainte
+géométrique. Elle se calcule à partir de la chaîne complète — extension du poing, rayon de
+hitbox, rayon de hurtbox, rayon des capsules de collision — avant d'être ajustée à l'œil.
+
+### Le conflit de touche
+
+`Alt` était à la fois l'esquive et le modificateur d'uppercut : un Alt + clic déclenchait les
+deux. Les coups ont maintenant chacun leur entrée (gauche / droit / molette), sans modificateur.
+Plus discoverable, et structurellement impossible à remettre en conflit.
+
+### Marche sur-jouée
+
+Le poids d'animation atteignait son maximum dès la **marche** : toutes les amplitudes étaient
+donc à fond en permanence. Il est désormais calé sur la vitesse de **course** — marcher donne
+~60 % d'amplitude — et les amplitudes de base ont été divisées par deux.
+
+### Le sprint ne coûtait rien
+
+L'endurance n'était consommée que par les coups et l'esquive. Courir était gratuit, donc fuir
+aussi, ce qui vidait la gestion d'endurance de son sens. Le sprint puise maintenant dans la
+jauge et se coupe quand elle est vide.
+
+### Interface
+
+- **`GuiKit`** : toute l'interface est dessinée à partir d'un unique pixel blanc teinté. Aucune
+  image, aucune police importée, aucun Canvas — un projet Unity neuf n'a rien de tout ça.
+- **Gros chiffre de vie** plutôt qu'une simple barre : en pleine action on ne *lit* pas une
+  barre, on la perçoit. Un chiffre qui change de couleur et tressaute se capte en vision
+  périphérique, sans quitter l'adversaire des yeux.
+- **Couche « retard »** sur les jauges : la vraie valeur tombe d'un coup, la couche claire la
+  rattrape lentement. On voit *combien* on vient de perdre, au lieu de le déduire.
+- **Barre de vie au-dessus de l'ennemi** : en première personne, une barre en haut d'écran
+  oblige à quitter des yeux l'adversaire au moment précis où il faut le regarder.
+- **Chiffres de dégâts** : sans eux, le joueur *suppose* qu'un crochet fait plus mal qu'un
+  direct. Les voir rend l'équilibrage lisible en jouant. Tête et coups lourds sont écrits plus
+  gros et d'une autre couleur — l'information « bien placé » se lit avant le chiffre.
+- **`Combatant.AnyDamaged`**, événement statique : l'affichage des dégâts doit réagir à des
+  combattants apparus après lui. Ce n'est pas un singleton — aucune logique, aucun état, juste
+  une notification.
+- **Compteur de combo** qui se brise quand on encaisse : sans rupture, il ne récompense rien.
+
+### Décor
+
+Une boîte en cubes n'est pas qu'un problème esthétique : sans verticales proches (poteaux,
+grillage, façades), on ne perçoit ni son propre déplacement ni celui de l'adversaire. L'arène
+est maintenant une ruelle — bitume et brique générés par code, trottoirs, grillages,
+lampadaires **avec de vraies lumières** (donc de vraies ombres portées, sans lesquelles les
+combattants semblent flotter), bennes, barils, caisses. Et un **cercle peint au sol** qui donne
+une référence de distance immédiate : à portée de poing, ou pas.

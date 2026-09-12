@@ -20,9 +20,9 @@ namespace UberBagarre.Player
 
         [Header("Amplitude a la marche")]
         [SerializeField, Min(0f)] private float _frequency = 8f;
-        [SerializeField, Min(0f)] private float _verticalAmplitude = 0.020f;
-        [SerializeField, Min(0f)] private float _horizontalAmplitude = 0.014f;
-        [SerializeField, Min(0f)] private float _rollAmplitude = 0.5f;
+        [SerializeField, Min(0f)] private float _verticalAmplitude = 0.012f;
+        [SerializeField, Min(0f)] private float _horizontalAmplitude = 0.008f;
+        [SerializeField, Min(0f)] private float _rollAmplitude = 0.30f;
 
         [Header("Renfort au sprint")]
         [SerializeField, Min(1f)] private float _sprintAmplitudeMultiplier = 1.4f;
