@@ -62,7 +62,14 @@ namespace UberBagarre.EditorTools
         ///
         /// Un simple « s'il existe, on le garde » a un défaut sérieux : améliorer une forme ici
         /// n'aurait aucun effet sur un projet déjà ouvert une fois, et il faudrait supprimer les
-        /// assets à la main sans le savoir. Le nombre de sommets sert donc de signature.
+        /// assets à la main sans le savoir. On compare donc une SIGNATURE.
+        ///
+        /// La signature couvre les sommets, les normales, les coordonnées de texture et les
+        /// triangles — et pas seulement le nombre de sommets, comme la première version. Ajouter
+        /// des coordonnées de texture à une forme existante ne change en effet pas son nombre de
+        /// sommets : la mise à jour aurait été ignorée, et les textures appliquées sur ces
+        /// maillages n'auraient jamais été échantillonnées. Symptôme : « les textures ne servent
+        /// à rien ».
         ///
         /// La mise à jour réécrit le CONTENU de l'asset existant au lieu de le supprimer et de
         /// le recréer : l'identifiant de l'asset est conservé, donc toutes les références de
@@ -82,7 +89,7 @@ namespace UberBagarre.EditorTools
                 return fresh;
             }
 
-            if (existing.vertexCount == fresh.vertexCount)
+            if (Signature(existing) == Signature(fresh))
             {
                 Object.DestroyImmediate(fresh);
                 return existing;
@@ -94,6 +101,19 @@ namespace UberBagarre.EditorTools
 
             Debug.Log("[UberBagarre] Maillage " + meshName + " mis a jour (definition affinee dans le code).", existing);
             return existing;
+        }
+
+        /// <summary>
+        /// Empreinte d'un maillage : de quoi détecter que sa définition a changé dans le code.
+        ///
+        /// Volontairement grossière — elle ne sert pas à comparer des formes mais à repérer un
+        /// asset produit par une version antérieure. Elle doit en revanche couvrir CHAQUE canal
+        /// qu'on sait remplir, sinon ajouter un canal passe inaperçu.
+        /// </summary>
+        private static string Signature(Mesh mesh)
+        {
+            return mesh.vertexCount + "/" + mesh.normals.Length + "/" +
+                   mesh.uv.Length + "/" + mesh.triangles.Length;
         }
 
         /// <summary>
