@@ -58,8 +58,17 @@ namespace UberBagarre.EditorTools
                 configure(asset);
                 AssetDatabase.CreateAsset(asset, path);
             }
-            else if (overwrite)
+            else if (overwrite || !string.IsNullOrEmpty(asset.Diagnose()))
             {
+                // Un asset deja present mais incomplet est repare automatiquement. Sans ca, un
+                // asset cree par une version anterieure du code reste silencieusement cassé :
+                // le coup se declenche, mais la main ne bouge pas et ne touche rien.
+                if (!overwrite)
+                {
+                    Debug.LogWarning("[UberBagarre] '" + assetName + "' etait incomplet (" + asset.Diagnose() +
+                                     "). Reparation automatique.", asset);
+                }
+
                 configure(asset);
                 EditorUtility.SetDirty(asset);
             }
@@ -80,8 +89,8 @@ namespace UberBagarre.EditorTools
             a.isHeavy = false;
             a.duration = 0.30f;
             a.cooldown = 0.05f;
-            a.hitWindowStart = 0.42f;
-            a.hitWindowEnd = 0.60f;
+            a.hitWindowStart = 0.36f;
+            a.hitWindowEnd = 0.68f;
             a.hitRadius = 0.15f;
             a.damage = 9f;
             a.impactForce = 3.2f;
@@ -120,8 +129,8 @@ namespace UberBagarre.EditorTools
             a.isHeavy = true;
             a.duration = 0.42f;
             a.cooldown = 0.09f;
-            a.hitWindowStart = 0.45f;
-            a.hitWindowEnd = 0.66f;
+            a.hitWindowStart = 0.40f;
+            a.hitWindowEnd = 0.74f;
             a.hitRadius = 0.17f;
             a.damage = 15f;
             a.impactForce = 6f;
@@ -153,8 +162,8 @@ namespace UberBagarre.EditorTools
             a.isHeavy = true;
             a.duration = 0.48f;
             a.cooldown = 0.11f;
-            a.hitWindowStart = 0.46f;
-            a.hitWindowEnd = 0.68f;
+            a.hitWindowStart = 0.42f;
+            a.hitWindowEnd = 0.76f;
             a.hitRadius = 0.17f;
             a.damage = 17f;
             a.impactForce = 7f;

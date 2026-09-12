@@ -35,6 +35,11 @@ namespace UberBagarre.Combat
         [Header("Debug")]
         [SerializeField] private bool _logAttacks;
 
+        [SerializeField]
+        [Tooltip("Journalise la RAISON de chaque coup refuse. A laisser actif tant que le combat " +
+                 "n'est pas stabilise : sans ca, un refus est totalement silencieux.")]
+        private bool _logRefusals = true;
+
         private AttackData _attack;
         private HandSide _side;
         private int _variantIndex = -1;
@@ -48,7 +53,23 @@ namespace UberBagarre.Combat
         public event Action<AttackData> AttackEnded;
         public event Action<AttackData, Hurtbox, Vector3> HitLanded;
 
+        /// <summary>Raison du dernier refus. Affichée par l'overlay de debug.</summary>
+        public string LastRefusal { get; private set; }
+
         public bool IsAttacking { get { return _attack != null; } }
+
+        /// <summary>Vrai pendant la fenêtre où le coup peut toucher.</summary>
+        public bool IsHitWindowOpen { get { return _hitWindowOpen; } }
+
+        /// <summary>Position du poing qui frappe actuellement. Sert au diagnostic de portée.</summary>
+        public Vector3 ActiveFistPosition
+        {
+            get
+            {
+                Hitbox hitbox = ActiveHitbox();
+                return hitbox != null ? hitbox.Origin.position : transform.position;
+            }
+        }
 
         public bool IsReady
         {
@@ -80,19 +101,27 @@ namespace UberBagarre.Combat
 
         public bool TryPlay(AttackData attack)
         {
-            if (attack == null || !IsReady) return false;
+            if (attack == null) return Refuse("aucune donnee d'attaque assignee (champ vide dans PlayerCombat ?)");
+            if (_hands == null) return Refuse("pas de FirstPersonHands assigne sur l'executeur");
+            if (_attack != null) return Refuse("un coup est deja en cours");
+            if (_cooldown > 0f) return Refuse("temps de repos : " + _cooldown.ToString("0.00") + " s");
 
-            if (_hands == null)
+            if (_combatant != null && !_combatant.CanAct)
             {
-                Debug.LogError("[UberBagarre] AttackExecutor sur " + name + " n'a pas de FirstPersonHands : " +
-                               "aucun coup ne peut etre joue.", this);
-                return false;
+                return Refuse("etat du combattant : " + _combatant.State.Current);
+            }
+
+            string problem = attack.Diagnose();
+            if (!string.IsNullOrEmpty(problem))
+            {
+                Debug.LogError("[UberBagarre] L'attaque '" + attack.displayName + "' est incomplete : " + problem +
+                               ". Relance 'Uber Bagarre > 4 - Regenerer les coups par defaut'.", attack);
             }
 
             // L'endurance se verifie AVANT de s'engager : un coup a moitie paye ne veut rien dire.
             if (_combatant != null && _combatant.Stamina != null)
             {
-                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return false;
+                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return Refuse("endurance insuffisante");
                 _combatant.Stamina.TrySpend(attack.staminaCost);
             }
 
@@ -114,10 +143,21 @@ namespace UberBagarre.Combat
                           (_variantIndex + 1) + ")", this);
             }
 
+            LastRefusal = string.Empty;
+
             Action<AttackData, HandSide> started = AttackStarted;
             if (started != null) started(attack, _side);
 
             return true;
+        }
+
+        private bool Refuse(string reason)
+        {
+            LastRefusal = reason;
+
+            if (_logRefusals) Debug.LogWarning("[UberBagarre] Coup refuse : " + reason, this);
+
+            return false;
         }
 
         /// <summary>Interrompt le coup en cours (touché, étourdi, mort).</summary>
@@ -170,11 +210,30 @@ namespace UberBagarre.Combat
 
         private void ApplyPose(float normalized)
         {
-            AttackPoseKey key = _attack.Sample(_variantIndex, normalized);
             bool mirrored = _side == HandSide.Left;
-            float weight = Mathf.Clamp01(_attack.weightCurve.Evaluate(normalized));
+            float weight = _attack.EvaluateWeight(normalized);
 
-            HandPose pose = AttackData.Mirror(key.handPosition, key.handEuler, mirrored);
+            AttackPoseKey key;
+            HandPose pose;
+
+            if (_variantIndex >= 0)
+            {
+                key = _attack.Sample(_variantIndex, normalized);
+                pose = AttackData.Mirror(key.handPosition, key.handEuler, mirrored);
+            }
+            else
+            {
+                // Aucune donnee d'animation : plutot que d'envoyer la main a l'origine du repere
+                // (c'est-a-dire dans l'oeil du joueur), on fabrique un direct a partir de la garde.
+                // Un coup laid vaut mieux qu'un coup invisible qui ne touche rien.
+                key = new AttackPoseKey();
+                key.grip = 1f;
+
+                HandPose guard = _hands.GetGuardPose(_side);
+                float extension = Mathf.Sin(Mathf.Clamp01(normalized) * Mathf.PI);
+                pose = new HandPose(guard.position + Vector3.forward * (0.30f * extension), guard.euler);
+            }
+
             if (_hands != null) _hands.SetAttackPose(_side, pose, weight, key.grip);
 
             if (_locomotion != null)

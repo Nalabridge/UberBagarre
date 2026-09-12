@@ -49,6 +49,46 @@ namespace UberBagarre.Player
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
         }
 
+        /// <summary>
+        /// Contrôle de cohérence au démarrage.
+        ///
+        /// Un coup qui ne part pas produit exactement le même symptôme qu'une touche non lue ou
+        /// qu'une donnée manquante : il ne se passe rien. Cette ligne dans la console dit
+        /// immédiatement lequel des trois cas on a.
+        /// </summary>
+        private void Start()
+        {
+            CheckAttack(_straight, "Direct");
+            CheckAttack(_hook, "Crochet");
+            CheckAttack(_uppercut, "Uppercut");
+
+            if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
+            if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
+        }
+
+        private void CheckAttack(AttackData attack, string label)
+        {
+            if (attack == null)
+            {
+                Debug.LogError("[UberBagarre] PlayerCombat : le coup '" + label + "' n'est pas assigne. " +
+                               "Relance 'Uber Bagarre > 2 - Construire la scene'.", this);
+                return;
+            }
+
+            string problem = attack.Diagnose();
+
+            if (string.IsNullOrEmpty(problem))
+            {
+                Debug.Log("[UberBagarre] Coup pret : " + label + " (" + attack.displayName + ", " +
+                          attack.duration.ToString("0.00") + " s, " + attack.damage.ToString("0") + " degats)", this);
+            }
+            else
+            {
+                Debug.LogError("[UberBagarre] Coup '" + label + "' incomplet : " + problem +
+                               ". Relance 'Uber Bagarre > 4 - Regenerer les coups par defaut'.", attack);
+            }
+        }
+
         private void Update()
         {
             if (_input == null || _executor == null) return;

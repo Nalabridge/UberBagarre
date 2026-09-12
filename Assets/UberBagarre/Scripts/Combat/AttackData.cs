@@ -107,6 +107,52 @@ namespace UberBagarre.Combat
         [Tooltip("Plusieurs variantes evitent que chaque coup soit rigoureusement identique.")]
         public List<AttackVariant> variants = new List<AttackVariant>();
 
+        /// <summary>Vrai si ce coup possède au moins une variante contenant des poses.</summary>
+        public bool HasUsableAnimation
+        {
+            get
+            {
+                if (variants == null) return false;
+
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    if (variants[i] != null && variants[i].keys != null && variants[i].keys.Count >= 2) return true;
+                }
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Poids du mélange à cet instant du coup.
+        ///
+        /// Passe par cette méthode et jamais par la courbe directement : une AnimationCurve vide
+        /// renvoie 0 à l'évaluation. Un asset mal initialisé donnerait donc un poids nul du début
+        /// à la fin — le coup se déclencherait, la hitbox s'ouvrirait, mais la main ne bougerait
+        /// pas d'un millimètre et ne toucherait rien. Panne parfaitement silencieuse.
+        /// </summary>
+        public float EvaluateWeight(float normalizedTime)
+        {
+            if (weightCurve != null && weightCurve.length >= 2)
+            {
+                return Mathf.Clamp01(weightCurve.Evaluate(normalizedTime));
+            }
+
+            // Repli : montee rapide, plateau, retour a la garde.
+            if (normalizedTime < 0.12f) return Mathf.Clamp01(normalizedTime / 0.12f);
+            if (normalizedTime > 0.78f) return Mathf.Clamp01((1f - normalizedTime) / 0.22f);
+            return 1f;
+        }
+
+        /// <summary>Décrit ce qui manque à cet asset, ou une chaîne vide s'il est complet.</summary>
+        public string Diagnose()
+        {
+            if (!HasUsableAnimation) return "aucune variante d'animation (liste 'Variants' vide)";
+            if (weightCurve == null || weightCurve.length < 2) return "courbe de melange vide";
+            if (duration <= 0.02f) return "duree nulle";
+            return string.Empty;
+        }
+
         /// <summary>Choisit une variante sans répéter la précédente, tant qu'il y en a plusieurs.</summary>
         public int PickVariant(int previousIndex)
         {

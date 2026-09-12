@@ -77,7 +77,7 @@ namespace UberBagarre.EditorTools
             GameObject player = BuildPlayer(materials, straight, hook, uppercut);
             GameObject enemy = BuildEnemy(materials, straight, hook, uppercut);
 
-            WireHudAndDebug(player, enemy);
+            WireHudAndDebug(player, enemy, straight);
             BuildSpawnSystem(player, enemy);
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -507,7 +507,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetFloat(headHurtbox, "_damageMultiplier", 1.6f);
         }
 
-        private static void WireHudAndDebug(GameObject player, GameObject enemy)
+        private static void WireHudAndDebug(GameObject player, GameObject enemy, AttackData testAttack)
         {
             Combatant playerCombatant = player.GetComponent<Combatant>();
             Combatant enemyCombatant = enemy.GetComponent<Combatant>();
@@ -525,6 +525,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(overlay, "_enemy", enemyCombatant);
             SerializedWiring.SetObject(overlay, "_enemyExecutor", enemy.GetComponent<AttackExecutor>());
             SerializedWiring.SetObject(overlay, "_enemyBrain", enemy.GetComponent<EnemyBrain>());
+            SerializedWiring.SetObject(overlay, "_testAttack", testAttack);
         }
 
         private static InputBindings GetOrCreateInputBindings()
