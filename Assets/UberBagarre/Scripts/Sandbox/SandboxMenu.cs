@@ -40,6 +40,12 @@ namespace UberBagarre.Sandbox
 
         [SerializeField] private SpawnDirector _spawnDirector;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Permet de regler la nervosite du combat en jouant.")]
+        private PlayerCombat _playerCombat;
+
+        [SerializeField] private UberBagarre.Feedback.HitStop _hitStop;
+
         [Header("Apparition")]
         [SerializeField, Min(1f)]
         [Tooltip("Distance a laquelle les adversaires apparaissent autour du joueur.")]
@@ -50,6 +56,9 @@ namespace UberBagarre.Sandbox
         [Header("Bornes des reglages")]
         [SerializeField] private Vector2 _healthRange = new Vector2(10f, 500f);
         [SerializeField] private Vector2 _damageMultiplierRange = new Vector2(0.1f, 5f);
+        [SerializeField] private Vector2 _attackSpeedRange = new Vector2(0.5f, 2.5f);
+        [SerializeField] private Vector2 _hitStopRange = new Vector2(0.05f, 1f);
+        [SerializeField] private Vector2 _inputBufferRange = new Vector2(0f, 0.4f);
 
         [Header("Apparence")]
         [SerializeField] private Color _panelColor = new Color(0.06f, 0.07f, 0.10f, 0.96f);
@@ -64,6 +73,9 @@ namespace UberBagarre.Sandbox
         private float _playerDamage = 1f;
         private float _enemyHealth = 90f;
         private float _enemyDamage = 1f;
+        private float _attackSpeed = 1f;
+        private float _hitStopStrength = 0.25f;
+        private float _inputBufferSeconds = 0.22f;
         private bool _initialised;
 
         public bool IsOpen { get { return _open; } }
@@ -84,6 +96,10 @@ namespace UberBagarre.Sandbox
         {
             if (_player != null && _player.Health != null) _playerHealth = _player.Health.MaxHealth;
             if (_player != null && _player.Stats != null) _playerDamage = ToMultiplier(_player.Stats.Get(StatType.Strength));
+
+            if (_player != null && _player.Stats != null) _attackSpeed = _player.Stats.Get(StatType.AttackSpeed);
+            if (_hitStop != null) _hitStopStrength = _hitStop.SlowTimeScale;
+            if (_playerCombat != null) _inputBufferSeconds = _playerCombat.InputBuffer;
 
             Combatant enemy = FirstEnemy();
             if (enemy == null) return;
@@ -137,6 +153,29 @@ namespace UberBagarre.Sandbox
             // maximum en plein combat ne doit pas etre un soin gratuit.
             if (_player.Health != null) _player.Health.SetMaxHealth(_playerHealth, false);
             _player.ApplyStats();
+        }
+
+        /// <summary>
+        /// Applique les réglages de NERVOSITÉ.
+        ///
+        /// Ils sont dans ce menu pour une raison simple : « ce n'est pas assez nerveux » n'est pas
+        /// corrigeable à distance. Cinq choses interviennent en même temps — la durée des coups, le
+        /// ralenti d'impact, le tampon d'entrée, l'endurance et la vitesse de déplacement — et rien
+        /// ne dit laquelle domine pour un joueur donné. Les régler en jouant prend trois minutes ;
+        /// les deviner prend un aller-retour de test par essai.
+        ///
+        /// « Vitesse des coups » passe par StatType.AttackSpeed, donc par le système de stats, et
+        /// s'appliquera aussi bien a une future amélioration de personnage.
+        /// </summary>
+        private void ApplyFeel()
+        {
+            if (_player != null && _player.Stats != null)
+            {
+                _player.Stats.SetOverride(StatType.AttackSpeed, _attackSpeed);
+            }
+
+            if (_hitStop != null) _hitStop.SlowTimeScale = _hitStopStrength;
+            if (_playerCombat != null) _playerCombat.InputBuffer = _inputBufferSeconds;
         }
 
         private void ApplyEnemies()
@@ -262,7 +301,7 @@ namespace UberBagarre.Sandbox
             if (!_open || !_initialised) return;
 
             float width = Mathf.Min(790f, Screen.width - 40f);
-            float height = Mathf.Min(486f, Screen.height - 40f);
+            float height = Mathf.Min(580f, Screen.height - 40f);
 
             Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
 
@@ -323,6 +362,36 @@ namespace UberBagarre.Sandbox
                 _enemyHealth = newEnemyHealth;
                 _enemyDamage = newEnemyDamage;
                 ApplyEnemies();
+            }
+
+            y += 10f;
+            y = Section(left, y, innerWidth, "NERVOSITE", _accent);
+
+            float newSpeed = Row(left, ref y, innerWidth, "Vitesse des coups",
+                _attackSpeed, _attackSpeedRange, "x0.00", _accent);
+
+            float newHitStop = Row(left, ref y, innerWidth, "Ralenti d'impact",
+                _hitStopStrength, _hitStopRange, "0.00", _accent);
+
+            float newBuffer = Row(left, ref y, innerWidth, "Tampon de touche",
+                _inputBufferSeconds, _inputBufferRange, "0.00 s", _accent);
+
+            if (!Mathf.Approximately(newSpeed, _attackSpeed))
+            {
+                _attackSpeed = newSpeed;
+                ApplyFeel();
+            }
+
+            if (!Mathf.Approximately(newHitStop, _hitStopStrength))
+            {
+                _hitStopStrength = newHitStop;
+                ApplyFeel();
+            }
+
+            if (!Mathf.Approximately(newBuffer, _inputBufferSeconds))
+            {
+                _inputBufferSeconds = newBuffer;
+                ApplyFeel();
             }
 
             y += 12f;

@@ -101,10 +101,32 @@ namespace UberBagarre.Combat
         }
         public AttackData CurrentAttack { get { return _attack; } }
 
+        /// <summary>
+        /// Durée réelle du coup en cours, vitesse d'attaque comprise.
+        ///
+        /// <see cref="StatType.AttackSpeed"/> existait depuis la phase 6, avec son infobulle
+        /// « multiplie la vitesse d'exécution des coups », et AUCUNE ligne de code ne la lisait.
+        /// Une statistique qu'on peut régler et qui ne fait rien est pire qu'une statistique
+        /// absente : elle fait croire que le levier existe.
+        /// </summary>
+        public float EffectiveDuration
+        {
+            get
+            {
+                if (_attack == null) return 0f;
+
+                float speed = _combatant != null && _combatant.Stats != null
+                    ? _combatant.Stats.Get(StatType.AttackSpeed)
+                    : 1f;
+
+                return Mathf.Max(0.04f, _attack.duration / Mathf.Max(0.1f, speed));
+            }
+        }
+
         /// <summary>Progression du coup en cours, 0 à 1.</summary>
         public float Progress
         {
-            get { return _attack == null ? 0f : Mathf.Clamp01(_time / Mathf.Max(0.02f, _attack.duration)); }
+            get { return _attack == null ? 0f : Mathf.Clamp01(_time / Mathf.Max(0.02f, EffectiveDuration)); }
         }
 
         private void OnEnable()
@@ -133,9 +155,9 @@ namespace UberBagarre.Combat
 
         public bool TryPlay(AttackData attack)
         {
-            if (attack == null) return Refuse("aucune donnee d'attaque assignee (champ vide dans PlayerCombat ?)");
-            if (_hands == null) return Refuse("pas de FirstPersonHands assigne sur l'executeur");
-            if (_cooldown > 0f) return Refuse("temps de repos : " + _cooldown.ToString("0.00") + " s");
+            if (attack == null) return Refuse("aucune donnee d'attaque assignee (champ vide dans PlayerCombat ?)", true);
+            if (_hands == null) return Refuse("pas de FirstPersonHands assigne sur l'executeur", true);
+            if (_cooldown > 0f) return Refuse("temps de repos : " + _cooldown.ToString("0.00") + " s", false);
 
             bool chaining = false;
 
@@ -144,7 +166,7 @@ namespace UberBagarre.Combat
                 if (!CanChain)
                 {
                     return Refuse("coup en cours a " + (Progress * 100f).ToString("0") + " %, " +
-                                  "enchainable a partir de " + (_attack.comboCancelAt * 100f).ToString("0") + " %");
+                                  "enchainable a partir de " + (_attack.comboCancelAt * 100f).ToString("0") + " %", false);
                 }
 
                 chaining = true;
@@ -156,7 +178,7 @@ namespace UberBagarre.Combat
 
             if (_combatant != null && !_combatant.CanAct && !(chaining && ownAttackState))
             {
-                return Refuse("etat du combattant : " + _combatant.State.Current);
+                return Refuse("etat du combattant : " + _combatant.State.Current, false);
             }
 
             string problem = attack.Diagnose();
@@ -169,7 +191,7 @@ namespace UberBagarre.Combat
             // L'endurance se verifie AVANT de s'engager : un coup a moitie paye ne veut rien dire.
             if (_combatant != null && _combatant.Stamina != null)
             {
-                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return Refuse("endurance insuffisante");
+                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return Refuse("endurance insuffisante", false);
                 _combatant.Stamina.TrySpend(attack.staminaCost);
             }
 
@@ -177,12 +199,12 @@ namespace UberBagarre.Combat
             // d'avoir laisse le coup aller au bout de sa fenetre d'impact, il ne doit pas se payer.
             if (chaining) EndCurrent(false);
 
-            if (_combatant != null)
-            {
-                _combatant.State.Enter(CombatantState.Attacking, attack.duration);
-            }
-
             _attack = attack;
+
+            // L'etat dure exactement le coup, vitesse comprise : un coup accelere qui laisserait
+            // l'etat Attacking courir a l'ancienne duree bloquerait tout juste apres sa fin.
+            if (_combatant != null) _combatant.State.Enter(CombatantState.Attacking, EffectiveDuration);
+
             _side = ResolveHand(attack);
             _variantIndex = attack.PickVariant(_previousVariant);
             _previousVariant = _variantIndex;
@@ -203,11 +225,26 @@ namespace UberBagarre.Combat
             return true;
         }
 
-        private bool Refuse(string reason)
+        /// <summary>
+        /// Refuse un coup, en distinguant deux natures de refus.
+        ///
+        /// Un refus de RYTHME (coup en cours, temps de repos, endurance vide) est attendu et
+        /// arrive des centaines de fois par combat, d'autant plus depuis que le joueur dispose
+        /// d'un tampon d'entrée qui réessaie à chaque image. Le journaliser noierait la console et
+        /// masquerait les vrais problèmes.
+        ///
+        /// Un refus de CONFIGURATION (donnée d'attaque absente, composant non câblé) est un bug :
+        /// il doit crier. C'est la distinction qui manquait, et qui m'avait fait mettre tous les
+        /// refus au même niveau de bruit.
+        ///
+        /// Les deux renseignent LastRefusal : l'overlay de diagnostic affiche donc toujours la
+        /// dernière raison, même silencieuse.
+        /// </summary>
+        private bool Refuse(string reason, bool loud)
         {
             LastRefusal = reason;
 
-            if (_logRefusals) Debug.LogWarning("[UberBagarre] Coup refuse : " + reason, this);
+            if (loud && _logRefusals) Debug.LogError("[UberBagarre] Coup refuse : " + reason, this);
 
             return false;
         }
@@ -265,12 +302,14 @@ namespace UberBagarre.Combat
             }
 
             _time += dt;
-            float normalized = Mathf.Clamp01(_time / Mathf.Max(0.02f, _attack.duration));
+
+            float duration = EffectiveDuration;
+            float normalized = Mathf.Clamp01(_time / Mathf.Max(0.02f, duration));
 
             ApplyPose(normalized);
             UpdateHitWindow(normalized);
 
-            if (_time >= _attack.duration) Finish();
+            if (_time >= duration) Finish();
         }
 
         private void ApplyPose(float normalized)

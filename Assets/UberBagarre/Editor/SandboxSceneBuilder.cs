@@ -582,6 +582,12 @@ namespace UberBagarre.EditorTools
             StaminaSystem staminaSystem = go.AddComponent<StaminaSystem>();
             SerializedWiring.SetFloat(staminaSystem, "_maxStamina", stamina);
 
+            // Fixes explicitement : une valeur par defaut modifiee dans le code ne met PAS a jour
+            // un composant deja pose dans une scene existante. Sans ces deux lignes, regenerer la
+            // scene laisserait l'ancien delai de regeneration en place.
+            SerializedWiring.SetFloat(staminaSystem, "_regenPerSecond", 32f);
+            SerializedWiring.SetFloat(staminaSystem, "_regenDelay", 0.25f);
+
             CombatantStats stats = go.AddComponent<CombatantStats>();
             SerializedWiring.SetFloat(stats, "_fallbackMaxHealth", health);
             SerializedWiring.SetFloat(stats, "_fallbackMaxStamina", stamina);
@@ -723,6 +729,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hud, "_player", playerCombatant);
             SerializedWiring.SetObject(hud, "_guard", player.GetComponent<GuardSystem>());
             SerializedWiring.SetObject(hud, "_relay", player.GetComponent<CombatFeedbackRelay>());
+            SerializedWiring.SetObject(hud, "_combat", player.GetComponent<PlayerCombat>());
 
             CombatDebugOverlay overlay = player.AddComponent<CombatDebugOverlay>();
             SerializedWiring.SetObject(overlay, "_input", player.GetComponent<PlayerInputReader>());
@@ -736,6 +743,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(overlay, "_playerGuard", player.GetComponent<GuardSystem>());
             SerializedWiring.SetObject(overlay, "_enemyGuard", enemy.GetComponent<GuardSystem>());
             SerializedWiring.SetObject(overlay, "_enemyKnockdown", enemy.GetComponent<KnockdownSystem>());
+            SerializedWiring.SetObject(overlay, "_playerCombat", player.GetComponent<PlayerCombat>());
         }
 
         private static InputBindings GetOrCreateInputBindings()
@@ -819,6 +827,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(menu, "_enemyTemplate", enemy);
             SerializedWiring.SetObject(menu, "_cursor", player.GetComponent<CursorLockController>());
             SerializedWiring.SetObject(menu, "_spawnDirector", director);
+            SerializedWiring.SetObject(menu, "_playerCombat", player.GetComponent<PlayerCombat>());
+            SerializedWiring.SetObject(menu, "_hitStop", player.GetComponent<HitStop>());
 
             SerializedWiring.Verify(menu, "_enemyTemplate");
             SerializedWiring.Verify(menu, "_cursor");

@@ -41,12 +41,29 @@ namespace UberBagarre.Player
         [SerializeField] private AttackData _kick;
         [SerializeField] private AttackData _lowKick;
 
+        [Header("Reactivite")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Duree pendant laquelle une touche d'attaque reste MEMORISEE si le coup ne peut " +
+                 "pas encore partir. C'est le reglage le plus important du ressenti : sans tampon, " +
+                 "toute touche pressee pendant la partie non annulable d'un coup est jetee en " +
+                 "silence. Le joueur clique quatre fois, deux coups sortent, et le jeu passe pour " +
+                 "mou alors qu'il a simplement ignore la moitie des ordres.")]
+        private float _inputBuffer = 0.22f;
+
+        [SerializeField]
+        [Tooltip("Maintenir la touche enchaine le coup. Sans ca, la cadence de frappe depend de la " +
+                 "vitesse a laquelle le joueur arrive a cliquer, ce qui n'est pas une competence " +
+                 "de jeu de combat.")]
+        private bool _repeatWhileHeld = true;
+
         [Header("Effet sur le deplacement")]
         [SerializeField, Range(0f, 1f)]
-        [Tooltip("Vitesse conservee pendant un coup. On ne court pas en frappant.")]
-        private float _attackSpeedMultiplier = 0.42f;
+        [Tooltip("Vitesse conservee pendant un coup. Volontairement haut : a 0,42 un joueur qui " +
+                 "enchaine etait immobilise en permanence, ce qui se ressent comme de la lourdeur " +
+                 "bien plus que comme du poids.")]
+        private float _attackSpeedMultiplier = 0.66f;
 
-        [SerializeField, Min(0.5f)] private float _speedRecovery = 4f;
+        [SerializeField, Min(0.5f)] private float _speedRecovery = 10f;
 
         [Header("Cout du sprint")]
         [SerializeField, Min(0f)]
@@ -62,6 +79,35 @@ namespace UberBagarre.Player
         private float _slideStaminaCost = 18f;
 
         private float _currentSpeedMultiplier = 1f;
+        private AttackData _buffered;
+        private float _bufferedUntil;
+
+        /// <summary>
+        /// Nombre de coups dont l'asset date d'une version antérieure du code.
+        ///
+        /// Ce compteur existe parce que le silence sur ce point m'a déjà coûté deux allers-retours
+        /// complets. Le générateur ne réécrit pas un asset réglé à la main — bonne règle — mais
+        /// tant que la scène n'a pas été régénérée, tout travail sur les timings est invisible.
+        /// Vu de l'extérieur, « mon asset est périmé » et « il ne l'a pas fait » sont
+        /// indiscernables. L'interface le dit donc franchement.
+        /// </summary>
+        public int OutdatedAttacks { get; private set; }
+
+        /// <summary>Vrai quand une touche d'attaque attend son tour. Affiché par l'overlay.</summary>
+        public bool HasBufferedInput { get { return _buffered != null; } }
+
+        /// <summary>Durée de mémorisation d'une touche d'attaque. Réglable en jeu.</summary>
+        public float InputBuffer
+        {
+            get { return _inputBuffer; }
+            set { _inputBuffer = Mathf.Max(0f, value); }
+        }
+
+        public bool RepeatWhileHeld
+        {
+            get { return _repeatWhileHeld; }
+            set { _repeatWhileHeld = value; }
+        }
 
         private void Awake()
         {
@@ -97,6 +143,8 @@ namespace UberBagarre.Player
 
             if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
             if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
+
+            CountOutdatedAttacks();
         }
 
         /// <summary>
@@ -145,6 +193,24 @@ namespace UberBagarre.Player
             return attack;
         }
 
+        private void CountOutdatedAttacks()
+        {
+            AttackData[] attacks = { _straight, _hook, _uppercut, _kick, _lowKick };
+            OutdatedAttacks = 0;
+
+            for (int i = 0; i < attacks.Length; i++)
+            {
+                if (attacks[i] != null && attacks[i].IsOutdated) OutdatedAttacks++;
+            }
+
+            if (OutdatedAttacks == 0) return;
+
+            Debug.LogError("[UberBagarre] " + OutdatedAttacks + " coup(s) datent d'une version " +
+                           "anterieure du code : leurs timings, leurs couts et leurs poses sont les " +
+                           "ANCIENS. Lance 'Uber Bagarre > 2 - Construire la scene Combat Sandbox' " +
+                           "(ou '4 - Regenerer les coups par defaut').", this);
+        }
+
         private void Update()
         {
             if (_input == null || _executor == null) return;
@@ -162,24 +228,78 @@ namespace UberBagarre.Player
                 // La garde tombe explicitement : sans cette ligne, elle garderait sa derniere
                 // valeur et un combattant couche continuerait de bloquer les coups.
                 if (_guard != null) _guard.SetGuard(false);
+                _buffered = null;
                 return;
             }
 
             if (_input.DodgePressed) TryDodge();
 
             UpdateGuard();
-
-            // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches
-            // pressees dans la meme image doivent donner un resultat previsible, pas le coup
-            // qui se trouve en premier dans le code.
-            if (_input.LowKickPressed) _executor.TryPlay(_lowKick);
-            else if (_input.KickPressed) _executor.TryPlay(_kick);
-            else if (_input.UppercutPressed) _executor.TryPlay(_uppercut);
-            else if (_input.HookPressed) _executor.TryPlay(_hook);
-            else if (_input.StraightPressed) _executor.TryPlay(_straight);
+            UpdateAttacks();
 
             UpdateSprintCost();
             UpdateMovementPenalty();
+        }
+
+        /// <summary>
+        /// Lit l'intention d'attaque, la mémorise, et la rejoue dès que l'exécuteur l'accepte.
+        ///
+        /// C'est le tampon d'entrée, et c'est ce qui manquait pour que le combat réponde. Un coup
+        /// n'est annulable qu'après sa fenêtre d'impact — soit les deux tiers de sa durée. Sans
+        /// tampon, toute touche pressée pendant ces deux tiers disparaissait purement et
+        /// simplement : l'exécuteur refusait, et personne ne s'en souvenait à l'image suivante.
+        ///
+        /// Le joueur, lui, avait bien appuyé. Il voyait donc un jeu qui ignore la moitié de ses
+        /// ordres, ce qui ne se ressent pas comme « mon timing est mauvais » mais comme « le jeu
+        /// est mou ». Aucun réglage de durée n'aurait pu corriger ça.
+        /// </summary>
+        private void UpdateAttacks()
+        {
+            AttackData requested = ReadAttackIntent();
+
+            if (requested != null)
+            {
+                _buffered = requested;
+                _bufferedUntil = Time.time + _inputBuffer;
+            }
+
+            if (_buffered == null) return;
+
+            if (_executor.TryPlay(_buffered))
+            {
+                _buffered = null;
+                return;
+            }
+
+            // Le tampon a une durée de vie : au-delà, l'ordre n'est plus celui que le joueur
+            // voulait. Rejouer un coup demandé une seconde plus tôt serait pire que de l'oublier.
+            if (Time.time > _bufferedUntil) _buffered = null;
+        }
+
+        /// <summary>
+        /// Quel coup le joueur demande. Les pressions gagnent toujours sur les maintiens : appuyer
+        /// sur le coup de pied pendant qu'on tient le clic gauche doit sortir le coup de pied.
+        /// </summary>
+        private AttackData ReadAttackIntent()
+        {
+            // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches pressees
+            // dans la meme image doivent donner un resultat previsible, pas le coup qui se trouve
+            // en premier dans le code.
+            if (_input.LowKickPressed) return _lowKick;
+            if (_input.KickPressed) return _kick;
+            if (_input.UppercutPressed) return _uppercut;
+            if (_input.HookPressed) return _hook;
+            if (_input.StraightPressed) return _straight;
+
+            if (!_repeatWhileHeld) return null;
+
+            if (_input.LowKickHeld) return _lowKick;
+            if (_input.KickHeld) return _kick;
+            if (_input.UppercutHeld) return _uppercut;
+            if (_input.HookHeld) return _hook;
+            if (_input.StraightHeld) return _straight;
+
+            return null;
         }
 
         /// <summary>

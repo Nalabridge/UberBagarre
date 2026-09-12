@@ -222,10 +222,10 @@ namespace UberBagarre.EditorTools
             a.hitRadius = 0.15f;
             a.damage = 9f;
             a.impactForce = 3.2f;
-            a.staminaCost = 7f;
+            a.staminaCost = 5f;
             a.shakeIntensity = 0.050f;
             a.shakeDuration = 0.09f;
-            a.hitStopDuration = 0.028f;
+            a.hitStopDuration = 0.020f;
             a.weightCurve = PunchWeightCurve();
 
             a.variants = new List<AttackVariant>
@@ -301,10 +301,10 @@ namespace UberBagarre.EditorTools
             a.hitRadius = 0.17f;
             a.damage = 15f;
             a.impactForce = 6f;
-            a.staminaCost = 14f;
+            a.staminaCost = 11f;
             a.shakeIntensity = 0.085f;
             a.shakeDuration = 0.15f;
-            a.hitStopDuration = 0.045f;
+            a.hitStopDuration = 0.028f;
             a.weightCurve = PunchWeightCurve();
 
             a.variants = new List<AttackVariant>
@@ -362,10 +362,10 @@ namespace UberBagarre.EditorTools
             a.hitRadius = 0.17f;
             a.damage = 17f;
             a.impactForce = 7f;
-            a.staminaCost = 16f;
+            a.staminaCost = 13f;
             a.shakeIntensity = 0.095f;
             a.shakeDuration = 0.17f;
-            a.hitStopDuration = 0.050f;
+            a.hitStopDuration = 0.030f;
             a.weightCurve = PunchWeightCurve();
 
             a.variants = new List<AttackVariant>
@@ -427,10 +427,10 @@ namespace UberBagarre.EditorTools
             a.hitRadius = 0.19f;
             a.damage = 19f;
             a.impactForce = 9.5f;
-            a.staminaCost = 21f;
+            a.staminaCost = 17f;
             a.shakeIntensity = 0.105f;
             a.shakeDuration = 0.19f;
-            a.hitStopDuration = 0.055f;
+            a.hitStopDuration = 0.032f;
             a.weightCurve = FootWeightCurve();
 
             a.variants = new List<AttackVariant>
@@ -495,10 +495,10 @@ namespace UberBagarre.EditorTools
             a.hitRadius = 0.20f;
             a.damage = 11f;
             a.impactForce = 7f;
-            a.staminaCost = 16f;
+            a.staminaCost = 12f;
             a.shakeIntensity = 0.070f;
             a.shakeDuration = 0.13f;
-            a.hitStopDuration = 0.040f;
+            a.hitStopDuration = 0.026f;
             a.weightCurve = FootWeightCurve();
 
             a.variants = new List<AttackVariant>

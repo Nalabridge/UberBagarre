@@ -6,20 +6,49 @@ namespace UberBagarre.Feedback
     /// Très court ralenti au moment d'un impact.
     ///
     /// C'est l'effet le plus rentable du jeu de combat : quelques centièmes de seconde suffisent
-    /// à faire sentir qu'un coup a « accroché » quelque chose. Au-delà de ~60 ms, ça devient
-    /// visible et le jeu paraît saccadé — d'où le plafond.
+    /// à faire sentir qu'un coup a « accroché » quelque chose.
+    ///
+    /// Les réglages d'origine étaient un contresens, et c'est la principale raison pour laquelle
+    /// le combat ne paraissait pas nerveux : 5 % de vitesse pendant 60 ms. Pris isolément, ça
+    /// semble court. Mais sur un enchaînement à 6 coups par seconde, ça fait **360 ms de
+    /// quasi-gel par seconde de combat** — plus d'un tiers du temps où le jeu ne répond
+    /// pratiquement plus. Plus le joueur enchaînait vite, plus le jeu devenait pâteux : exactement
+    /// l'inverse de l'effet recherché.
+    ///
+    /// Un hit-stop doit se SENTIR sans se VOIR. 25 % de vitesse pendant 30 ms marque l'impact et
+    /// coûte 18 ms de temps de jeu au lieu de 57.
     /// </summary>
     public class HitStop : MonoBehaviour
     {
         [SerializeField] private bool _enabled = true;
 
         [SerializeField, Range(0f, 0.9f)]
-        [Tooltip("Vitesse du temps pendant l'arret. 0 = fige completement.")]
-        private float _slowTimeScale = 0.05f;
+        [Tooltip("Vitesse du temps pendant l'arret. 0 = fige completement. En dessous de ~0,15 le " +
+                 "jeu arrete de repondre et l'enchainement devient pateux.")]
+        private float _slowTimeScale = 0.25f;
 
-        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.06f;
+        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.032f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Temps mort minimal entre deux ralentis. Sans lui, un enchainement rapide " +
+                 "declenche un ralenti par coup et le jeu passe son temps au ralenti.")]
+        private float _cooldown = 0.09f;
+
+        /// <summary>
+        /// Vitesse du temps pendant le ralenti, réglable en jeu. 1 = aucun ralenti.
+        ///
+        /// Exposée parce que c'est un paramètre de RESSENTI, et qu'un paramètre de ressenti ne se
+        /// règle pas en lisant du code : il se règle en jouant, manette en main, jusqu'à ce que ça
+        /// tombe juste. Le menu de bac à sable s'en sert.
+        /// </summary>
+        public float SlowTimeScale
+        {
+            get { return _slowTimeScale; }
+            set { _slowTimeScale = Mathf.Clamp(value, 0f, 1f); }
+        }
 
         private float _timer;
+        private float _cooldownTimer;
         private float _defaultFixedDelta;
 
         private void Awake()
@@ -31,6 +60,11 @@ namespace UberBagarre.Feedback
         {
             if (!_enabled || duration <= 0f) return;
 
+            // Un enchainement de cinq coups ne doit pas produire cinq ralentis : le premier
+            // marque l'impact, les suivants ne feraient que bloquer le joueur.
+            if (_cooldownTimer > 0f) return;
+
+            _cooldownTimer = _cooldown;
             _timer = Mathf.Max(_timer, Mathf.Min(duration, _maxDuration));
             Time.timeScale = _slowTimeScale;
             Time.fixedDeltaTime = _defaultFixedDelta * Mathf.Max(0.02f, _slowTimeScale);
@@ -38,6 +72,7 @@ namespace UberBagarre.Feedback
 
         private void Update()
         {
+            if (_cooldownTimer > 0f) _cooldownTimer -= Time.unscaledDeltaTime;
             if (_timer <= 0f) return;
 
             _timer -= Time.unscaledDeltaTime;
@@ -48,9 +83,14 @@ namespace UberBagarre.Feedback
 
         private void OnDisable()
         {
+            _cooldownTimer = 0f;
             Restore();
         }
 
+        /// <summary>
+        /// Rend sa vitesse normale au jeu. Ne touche PAS au temps mort : il doit survivre à la fin
+        /// du ralenti, sinon il ne sert à rien — c'est justement entre deux ralentis qu'il compte.
+        /// </summary>
         private void Restore()
         {
             _timer = 0f;

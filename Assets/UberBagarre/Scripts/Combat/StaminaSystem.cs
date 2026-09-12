@@ -6,18 +6,27 @@ namespace UberBagarre.Combat
     /// <summary>
     /// Endurance, séparée de la vie.
     ///
-    /// Volontairement générique : elle sera consommée par les coups, les esquives, le sprint
-    /// et plus tard les attaques lourdes. Le délai avant régénération est ce qui la rend
-    /// tactique — enchaîner cinq crochets a un coût, il faut savoir s'arrêter.
+    /// Volontairement générique : elle est consommée par les coups, les esquives, le sprint et la
+    /// glissade. Le délai avant régénération est ce qui la rend tactique — enchaîner cinq crochets
+    /// a un coût, il faut savoir s'arrêter.
+    ///
+    /// Ce délai était réglé à 0,8 s, et c'était un contresens dès qu'on enchaîne : il repart à zéro
+    /// à CHAQUE dépense, donc en frappant plus vite qu'une fois par 0,8 s on ne régénérait
+    /// strictement rien. Deux secondes de combat, puis cinq secondes à ne presque rien pouvoir
+    /// faire. Le symptôme ressenti n'est pas « je gère mal mon endurance » mais « le jeu est mou
+    /// et il me bloque » — alors que la règle, elle, fonctionnait parfaitement.
+    ///
+    /// Un délai court laisse un rythme soutenu respirer tout en punissant le matraquage pur.
     /// </summary>
     public class StaminaSystem : MonoBehaviour
     {
         [SerializeField, Min(1f)] private float _maxStamina = 100f;
-        [SerializeField, Min(0f)] private float _regenPerSecond = 22f;
+        [SerializeField, Min(0f)] private float _regenPerSecond = 32f;
 
         [SerializeField, Min(0f)]
-        [Tooltip("Delai apres une depense avant que la regeneration reprenne.")]
-        private float _regenDelay = 0.8f;
+        [Tooltip("Delai apres une depense avant que la regeneration reprenne. Il repart a zero a " +
+                 "chaque depense : au-dela de ~0,3 s, enchainer empeche toute regeneration.")]
+        private float _regenDelay = 0.25f;
 
         [SerializeField]
         [Tooltip("Autorise l'action meme s'il ne reste pas tout le cout, puis descend a zero.")]

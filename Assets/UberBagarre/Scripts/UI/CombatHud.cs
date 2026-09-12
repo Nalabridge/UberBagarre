@@ -1,5 +1,6 @@
 using UberBagarre.Combat;
 using UberBagarre.Feedback;
+using UberBagarre.Player;
 using UnityEngine;
 
 namespace UberBagarre.UI
@@ -29,6 +30,10 @@ namespace UberBagarre.UI
         [SerializeField]
         [Tooltip("Optionnel. Fournit les eclats de parade et de blocage.")]
         private CombatFeedbackRelay _relay;
+
+        [SerializeField]
+        [Tooltip("Optionnel. Sert a prevenir a l'ecran quand les donnees de coups sont perimees.")]
+        private PlayerCombat _combat;
 
         [Header("Affichage")]
         [SerializeField] private bool _visible = true;
@@ -125,6 +130,31 @@ namespace UberBagarre.UI
             DrawAimedZone();
             DrawGuard();
             DrawPlayerPanel();
+            DrawOutdatedWarning();
+        }
+
+        /// <summary>
+        /// Bandeau d'alerte quand les données de coups sont périmées.
+        ///
+        /// Il est à l'ÉCRAN et pas seulement dans la console, parce qu'une console peut très bien
+        /// ne jamais être regardée — et que le symptôme de données périmées est « rien n'a changé »,
+        /// donc indiscernable de « il ne l'a pas fait ». Une alerte muette sur ce point précis
+        /// coûte un aller-retour de test complet.
+        /// </summary>
+        private void DrawOutdatedWarning()
+        {
+            if (_combat == null || _combat.OutdatedAttacks <= 0) return;
+
+            float height = 34f;
+            Rect banner = new Rect(0f, 0f, Screen.width, height);
+
+            float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 4f);
+            GuiKit.Fill(banner, new Color(0.55f, 0.08f, 0.06f, 0.92f * pulse));
+
+            GuiKit.OutlinedLabel(banner,
+                _combat.OutdatedAttacks + " coup(s) perimes  —  lance  Uber Bagarre > 2 - Construire la scene",
+                GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleCenter),
+                Color.white, new Color(0f, 0f, 0f, 0.9f), 2f);
         }
 
         /// <summary>

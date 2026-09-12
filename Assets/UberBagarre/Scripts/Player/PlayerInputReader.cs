@@ -51,6 +51,14 @@ namespace UberBagarre.Player
         public bool KickPressed { get; private set; }
         public bool LowKickPressed { get; private set; }
 
+        // Versions MAINTENUES des attaques. Elles existent pour que la cadence de frappe ne
+        // depende pas de la vitesse a laquelle le joueur arrive a cliquer : maintenir enchaine.
+        public bool StraightHeld { get; private set; }
+        public bool HookHeld { get; private set; }
+        public bool UppercutHeld { get; private set; }
+        public bool KickHeld { get; private set; }
+        public bool LowKickHeld { get; private set; }
+
         // Entrées "système" : volontairement non coupées par _gameplayInputEnabled,
         // sinon on ne pourrait plus libérer le curseur quand le gameplay est désactivé.
         public bool ReleaseCursorPressed { get; private set; }
@@ -118,6 +126,12 @@ namespace UberBagarre.Player
             UppercutPressed = _provider.GetPressedThisFrame(_bindings.attackUppercut);
             KickPressed = _provider.GetPressedThisFrame(_bindings.attackKick);
             LowKickPressed = _provider.GetPressedThisFrame(_bindings.attackLowKick);
+
+            StraightHeld = _provider.GetHeld(_bindings.attackStraight);
+            HookHeld = _provider.GetHeld(_bindings.attackHook);
+            UppercutHeld = _provider.GetHeld(_bindings.attackUppercut);
+            KickHeld = _provider.GetHeld(_bindings.attackKick);
+            LowKickHeld = _provider.GetHeld(_bindings.attackLowKick);
         }
 
         private void ClearGameplayInput()
@@ -135,6 +149,11 @@ namespace UberBagarre.Player
             UppercutPressed = false;
             KickPressed = false;
             LowKickPressed = false;
+            StraightHeld = false;
+            HookHeld = false;
+            UppercutHeld = false;
+            KickHeld = false;
+            LowKickHeld = false;
         }
     }
 }

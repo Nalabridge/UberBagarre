@@ -153,10 +153,16 @@ namespace UberBagarre.Combat
         /// version, le générateur sait distinguer « asset réglé par l'utilisateur » de « asset
         /// créé par une version antérieure du code ».
         /// </summary>
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
 
         [HideInInspector]
         public int dataVersion;
+
+        /// <summary>
+        /// Vrai si cet asset a été créé par une version antérieure du code et n'a pas été
+        /// régénéré. Ses timings, ses coûts et ses poses sont alors les anciens.
+        /// </summary>
+        public bool IsOutdated { get { return dataVersion < CurrentVersion; } }
 
         /// <summary>Nom d'asset des coups de base, pour le chargement de secours depuis Resources.</summary>
         public const string ResourceFolder = "Attaques";

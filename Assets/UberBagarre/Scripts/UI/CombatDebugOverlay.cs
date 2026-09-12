@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UberBagarre.Combat;
 using UberBagarre.Enemy;
@@ -29,6 +30,10 @@ namespace UberBagarre.UI
         [SerializeField] private GuardSystem _playerGuard;
         [SerializeField] private AttackData _testAttack;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Donne l'etat du tampon d'entree.")]
+        private PlayerCombat _playerCombat;
+
         [Header("Ennemi")]
         [SerializeField] private EnemyBrain _enemyBrain;
         [SerializeField] private Combatant _enemy;
@@ -53,6 +58,51 @@ namespace UberBagarre.UI
         private float _lowKickFlash;
         private float _guardFlash;
         private Hurtbox[] _enemyZones;
+
+        // Horodatage des derniers coups portes, pour mesurer la cadence REELLE.
+        private readonly List<float> _attackTimes = new List<float>(32);
+        private float _lastGap;
+
+        private void OnEnable()
+        {
+            if (_playerExecutor != null) _playerExecutor.AttackStarted += OnPlayerAttackStarted;
+        }
+
+        private void OnDisable()
+        {
+            if (_playerExecutor != null) _playerExecutor.AttackStarted -= OnPlayerAttackStarted;
+        }
+
+        /// <summary>
+        /// Mesure la cadence au lieu de la déduire des réglages.
+        ///
+        /// « Ce n'est pas assez nerveux » n'est pas une information exploitable : les durées, le
+        /// ralenti d'impact, le tampon d'entrée, l'endurance et l'état du combattant interviennent
+        /// tous, et rien ne dit lequel domine. Un nombre de coups par seconde mesuré en jeu
+        /// transforme un ressenti en fait, et un fait se corrige.
+        /// </summary>
+        private void OnPlayerAttackStarted(AttackData attack, View.HandSide side)
+        {
+            float now = Time.unscaledTime;
+
+            if (_attackTimes.Count > 0) _lastGap = now - _attackTimes[_attackTimes.Count - 1];
+
+            _attackTimes.Add(now);
+            if (_attackTimes.Count > 32) _attackTimes.RemoveAt(0);
+        }
+
+        private float AttacksPerSecond()
+        {
+            float now = Time.unscaledTime;
+            int count = 0;
+
+            for (int i = 0; i < _attackTimes.Count; i++)
+            {
+                if (now - _attackTimes[i] <= 2f) count++;
+            }
+
+            return count * 0.5f;
+        }
 
         private void Start()
         {
@@ -240,6 +290,18 @@ namespace UberBagarre.UI
                 _builder.AppendLine("  esquive : " + (_playerDodge.IsDodging ? "EN COURS" : "prete dans " +
                     _playerDodge.CooldownRemaining.ToString("0.00") + "s") +
                     (_playerDodge.IsInvulnerable ? "  [INVULNERABLE]" : ""));
+            }
+
+            _builder.AppendLine("  cadence : " + AttacksPerSecond().ToString("0.0") + " coups/s" +
+                                (_lastGap > 0f ? "   (dernier ecart " + (_lastGap * 1000f).ToString("0") + " ms)" : "") +
+                                "   temps x" + Time.timeScale.ToString("0.00"));
+
+            if (_playerCombat != null)
+            {
+                _builder.AppendLine("  tampon  : " + (_playerCombat.HasBufferedInput ? "UNE TOUCHE ATTEND" : "vide") +
+                                    (_playerCombat.OutdatedAttacks > 0
+                                        ? "   !! " + _playerCombat.OutdatedAttacks + " COUP(S) PERIMES, REGENERE LA SCENE"
+                                        : ""));
             }
 
             if (_playerGuard != null)
