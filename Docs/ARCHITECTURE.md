@@ -295,3 +295,18 @@ gênant — ce n'est pas une contrainte d'architecture.
 - **Sac de frappe** plutôt que rien : sans cible, impossible de vérifier qu'une fenêtre
   d'impact fonctionne. Pendule simple, sans Rigidbody, donc comportement identique à chaque
   test — ce qu'on attend d'un banc d'essai.
+
+### Phase 4b — IK agnostique au squelette
+- **`IkLimb` mesure lui-même l'orientation et la longueur réelles de ses os au réveil.**
+  Avant, il imposait « l'axe +Z suit l'os » — convention qu'aucun rig du commerce ne respecte,
+  donc aucun modèle importé n'aurait fonctionné. Il aligne désormais chaque os par
+  `FromToRotation` depuis sa pose de repos : rig-agnostique, et sans accumulation d'erreur
+  puisqu'on repart toujours du repos.
+- **Le pôle est exprimé dans un repère explicite** (`_poleSpace`, la racine du corps) et non
+  plus dans le repère de l'os parent, dont l'orientation dépend entièrement du logiciel de rig.
+- **`HumanoidModelBinder`** : l'outil ne remplace pas le système d'animation, il lui donne
+  d'autres os. Les composants et tout leur câblage sont conservés ; seules les références
+  changent. L'axe de flexion de chaque doigt est *calculé* à partir de la géométrie réelle de
+  la main (normale du dos de la main × direction du doigt), car il est impossible à deviner.
+- **Les primitives sont masquées et non détruites** : un branchement raté se défait en
+  recochant les Mesh Renderer.

@@ -121,7 +121,8 @@ Docs/
   ARCHITECTURE.md   pourquoi le code est organisé comme ça + comment l'étendre
 ```
 
-Voir **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** pour les décisions de conception.
+Voir **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** pour les décisions de conception,
+et **[Docs/MODELE_3D.md](Docs/MODELE_3D.md)** pour remplacer les primitives par un vrai modèle.
 
 ---
 
@@ -138,4 +139,4 @@ réécrire le combat.
 | Animations **procédurales** pilotées par données | Le projet n'a aucun clip ni rig : impossible de livrer de « vraies » animations. Les poses-clés sont éditables dans l'Inspector. | `ICombatAnimator` → implémentation Animator/Mecanim |
 | HUD et vignette en `OnGUI` | Pas de TextMeshPro, pas de police, pas de post-processing requis. Paramétrable dans l'Inspector. | Canvas uGUI / UI Toolkit |
 | Sons générés par code | Aucun fichier audio dans le projet | Vrais samples |
-| Primitives Unity pour les mains et l'ennemi | Aucun modèle 3D disponible | Vrais modèles, sans toucher à la logique |
+| Primitives Unity pour le corps et les mains | Aucun modèle 3D disponible | **Un clic** : `Uber Bagarre → 5 - Brancher le modele 3D`, voir [Docs/MODELE_3D.md](Docs/MODELE_3D.md) |

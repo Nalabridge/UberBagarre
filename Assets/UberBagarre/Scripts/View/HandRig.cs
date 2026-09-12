@@ -52,6 +52,11 @@ namespace UberBagarre.View
 
         [SerializeField] private HandSide _side = HandSide.Right;
         [SerializeField] private Transform _palm;
+
+        [SerializeField]
+        [Tooltip("Position des articulations dans le repere de la paume. Mesuree automatiquement " +
+                 "lors du branchement d'un modele 3D, car chaque main a ses propres proportions.")]
+        private Vector3 _knuckleOffset = new Vector3(0f, -0.008f, 0.052f);
         [SerializeField] private Finger[] _fingers = new Finger[0];
 
         [Header("Reactivite")]
@@ -69,7 +74,7 @@ namespace UberBagarre.View
         /// <summary>Position du point d'impact : le devant des articulations, pas le poignet.</summary>
         public Vector3 KnucklePosition
         {
-            get { return _palm != null ? _palm.TransformPoint(new Vector3(0f, 0f, 0.085f)) : transform.position; }
+            get { return _palm != null ? _palm.TransformPoint(_knuckleOffset) : transform.position; }
         }
 
         /// <summary>0 = main ouverte, 1 = poing serré. Réglé par l'animation de combat.</summary>

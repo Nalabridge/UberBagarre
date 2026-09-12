@@ -426,13 +426,13 @@ namespace UberBagarre.EditorTools
             EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "NeckVisual", neck.transform,
                 new Vector3(0f, 0.02f, 0f), new Vector3(0.11f, 0.05f, 0.11f), materials.Skin, false);
 
-            IkLimb leftArm = BuildArm(chest.transform, HandSide.Left, materials);
-            IkLimb rightArm = BuildArm(chest.transform, HandSide.Right, materials);
+            IkLimb leftArm = BuildArm(chest.transform, bodyGo.transform, HandSide.Left, materials);
+            IkLimb rightArm = BuildArm(chest.transform, bodyGo.transform, HandSide.Right, materials);
             HandRig leftHand = leftArm.End.GetComponentInChildren<HandRig>();
             HandRig rightHand = rightArm.End.GetComponentInChildren<HandRig>();
 
-            IkLimb leftLeg = BuildLeg(pelvis.transform, true, materials);
-            IkLimb rightLeg = BuildLeg(pelvis.transform, false, materials);
+            IkLimb leftLeg = BuildLeg(pelvis.transform, bodyGo.transform, true, materials);
+            IkLimb rightLeg = BuildLeg(pelvis.transform, bodyGo.transform, false, materials);
 
             rig = bodyGo.AddComponent<BodyRig>();
             SerializedWiring.SetObject(rig, "_pelvis", pelvis.transform);
@@ -451,7 +451,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(locomotion, "_root", playerRoot);
         }
 
-        private static IkLimb BuildArm(Transform chest, HandSide side, Materials materials)
+        private static IkLimb BuildArm(Transform chest, Transform poleSpace, HandSide side, Materials materials)
         {
             bool isLeft = side == HandSide.Left;
             float sign = isLeft ? -1f : 1f;
@@ -467,7 +467,7 @@ namespace UberBagarre.EditorTools
                 new Vector3(0f, 0f, ForearmLength));
 
             CreateBoneVisual(upperArm.transform, prefix + "UpperArmVisual", UpperArmLength, 0.058f, materials.Shirt);
-            CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.047f, materials.Skin);
+            CreateBoneVisual(forearm.transform, prefix + "ForearmVisual", ForearmLength, 0.044f, materials.Skin);
             Transform knuckles = BuildHand(wrist.transform, side, materials);
 
             // La detection part des articulations, pas du poignet : c'est la surface qui frappe.
@@ -481,14 +481,16 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(limb, "_end", wrist.transform);
             SerializedWiring.SetFloat(limb, "_upperLength", UpperArmLength);
             SerializedWiring.SetFloat(limb, "_lowerLength", ForearmLength);
+            SerializedWiring.SetBool(limb, "_autoMeasureLengths", true);
 
             // Coude vers le bas, legerement en arriere et vers l'exterieur : silhouette de garde.
+            SerializedWiring.SetObject(limb, "_poleSpace", poleSpace);
             SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.25f, -1f, -0.35f));
 
             return limb;
         }
 
-        private static IkLimb BuildLeg(Transform pelvis, bool isLeft, Materials materials)
+        private static IkLimb BuildLeg(Transform pelvis, Transform poleSpace, bool isLeft, Materials materials)
         {
             float sign = isLeft ? -1f : 1f;
             string prefix = isLeft ? "Left" : "Right";
@@ -514,8 +516,10 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(limb, "_end", ankle.transform);
             SerializedWiring.SetFloat(limb, "_upperLength", ThighLength);
             SerializedWiring.SetFloat(limb, "_lowerLength", ShinLength);
+            SerializedWiring.SetBool(limb, "_autoMeasureLengths", true);
 
             // Le genou plie vers l'avant : c'est tout ce qui distingue une jambe d'un bras.
+            SerializedWiring.SetObject(limb, "_poleSpace", poleSpace);
             SerializedWiring.SetVector3(limb, "_poleDirection", new Vector3(sign * 0.15f, 0.35f, 1f));
 
             return limb;
@@ -549,28 +553,24 @@ namespace UberBagarre.EditorTools
             float sign = side == HandSide.Left ? -1f : 1f;
             string prefix = side == HandSide.Left ? "Left" : "Right";
 
+            // Poignet, puis masse du poing. A 30 cm de l'oeil, des formes arrondies se lisent
+            // beaucoup mieux que des cubes : les aretes vives trahissent immediatement la primitive.
+            CreateBoneVisual(wrist, prefix + "WristVisual", 0.030f, 0.032f, materials.Skin);
+
             GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.040f));
-
-            // Un poing est un BLOC : presque aussi epais que large. Une paume fine donnait une
-            // planche, avec les doigts replies qui pendaient dessous comme des orteils.
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "PalmVisual", palm.transform,
-                Vector3.zero, new Vector3(0.085f, 0.050f, 0.072f), materials.Skin, false);
-
-            // Crete des articulations : c'est ce qui fait lire la forme comme un poing,
-            // et c'est aussi la surface qui frappe.
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, prefix + "KnuckleVisual", palm.transform,
-                new Vector3(0f, -0.002f, 0.040f), new Vector3(0.086f, 0.044f, 0.024f), materials.Skin, false);
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, prefix + "PalmVisual", palm.transform,
+                Vector3.zero, new Vector3(0.084f, 0.076f, 0.082f), materials.Skin, false);
 
             GameObject knuckles = EditorBuildUtility.CreateEmpty(prefix + "Knuckles", palm.transform,
-                new Vector3(0f, -0.008f, 0.052f));
+                new Vector3(0f, -0.006f, 0.040f));
 
             FingerSpec[] specs = new FingerSpec[]
             {
-                MakeFinger("Index",       new Vector3(sign * 0.029f, -0.010f, 0.034f), Vector3.zero, 0.038f, 0.024f, 0.018f, 0.0105f, 78f,  96f, 62f, 0.15f, Vector3.right),
-                MakeFinger("Majeur",      new Vector3(sign * 0.010f, -0.008f, 0.036f), Vector3.zero, 0.042f, 0.026f, 0.019f, 0.0110f, 82f,  98f, 64f, 0.08f, Vector3.right),
-                MakeFinger("Annulaire",   new Vector3(sign * -0.010f, -0.010f, 0.034f), Vector3.zero, 0.039f, 0.025f, 0.018f, 0.0100f, 85f, 100f, 66f, 0.03f, Vector3.right),
-                MakeFinger("Auriculaire", new Vector3(sign * -0.028f, -0.013f, 0.030f), Vector3.zero, 0.032f, 0.021f, 0.016f, 0.0088f, 88f, 102f, 68f, 0f,    Vector3.right),
-                MakeFinger("Pouce",       new Vector3(sign * 0.040f, -0.014f, 0.004f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.034f, 0.026f, 0.019f, 0.0125f, 42f, 48f, 32f, 0.35f, Vector3.right)
+                MakeFinger("Index",       new Vector3(sign * 0.026f, -0.008f, 0.028f), Vector3.zero, 0.038f, 0.024f, 0.018f, 0.0105f, 78f,  96f, 62f, 0.15f, Vector3.right),
+                MakeFinger("Majeur",      new Vector3(sign * 0.009f, -0.006f, 0.030f), Vector3.zero, 0.042f, 0.026f, 0.019f, 0.0110f, 82f,  98f, 64f, 0.08f, Vector3.right),
+                MakeFinger("Annulaire",   new Vector3(sign * -0.009f, -0.008f, 0.028f), Vector3.zero, 0.039f, 0.025f, 0.018f, 0.0100f, 85f, 100f, 66f, 0.03f, Vector3.right),
+                MakeFinger("Auriculaire", new Vector3(sign * -0.025f, -0.011f, 0.024f), Vector3.zero, 0.032f, 0.021f, 0.016f, 0.0088f, 88f, 102f, 68f, 0f,    Vector3.right),
+                MakeFinger("Pouce",       new Vector3(sign * 0.036f, -0.014f, 0.000f), new Vector3(6f, -sign * 38f, -sign * 50f), 0.034f, 0.026f, 0.019f, 0.0125f, 42f, 48f, 32f, 0.35f, Vector3.right)
             };
 
             Transform[,] joints = new Transform[specs.Length, 3];
@@ -578,6 +578,11 @@ namespace UberBagarre.EditorTools
             for (int i = 0; i < specs.Length; i++)
             {
                 FingerSpec spec = specs[i];
+
+                // Une bosse d'articulation a la base de chaque doigt : c'est ce qui fait lire
+                // la forme comme un poing plutot qu'une boule avec des batonnets.
+                EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, prefix + spec.Name + "Knuckle",
+                    palm.transform, spec.Base, Vector3.one * (spec.Radius * 2.6f), materials.Skin, false);
 
                 GameObject proximal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "1", palm.transform, spec.Base);
                 proximal.transform.localRotation = Quaternion.Euler(spec.BaseEuler);

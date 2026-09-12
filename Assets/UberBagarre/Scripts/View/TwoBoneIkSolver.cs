@@ -21,10 +21,17 @@ namespace UberBagarre.View
     {
         public struct Result
         {
-            /// <summary>Rotation monde du bras. Convention : l'axe +Z de l'os suit l'os.</summary>
+            /// <summary>Direction monde du premier os. C'est la sortie principale : elle ne suppose
+            /// aucune convention d'axe, donc elle marche avec n'importe quel squelette importe.</summary>
+            public Vector3 UpperDirection;
+
+            /// <summary>Direction monde du second os.</summary>
+            public Vector3 LowerDirection;
+
+            /// <summary>Rotation monde du premier os, dans la convention "+Z suit l'os". Utile pour le debug.</summary>
             public Quaternion UpperRotation;
 
-            /// <summary>Rotation monde du second os (avant-bras ou tibia).</summary>
+            /// <summary>Rotation monde du second os, meme convention.</summary>
             public Quaternion LowerRotation;
 
             /// <summary>Position monde de l'articulation intermediaire (coude ou genou).</summary>
@@ -82,6 +89,9 @@ namespace UberBagarre.View
 
             // Axe de flexion : perpendiculaire au plan du bras, donc perpendiculaire aux deux os.
             // L'utiliser comme référence pour le "up" évite toute dégénérescence de LookRotation.
+            result.UpperDirection = upperDirection;
+            result.LowerDirection = forearmDirection;
+
             Vector3 bendAxis = Vector3.Cross(direction, perpendicular);
 
             result.UpperRotation = Quaternion.LookRotation(upperDirection, Vector3.Cross(bendAxis, upperDirection));
