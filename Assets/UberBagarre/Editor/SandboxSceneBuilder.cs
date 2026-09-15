@@ -29,8 +29,8 @@ namespace UberBagarre.EditorTools
 
         private const string SettingsFolder = "Assets/UberBagarre/Settings";
 
+        /// <summary>Sert au tiling des matériaux de sol, pas à une dimension d'arène.</summary>
         private const float ArenaSize = 26f;
-        private const float RingRadius = 3.4f;
 
         private const float PlayerHeight = 1.8f;
         private const float PlayerRadius = 0.28f;
@@ -68,16 +68,22 @@ namespace UberBagarre.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            Light sun = BuildLighting();
-            ArenaBuilder.Build(ArenaSize, RingRadius);
+            Light sun;
+            Light moon;
+            BuildLighting(out sun, out moon);
+
+            NightStreetBuilder.Result street = NightStreetBuilder.Build();
             BuildPunchingBag(materials);
 
-            GameObject player = BuildPlayer(materials, attacks);
+            Camera gameCamera;
+            Camera observerCamera;
+            GameObject player = BuildPlayer(materials, attacks, out gameCamera, out observerCamera);
+
             GameObject enemy = BuildEnemy(materials, attacks);
 
-            BuildRendering(sun, player.GetComponentInChildren<Camera>());
+            GraphicsDirector graphics = BuildRendering(sun, moon, street, gameCamera, observerCamera);
             WireHudAndDebug(player, enemy, attacks.Straight);
-            BuildSpawnSystem(player, enemy);
+            BuildSpawnSystem(player, enemy, graphics);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -86,10 +92,13 @@ namespace UberBagarre.EditorTools
 
             if (saved) RegisterSceneInBuildSettings();
 
+            OfferLinearColorSpace();
+
             Selection.activeGameObject = player;
 
-            Debug.Log("[UberBagarre] Scene Combat Sandbox generee.\n" +
+            Debug.Log("[UberBagarre] Scene Combat Sandbox generee : rue de nuit devant la boite.\n" +
                       "  Render pipeline : " + EditorBuildUtility.ActivePipelineName() + "\n" +
+                      "  Espace colorim. : " + PlayerSettings.colorSpace + "\n" +
                       "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
                       "  Poings       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
                       "  Pieds        : F = coup de pied de face, V = coup de pied bas (fait tomber)\n" +
@@ -98,99 +107,194 @@ namespace UberBagarre.EditorTools
                       "  Contextuel   : en sprintant = charge d'epaule, en l'air = coup plongeant,\n" +
                       "                 en glissade = balayage, cible au sol + pied = coup de grace\n" +
                       "  Charge       : maintenir uppercut / coup de pied arme le coup (jusqu'a x2,2)\n" +
-                      "  Outils       : TAB = menu (PV, degats, profils, vagues, statistiques),\n" +
+                      "  Outils       : TAB = menu (PV, degats, profils, vagues, GRAPHISMES, statistiques),\n" +
                       "                 F3 = camera d'observation (+ / - pour le zoom)\n" +
                       "  Debug        : F1 = overlay, R = relancer le combat, Echap = liberer le curseur\n" +
+                      "  Graphismes   : bloom, tonemap ACES, reflet planaire sur le bitume mouille,\n" +
+                      "                 cycle jour / nuit. Tout se regle dans TAB > Graphismes.\n" +
                       "  Appuie sur Play.");
+        }
+
+        /// <summary>
+        /// Propose de passer le projet en espace colorimétrique linéaire.
+        ///
+        /// Ce n'est pas un détail de réglage, c'est la différence entre un éclairage juste et
+        /// un éclairage faux. En GAMMA, Unity additionne les contributions des lampes sur des
+        /// valeurs déjà encodées pour l'écran : deux lampes d'intensité 1 donnent beaucoup
+        /// plus que 2, les hautes lumières se délavent en blanc laiteux, et les dégradés
+        /// autour d'un lampadaire cassent en bandes visibles. Une rue de nuit éclairée par
+        /// trente sources est exactement le cas où ça se voit le plus.
+        ///
+        /// C'est demandé et pas imposé : le changement déclenche un réimport complet du
+        /// projet, ce qui prend du temps et ne doit jamais être une surprise.
+        /// </summary>
+        private static void OfferLinearColorSpace()
+        {
+            if (PlayerSettings.colorSpace == ColorSpace.Linear) return;
+
+            bool accept = EditorUtility.DisplayDialog(
+                "Passer en espace colorimetrique lineaire ?",
+                "Le projet est actuellement en GAMMA.\n\n" +
+                "En gamma, l'addition de plusieurs lampes est fausse : les zones eclairees " +
+                "virent au blanc laiteux et les degrades autour des lampadaires cassent en " +
+                "bandes. Avec une trentaine de sources dans la rue, ca se voit tout de suite.\n\n" +
+                "Le passage en LINEAIRE declenche un reimport complet du projet (quelques " +
+                "minutes selon la machine). Le post-traitement fonctionne dans les deux cas, " +
+                "mais il ne peut pas rattraper un eclairage calcule faux en amont.",
+                "Passer en lineaire", "Laisser en gamma");
+
+            if (!accept) return;
+
+            PlayerSettings.colorSpace = ColorSpace.Linear;
+            Debug.Log("[UberBagarre] Espace colorimetrique passe en LINEAIRE. " +
+                      "Laisse Unity terminer le reimport avant de relancer la scene.");
         }
 
         // ------------------------------------------------------------------ décor
 
         /// <summary>
-        /// Éclairage de l'arène. Renvoie le soleil, dont les reflets d'objectif ont besoin.
+        /// Les deux sources naturelles : le soleil et la lune.
         ///
-        /// Le soleil est bas et CHAUD, pas blanc-bleu. C'est le réglage qui change le plus
-        /// l'impression générale : une lumière bleu pâle et verticale aplatit tout et donne
-        /// l'aspect « maquette sous un néon ». Un soleil rasant à 18° crée des ombres longues,
-        /// donc du relief, et oppose le chaud de la lumière au froid des ombres — l'ambiance de
-        /// fin d'après-midi qui se lit immédiatement comme « extérieur, vrai lieu ».
+        /// Les deux existent en permanence, et c'est le cycle jour / nuit qui décide laquelle
+        /// est allumée. Construire « la lumière de la scène » pour une seule heure serait
+        /// revenir au problème que le curseur d'heure résout : à midi comme à minuit, la
+        /// scène doit tenir sans qu'on aille rééditer un objet.
+        ///
+        /// De nuit, la lune ne sert PAS à éclairer — elle est presque invisible. Son vrai rôle
+        /// est de poser une direction commune aux ombres et de mettre un froid léger sur les
+        /// surfaces tournées vers le ciel, ce qui sépare les toits du fond. Tout le reste de
+        /// la lumière vient des lampadaires et des enseignes.
         /// </summary>
-        private static Light BuildLighting()
+        private static void BuildLighting(out Light sun, out Light moon)
         {
             GameObject root = new GameObject("=== Eclairage ===");
 
             GameObject sunGo = EditorBuildUtility.CreateEmpty("Soleil", root.transform, Vector3.zero);
-            sunGo.transform.rotation = Quaternion.Euler(18f, -38f, 0f);
+            sunGo.transform.rotation = Quaternion.Euler(42f, -40f, 0f);
 
-            Light sun = sunGo.AddComponent<Light>();
+            sun = sunGo.AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.intensity = 1.35f;
-            sun.color = new Color(1f, 0.86f, 0.66f);
+            sun.intensity = 0f;
+            sun.color = new Color(1f, 0.89f, 0.72f);
             sun.shadows = LightShadows.Soft;
             sun.shadowStrength = 0.82f;
             sun.shadowBias = 0.03f;
             sun.shadowNormalBias = 0.25f;
+            sun.enabled = false;
 
-            // Appoint froid a l'oppose : c'est le ciel. Le contraste chaud / froid fait tout le
-            // travail de relief, et evite des ombres d'un noir mort sans toucher a l'eclairage
-            // indirect, qu'un projet vierge n'a pas calcule.
-            GameObject fillGo = EditorBuildUtility.CreateEmpty("Lumiere du ciel", root.transform, Vector3.zero);
-            fillGo.transform.rotation = Quaternion.Euler(38f, 150f, 0f);
+            GameObject moonGo = EditorBuildUtility.CreateEmpty("Lune", root.transform, Vector3.zero);
+            moonGo.transform.rotation = Quaternion.Euler(28f, 152f, 0f);
 
-            Light fill = fillGo.AddComponent<Light>();
-            fill.type = LightType.Directional;
-            fill.intensity = 0.32f;
-            fill.color = new Color(0.62f, 0.72f, 0.95f);
-            fill.shadows = LightShadows.None;
-
-            return sun;
+            moon = moonGo.AddComponent<Light>();
+            moon.type = LightType.Directional;
+            moon.intensity = 0.22f;
+            moon.color = new Color(0.52f, 0.63f, 0.95f);
+            moon.shadows = LightShadows.Soft;
+            moon.shadowStrength = 0.45f;
+            moon.shadowBias = 0.04f;
+            moon.shadowNormalBias = 0.3f;
         }
 
         /// <summary>
-        /// Réglages de rendu et reflets d'objectif.
+        /// Rendu : qualité, post-traitement, cycle jour / nuit, façade de réglages.
         ///
-        /// Ils vivent sur leur propre objet, et pas sur le joueur : ils ne décrivent pas un
-        /// combattant mais la scène entière. Les régler ailleurs rendrait incompréhensible
-        /// pourquoi supprimer le joueur change les ombres.
+        /// Les deux caméras reçoivent la MÊME chaîne de post-traitement. C'est le point à ne
+        /// pas rater : sans cela, passer en caméra d'observation ferait disparaître le bloom
+        /// et l'étalonnage, et on conclurait que l'effet ne marche pas alors qu'il n'est
+        /// simplement pas installé sur la caméra qu'on regarde.
         /// </summary>
-        private static void BuildRendering(Light sun, Camera camera)
+        private static GraphicsDirector BuildRendering(Light sun, Light moon, NightStreetBuilder.Result street,
+            Camera gameCamera, Camera observerCamera)
         {
             GameObject root = new GameObject("=== Rendu ===");
 
-            root.AddComponent<VisualQuality>();
+            VisualQuality quality = root.AddComponent<VisualQuality>();
+            SerializedWiring.SetInt(quality, "_antiAliasing", 8);
+            SerializedWiring.SetFloat(quality, "_shadowDistance", 60f);
+            SerializedWiring.SetInt(quality, "_pixelLightCount", 10);
+
+            // La brume et l'ambiante appartiennent au cycle jour / nuit : deux composants qui
+            // écriraient dans RenderSettings au démarrage donneraient un résultat dépendant de
+            // leur ordre d'exécution, c'est-à-dire indéterminé.
+            SerializedWiring.SetBool(quality, "_enableFog", false);
+            SerializedWiring.SetBool(quality, "_overrideAmbient", false);
 
             SunFlare flare = root.AddComponent<SunFlare>();
             SerializedWiring.SetObject(flare, "_sun", sun);
-            SerializedWiring.SetObject(flare, "_camera", camera);
+            SerializedWiring.SetObject(flare, "_camera", gameCamera);
 
-            BuildSky(sun, camera);
+            Material sky = BuildSky(gameCamera, observerCamera);
+
+            TimeOfDay time = root.AddComponent<TimeOfDay>();
+            SerializedWiring.SetObject(time, "_sun", sun);
+            SerializedWiring.SetObject(time, "_moon", moon);
+            SerializedWiring.SetObject(time, "_skyMaterial", sky);
+            SerializedWiring.SetObject(time, "_cityRoot", street == null ? null : street.CityRoot);
+            SerializedWiring.SetFloat(time, "_day", 0f);
+            SerializedWiring.Verify(time, "_cityRoot");
+
+            UberPostProcess gamePost = AddPostProcess(gameCamera);
+            UberPostProcess observerPost = AddPostProcess(observerCamera);
+
+            GraphicsDirector director = root.AddComponent<GraphicsDirector>();
+            SetComponentArray(director, "_post", gamePost, observerPost);
+
+            PlanarReflection reflection = street == null || street.Ground == null
+                ? null
+                : street.Ground.GetComponent<PlanarReflection>();
+
+            SetComponentArray(director, "_reflections", reflection);
+            SerializedWiring.SetObject(director, "_timeOfDay", time);
+            SerializedWiring.Verify(director, "_timeOfDay");
+
+            return director;
+        }
+
+        private static UberPostProcess AddPostProcess(Camera camera)
+        {
+            if (camera == null) return null;
+
+            // Sans HDR, la couleur est écrêtée à 1 AVANT le post-traitement : le seuil de
+            // bloom ne distingue alors plus une enseigne d'un mur blanc. C'est le réglage
+            // dont tout le reste dépend.
+            camera.allowHDR = true;
+            camera.allowMSAA = true;
+
+            UberPostProcess post = camera.gameObject.AddComponent<UberPostProcess>();
+
+            Material material = EditorBuildUtility.CreateOrUpdateEffectMaterial(
+                "Assets/UberBagarre/Art/Materials", "M_PostTraitement", UberPostProcess.ShaderName);
+
+            if (material != null) SerializedWiring.SetObject(post, "_material", material);
+
+            return post;
         }
 
         /// <summary>
-        /// Le ciel. Une scène générée vide n'en a aucun, et ça se paie cher visuellement :
-        /// le fond est un aplat bleu-gris, sans dégradé ni horizon. Le soleil est déclaré comme
-        /// astre du ciel, donc le dégradé et le disque solaire suivent automatiquement la
-        /// rotation et la couleur de la lumière — un seul réglage pour les deux.
+        /// Le ciel. Il est procédural et partagé par les deux caméras : le cycle jour / nuit
+        /// en fabrique une copie au démarrage et fait varier son exposition et ses teintes,
+        /// pour ne jamais modifier l'asset sur le disque.
         /// </summary>
-        private static void BuildSky(Light sun, Camera camera)
+        private static Material BuildSky(Camera gameCamera, Camera observerCamera)
         {
-            // Horizon chaud, sol ocre, atmosphere epaisse : l'heure doree.
             Material sky = EditorBuildUtility.CreateOrUpdateProceduralSky(
-                "Assets/UberBagarre/Art/Materials", "M_CielChaud",
-                new Color(0.62f, 0.70f, 0.86f), new Color(0.30f, 0.26f, 0.22f), 1.45f, 1.15f, 0.035f);
+                "Assets/UberBagarre/Art/Materials", "M_CielNuit",
+                new Color(0.16f, 0.20f, 0.34f), new Color(0.05f, 0.05f, 0.08f), 1.9f, 0.30f, 0.02f);
 
-            if (sky != null)
-            {
-                RenderSettings.skybox = sky;
-                RenderSettings.sun = sun;
-            }
+            if (sky != null) RenderSettings.skybox = sky;
 
+            ApplyCameraBackground(gameCamera, sky);
+            ApplyCameraBackground(observerCamera, sky);
+
+            return sky;
+        }
+
+        private static void ApplyCameraBackground(Camera camera, Material sky)
+        {
             if (camera == null) return;
 
-            // Filet de securite : si le shader de ciel procedural n'existe pas (HDRP), une
-            // couleur d'effacement chaude vaut toujours mieux que le bleu-gris par defaut.
             camera.clearFlags = sky != null ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.52f, 0.58f, 0.68f);
+            camera.backgroundColor = new Color(0.035f, 0.04f, 0.062f);
         }
 
         // ------------------------------------------------------------------ sac de frappe
@@ -202,7 +306,7 @@ namespace UberBagarre.EditorTools
         private static void BuildPunchingBag(BuildMaterials materials)
         {
             GameObject root = new GameObject("SacDeFrappe");
-            root.transform.position = new Vector3(-3.6f, 0f, 3.4f);
+            root.transform.position = new Vector3(6.2f, 0f, 5.1f);
 
             EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, "Poteau", root.transform,
                 new Vector3(0.95f, 1.3f, 0f), new Vector3(0.09f, 1.3f, 0.09f), materials.Wall, true);
@@ -232,7 +336,8 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ joueur
 
-        private static GameObject BuildPlayer(BuildMaterials materials, AttackLibraryBuilder.Library attacks)
+        private static GameObject BuildPlayer(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
+            out Camera gameCamera, out Camera observerCamera)
         {
             GameObject playerGo = new GameObject("Player");
             playerGo.transform.position = new Vector3(0f, 0f, -SpawnDistance * 0.5f);
@@ -270,11 +375,11 @@ namespace UberBagarre.EditorTools
             GameObject observerGo = EditorBuildUtility.CreateEmpty("CameraObservation", null, Vector3.zero);
             observerGo.tag = "MainCamera";
 
-            Camera observerCamera = observerGo.AddComponent<Camera>();
-            observerCamera.fieldOfView = 60f;
-            observerCamera.nearClipPlane = 0.05f;
-            observerCamera.farClipPlane = 300f;
-            observerCamera.enabled = false;
+            Camera freeCamera = observerGo.AddComponent<Camera>();
+            freeCamera.fieldOfView = 60f;
+            freeCamera.nearClipPlane = 0.05f;
+            freeCamera.farClipPlane = 400f;
+            freeCamera.enabled = false;
 
             // Tout ce qui doit se coucher quand le joueur tombe vit sous ce noeud.
             GameObject tilt = EditorBuildUtility.CreateEmpty("Inclinaison", playerGo.transform, Vector3.zero);
@@ -322,7 +427,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(observer, "_input", input);
             SerializedWiring.SetObject(observer, "_look", look);
             SerializedWiring.SetObject(observer, "_gameCamera", camera);
-            SerializedWiring.SetObject(observer, "_observerCamera", observerCamera);
+            SerializedWiring.SetObject(observer, "_observerCamera", freeCamera);
             SerializedWiring.SetObject(observer, "_target", head.transform);
             SerializedWiring.Verify(observer, "_observerCamera");
 
@@ -430,6 +535,9 @@ namespace UberBagarre.EditorTools
             // personne, un bleu pose au point d'impact d'un coup a la tete se retrouve
             // exactement dans l'axe de la camera, a 20 cm de l'oeil. Il masquerait l'ecran.
             // Les consequences visibles sur soi passent par la vignette, pas par la peau.
+
+            gameCamera = camera;
+            observerCamera = freeCamera;
 
             return playerGo;
         }
@@ -815,7 +923,7 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ spawn
 
-        private static void BuildSpawnSystem(GameObject player, GameObject enemy)
+        private static void BuildSpawnSystem(GameObject player, GameObject enemy, GraphicsDirector graphics)
         {
             // Le resetter a besoin du directeur de spawn et des deux combattants : il est donc
             // construit ici, une fois que les deux existent.
@@ -894,7 +1002,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(menu, "_hitStop", player.GetComponent<HitStop>());
             SerializedWiring.SetObject(menu, "_waves", waves);
             SerializedWiring.SetObject(menu, "_statistics", statistics);
+            SerializedWiring.SetObject(menu, "_graphics", graphics);
 
+            SerializedWiring.Verify(menu, "_graphics");
             SerializedWiring.Verify(menu, "_enemyTemplate");
             SerializedWiring.Verify(menu, "_cursor");
         }

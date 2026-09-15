@@ -3,7 +3,11 @@
 Prototype de combat aux poings en vue première personne, qui servira plus tard de base au jeu
 « Über Bagarre » (commander un bagarreur comme on commande un Uber).
 **Pour l'instant, ce dépôt ne contient QUE le prototype de combat.** Pas d'app Uber, pas de missions,
-pas d'économie, pas de ville.
+pas d'économie, pas de ville jouable.
+
+Le décor de test est en revanche celui du premier combat décrit dans le dossier : **la rue devant
+la boîte de nuit, la nuit, sous la bruine**. Néons, bitume mouillé qui reflète réellement la scène,
+cône de lumière des lampadaires, et la vieille voiture rouillée garée devant l'entrée.
 
 ---
 
@@ -91,7 +95,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Ctrl gauche** (tapé au bon moment) | **Parade** : les 0,26 s qui suivent la levée de garde annulent le coup *et* déséquilibrent l'attaquant |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
-| **Tab** | **Menu de bac à sable**, 4 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, Commandes |
+| **Tab** | **Menu de bac à sable**, 5 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, **Graphismes**, Commandes |
 | **F1** | Overlay de debug (états, zones, cadence réelle en coups/s, tampon d'entrée, distances) |
 | **F3** | **Caméra d'observation** — orbite autour de toi, et le combat continue |
 | **+** / **-** | Zoom de la caméra d'observation |
@@ -127,7 +131,8 @@ Tu peux les changer sans toucher à une ligne de code.
 | 15 | Menu de bac à sable (PV / dégâts / apparitions), matières texturées, refonte audio | ✅ |
 | 16 | Charge, 4 coups contextuels, riposte, jauge d'étourdissement, caméra d'observation | ✅ |
 | 17 | Mode vagues, profils d'adversaire, statistiques de combat, réglages sauvegardés | ✅ |
-| 18 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 18 | Rue de nuit générée de A à Z, bloom et tonemap maison, reflet planaire, cycle jour / nuit | ✅ |
+| 19 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -145,11 +150,15 @@ Assets/UberBagarre/
     Feedback/    camera shake, recul, arrêt sur impact, vignette progressive, reflets du
                  soleil, réglages de rendu, sons générés
     UI/          HUD de combat, indicateur de garde, overlay de debug (F1)
-    Sandbox/     points de spawn, directeur de spawn
-  Editor/        outils de génération (scène, validation)  -- non inclus dans le build
+    Sandbox/     points de spawn, directeur de spawn, menu de réglage, vagues, statistiques
+  Editor/        outils de génération (scène, décor, matériaux, coups)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
-  Art/           matériaux et textures placeholder (générés)
+  Art/
+    Shaders/     UberPost (bloom + tonemap), UberNeon, UberGlow, UberWetGround, UberRain
+    Materials/   matériaux générés
+    Textures/    textures générées (bitume, flaques, briques, grilles de fenêtres)
+    Meshes/      maillages générés (corps, tête, cônes de lumière)
 Docs/
   ARCHITECTURE.md   pourquoi le code est organisé comme ça + comment l'étendre
 ```
@@ -243,6 +252,62 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 
 ---
 
+## Le décor et les graphismes
+
+La scène de test n'est plus une arène abstraite : c'est **la rue devant la boîte, la nuit**, telle
+que le dossier la décrit. Tout est généré par code (`Uber Bagarre → 2`), donc lisible et modifiable.
+
+### Ce qu'il y a dans la rue
+
+La façade de la boîte avec son enseigne au néon, son enseigne drapeau, sa marquise et ses hublots ;
+le parvis avec tapis rouge, cordon de velours, barrières de file et pupitre du videur ; en face, six
+immeubles habités aux fenêtres allumées, quatre commerces avec leur néon, un escalier de secours ;
+huit lampadaires au sodium, chacun avec son cône de lumière ; **la vieille voiture rouillée** garée
+devant l'entrée, phares allumés ; une silhouette de ville au loin ; benne, sacs, abribus rétroéclairé,
+bornes, plots, grilles d'égout ; et une bruine fine qui explique pourquoi le sol est mouillé.
+
+### Les quatre shaders écrits pour ça
+
+Le projet est en Built-in Render Pipeline **sans le paquet Post Processing**. Il a donc fallu écrire
+la chaîne à la main — ce qui est une bonne nouvelle : elle est lisible, commentée, et ne dépend de rien.
+
+| Shader | Ce qu'il résout |
+|---|---|
+| `UberPost` | **Bloom en pyramide** (7 niveaux, préfiltre à moyenne de Karis), tonemap **ACES**, étalonnage, vignette, aberration chromatique, grain. Sans lui, la valeur d'un pixel est plafonnée à 1 : une enseigne au néon rend exactement comme un mur peint en rose. |
+| `UberNeon` | Tube de néon non éclairé, au-dessus de 1, avec un cœur plus brillant de face. C'est ce dépassement — et rien d'autre — qui le fait lire comme une **source** et non comme une surface colorée. |
+| `UberGlow` | Volumes de lumière additifs (cônes de lampadaire, halos, faisceaux de phares). Une lampe Unity éclaire les surfaces mais laisse l'air parfaitement transparent : on voit un disque clair au sol sans comprendre d'où il vient. |
+| `UberWetGround` | **Bitume mouillé avec reflet planaire.** Une seconde caméra rend réellement la scène en miroir : les néons, les phares et les combattants sont dedans, en mouvement, exacts. |
+
+### Pourquoi un reflet planaire et pas une sonde
+
+Une sonde de réflexion capture la scène **une fois, depuis un point fixe**. Elle ne contient donc ni
+les combattants, ni les phares allumés, ni rien qui bouge — exactement ce qu'on veut voir dans une
+flaque pendant une bagarre. Le reflet planaire coûte un second rendu de la scène (d'où la
+demi-résolution et l'absence d'ombres dedans), mais **l'adversaire qui tombe se voit tomber dans la
+flaque**. C'est le seul élément de l'image qui fasse descendre la couleur des enseignes jusqu'aux
+pieds des personnages, donc le seul qui unifie le haut et le bas du cadre.
+
+### Tab — Graphismes
+
+Un curseur d'**heure** (0 = nuit, 1 = plein jour) qui pilote d'un coup le soleil, la lune, le ciel,
+la brume, l'ambiante et **l'extinction de toutes les enseignes** : une nuit n'est pas « la même scène
+en moins lumineux », c'est six choses qui changent ensemble. Puis bloom, seuil de bloom, exposition,
+saturation, contraste, vignette, aberration, grain, finesse du reflet, et trois ambiances prêtes à
+l'emploi — **Sobre**, **Cinéma**, **Bâtard** (qui pousse volontairement au-delà du raisonnable).
+
+Si ça rame : couper **REFLETS** en premier, c'est le seul réglage qui vaut un rendu complet de la scène.
+
+### Espace colorimétrique
+
+À la fin de la génération, l'outil propose de passer le projet en **linéaire** s'il est en gamma.
+Ce n'est pas cosmétique : en gamma, Unity additionne les contributions des lampes sur des valeurs
+déjà encodées pour l'écran. Deux lampes d'intensité 1 donnent beaucoup plus que 2, les zones
+éclairées virent au blanc laiteux et les dégradés autour des lampadaires cassent en bandes. Avec une
+trentaine de sources dans la rue, ça se voit immédiatement. Le post-traitement fonctionne dans les
+deux cas, mais il ne peut pas rattraper un éclairage calculé faux en amont.
+
+---
+
 ## Les outils de réglage
 
 Tout se règle **pendant** le combat, parce que sortir du mode Play fait perdre la situation qu'on
@@ -258,6 +323,12 @@ précédent ne se joue pas différemment, donc il n'apprend rien.
 plusieurs, le combat pose des questions que le duel ne pose pas : se replacer, ne pas se faire
 encercler, choisir qui mettre au sol d'abord, garder de l'endurance pour sortir d'une mauvaise
 position.
+
+**Tab — Graphismes.** Heure, bloom, exposition, couleur, objectif, finesse du reflet, et trois
+ambiances prêtes à l'emploi. Ils existent pour une raison précise : « c'est trop » et « ce n'est pas
+assez » ne sont pas des critiques qu'on peut traiter à distance. Le même bloom paraît discret sur un
+écran et aveuglant sur un autre, et personne ne peut régler ça à la place de celui qui regarde. Ces
+curseurs transforment un désaccord en manipulation. Voir la section précédente.
 
 **Tab — Statistiques.** Coups lancés / au but, **réussite**, meilleur combo, plus gros coup,
 parades, blocages, dégâts infligés et encaissés, rapport, chutes, K.O. La réussite est le chiffre le
@@ -296,4 +367,8 @@ réécrire le combat.
 | Matières **texturées par code** (grain, tissage) plutôt que couleurs plates | Une couleur plate ne réagit à la lumière que par son orientation : deux surfaces tournées pareil sont identiques, et l'ensemble se lit comme une maquette en plastique. C'est ça que « trop low poly » décrit en réalité. | Vraies textures + normal maps importées |
 | Sons **synthétisés sans oscillateur audible** | Un sinus a une hauteur, donc on entend une note — et un corps frappé ne joue pas de note. Tout est du bruit filtré, dont seules l'enveloppe et l'ouverture du filtre changent. | Vrais échantillons |
 | Anticrénelage et brume réglés **par code** (`VisualQuality`) | Un projet Unity neuf démarre sans MSAA, avec des ombres courtes et un filtrage minimal. Le générateur de scène ne touche à aucun réglage global du projet. | Quality Settings du projet, ou un volume de post-process |
+| Post-traitement **écrit à la main** (`UberPost`) plutôt que le paquet Post Processing | Le paquet n'est pas dans le projet, et l'ajouter imposerait une version et un pipeline. Un shader en quatre passes et un `OnRenderImage` tiennent dans deux fichiers lisibles, et fonctionnent dans un projet vierge. | Volume de post-process URP/HDRP |
+| Reflet **planaire** plutôt que réflexions en espace écran | Une réflexion en espace écran perd tout ce qui sort du champ — c'est-à-dire, quand on regarde ses pieds, la totalité de l'enseigne qu'on veut voir reflétée. Le sol étant plat, un seul plan miroir est exact. | Ray tracing matériel, si un jour le projet passe en HDRP |
+| Enseignes faites de **tubes** plutôt que de texte 3D | Un `TextMesh` est un quad texturé : il reste plat, ne projette rien et ne se reflète pas correctement. Une enseigne réelle est un volume qui occupe de la place devant le mur. | Modèles d'enseignes importés |
+| Décor **généré par code** plutôt que placé à la main | Un `.unity` est un graphe d'objets liés par GUID, illisible hors d'Unity. Le code de construction documente la rue mieux qu'une capture d'écran. | Level design à la main, quand la carte deviendra du contenu et non un banc d'essai |
 | Reflets d'objectif dessinés en `OnGUI` (`SunFlare`) | Le composant de flare d'Unity dépend du render pipeline (asset `Flare` en Built-in, composant différent en URP/HDRP). Dessiner les halos soi-même donne le même rendu partout. | Lens flare natif du pipeline choisi |

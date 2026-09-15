@@ -1089,3 +1089,177 @@ leviers de réglage étaient branchés dans le vide.
 **Un paramètre exposé et non lu est un mensonge de l'interface.** Il coûte plus cher qu'une absence,
 parce qu'il dirige le travail de réglage vers un endroit où il ne se passe rien. Avant d'ajouter un
 levier, vérifier que les existants en sont vraiment.
+
+---
+
+## 16. La nuit, ou pourquoi une scène « correcte » paraît quand même fausse
+
+Demande : *« des graphismes de bâtard, du bloom, avec la nuit comme du ray tracing, et la map de A à Z. »*
+
+### 16.1 Le vrai problème : la valeur d'un pixel est plafonnée à 1
+
+Avant cette phase, la scène était éclairée, texturée, ombrée, antialiasée — et elle paraissait
+plate. La cause n'était ni la géométrie ni les matières : c'est qu'**aucune source lumineuse ne se
+comportait comme une source**.
+
+Une enseigne au néon, un phare et un mur blanc bien éclairé sortent tous les trois du rendu avec une
+valeur proche de 1. Sans traitement après coup, ils s'affichent identiquement. L'œil, lui, sait
+parfaitement qu'un néon est mille fois plus lumineux qu'un mur — il le sait parce que, dans la
+réalité, la lumière **déborde** : elle diffuse dans l'œil, dans l'objectif, dans l'air humide. Sans
+ce débordement, le cerveau conclut « surface peinte », pas « lampe ».
+
+C'est le diagnostic qui a décidé de tout le reste. Il ne fallait pas plus de triangles ni de
+meilleures textures : il fallait une plage dynamique, et de quoi la rendre visible.
+
+### 16.2 Pourquoi écrire la chaîne de post-traitement à la main
+
+Le projet est en Built-in Render Pipeline, sans le paquet Post Processing. L'ajouter imposerait une
+version de paquet et un pipeline, dans un dépôt dont tout le principe est de tourner du premier coup
+dans un projet vierge.
+
+`UberPost.shader` fait donc le travail en quatre passes : préfiltre, réduction, agrandissement,
+composition. Trois détails qui n'en sont pas :
+
+- **La moyenne de Karis au préfiltre.** Sans elle, un pixel isolé à 40 de luminance domine tout son
+  voisinage et produit un scintillement franc dès que la caméra tourne d'un demi-pixel. Le bloom
+  devient alors un défaut visible plutôt qu'un effet.
+- **Le seuil à genou doux.** Une coupure franche dessine un contour net autour de chaque source,
+  très visible sur un dégradé. Le genou étale l'entrée en seuil sur une plage.
+- **La pyramide plutôt qu'un flou large.** Une source réelle a un cœur serré *et* une nappe très
+  large. Un flou unique ne donne qu'une seule taille de halo, et se lit comme un calque.
+
+Et un choix de conception plus important que les trois : **le tonemap ACES est appliqué après
+l'étalonnage, pas avant**. Appliquer un contraste après la courbe réécrase les hautes lumières
+qu'elle vient justement de sauver. C'est aussi ACES qui désature progressivement les très hautes
+lumières — sans quoi un néon rouge saturé devient un aplat rouge pur, sans cœur blanc, c'est-à-dire
+exactement l'aspect « couleur vive » au lieu de « lumière ».
+
+### 16.3 Le matériau d'effet n'est jamais celui de l'asset
+
+La composition écrit une vingtaine d'uniformes par image. Les écrire dans le matériau d'asset le
+marquerait modifié en permanence : le projet aurait un fichier à sauvegarder à chaque seconde de jeu
+en mode édition. Le composant travaille donc toujours sur une instance jetable.
+
+L'asset, lui, sert à autre chose, et ce n'est pas facultatif : **un shader que rien ne référence
+n'entre pas dans une build**. Un `Shader.Find` suffit dans l'éditeur et renvoie null une fois le jeu
+compilé. Le matériau d'asset est ce qui garantit la compilation du shader.
+
+### 16.4 Le reflet planaire : pourquoi pas une sonde, pourquoi pas de l'espace écran
+
+La demande disait « comme du ray tracing ». Ce qu'on reconnaît sous ce nom, sur une rue de nuit,
+c'est une chose précise : **le sol contient l'image de ce qui est au-dessus, et cette image bouge**.
+
+Trois façons de l'obtenir, et deux ne marchent pas ici :
+
+- **Une sonde de réflexion** capture la scène une fois, depuis un point fixe. Elle ne contient ni
+  les combattants, ni les phares allumés, ni rien qui bouge. Or c'est précisément ce qu'on veut voir
+  dans une flaque pendant une bagarre.
+- **Une réflexion en espace écran** perd tout ce qui sort du champ. Quand on regarde ses pieds,
+  l'enseigne qu'on veut voir reflétée n'est plus à l'écran : le reflet disparaît exactement au
+  moment où on le cherche.
+- **Un reflet planaire** rend réellement la scène en miroir dans une texture. Il coûte un second
+  rendu — d'où la demi-résolution et les ombres coupées pendant ce rendu — mais il est **exact**, et
+  l'adversaire qui tombe se voit tomber dans la flaque.
+
+Le sol est plat et à y = 0, ce qui rend un seul plan suffisant. C'est une contrainte de décor
+acceptée pour un gain de rendu, pas une limitation subie : découper le sol en morceaux à des
+hauteurs différentes ferait apparaître des ruptures dans le reflet.
+
+Deux pièges dans l'implémentation, tous deux silencieux :
+
+1. **Le culling doit être inversé.** Un miroir inverse l'orientation ; sans inversion, toutes les
+   faces visibles deviennent des faces arrière et la scène reflétée disparaît purement et simplement.
+2. **La projection doit être oblique**, avec son plan proche sur le plan du miroir. Sinon les
+   fondations des bâtiments apparaissent dans les flaques.
+
+Et un garde-fou : la caméra de reflet déclencherait à son tour un rendu de reflet, et ainsi de suite
+jusqu'au blocage complet de l'éditeur.
+
+### 16.5 Ce qui rend une nuit crédible n'est pas la couleur
+
+Baisser l'intensité du soleil et mettre du bleu donne une image grise et sale, pas une nuit. La
+nuit change **six choses à la fois** : la direction et la couleur de la source principale, la
+couleur du ciel, la densité et la teinte de la brume, la couleur de l'ambiante, et surtout le fait
+que l'éclairage passe du soleil aux lampes.
+
+Les régler séparément, c'est garantir qu'un seul sera oublié. `TimeOfDay` les pilote donc avec un
+seul curseur — ce qui donne gratuitement un cycle jour / nuit, et permet à l'arène de jour de rester
+utilisable.
+
+Deux détails qui viennent de là :
+
+- **Le matériau de ciel est dupliqué en jeu, mais PAS en édition.** Une copie porte
+  `HideFlags.DontSave` : la scène enregistrerait une référence vers un objet qui n'existe plus au
+  rechargement, et rouvrir le projet donnerait un fond noir sans la moindre erreur pour l'expliquer.
+- **Le reflet d'objectif suit la puissance de la source, pas seulement sa direction.** Sans ce test,
+  le halo de soleil continuait de s'afficher en pleine nuit : un soleil invisible qui éblouit. Le
+  même correctif fait naître le halo tout seul au lever du jour.
+
+### 16.6 L'air doit être visible
+
+Une lampe ponctuelle éclaire les surfaces et laisse l'air parfaitement transparent. On voit alors un
+disque clair au sol **sans comprendre d'où il vient**. Les cônes additifs (`UberGlow`) rendent le
+trajet de la lumière visible, et c'est ce que l'œil lit comme de la brume.
+
+Leur disparition sur les bords vient du produit scalaire vue / normale : un cône dont la silhouette
+est nette se lit comme un cône en plastique, pas comme de la lumière. D'où aussi un cône **ouvert**,
+sans fond ni sommet fermés — un disque additif plein apparaîtrait brutalement en passant dessous.
+
+La bruine joue le même rôle sur toute l'image : elle justifie le sol mouillé (sans pluie, une
+chaussée miroir est une décision arbitraire) et met de la matière entre la caméra et les façades.
+
+### 16.7 La rue : trois plans, et le troisième est celui qu'on oublie
+
+Le trottoir et la chaussée (où l'on se bat), les façades d'en face (à quinze mètres), et une
+silhouette de ville au loin. **Sans le troisième, le ciel touche les toits** et la rue devient une
+boîte — c'est le plan qui manque presque toujours, et son absence donne l'impression de décor de
+studio.
+
+Trois autres règles ont gouverné la construction :
+
+- **Les hauteurs sont inégales et non périodiques.** L'œil détecte une période bien avant de
+  reconnaître un bâtiment ; une rangée d'immeubles identiques trahit une ville générée en une seconde.
+- **Chaque enseigne porte une vraie lampe** en plus de son matériau émissif. Sans elle, le néon
+  brille mais n'éclaire rien, et la scène se lit comme des autocollants lumineux sur du carton.
+- **La façade est construite en couches** — mur, socle, renfoncement, marquise, enseignes — parce
+  que ce sont les décrochements qui créent des ombres portées les unes sur les autres. Une façade
+  plate couverte de néons reste un panneau.
+
+Les fenêtres allumées demandent **deux textures** et non une : réutiliser l'albédo comme carte
+d'émission fait émettre le mur entre les fenêtres, et l'immeuble entier devient une lanterne.
+
+### 16.8 Le piège qui revient à chaque phase
+
+Deux occurrences de plus du même motif que les sections 12 à 15 décrivent : un mécanisme correct
+dont le résultat est invisible, ou faux, sans qu'aucune erreur ne soit levée.
+
+- **Le mélange additif double.** Sortir une couleur déjà multipliée par alpha *et* demander
+  `Blend SrcAlpha One` la multiplie une seconde fois. Les halos auraient été presque invisibles, et
+  la conclusion naturelle aurait été « les cônes de lumière ne marchent pas ».
+- **L'axe d'une enseigne tournée.** Une enseigne drapeau pivotée de 90° a son axe X local le long de
+  la rue : une potence construite sur le mauvais axe part dans le vide, parallèle à la façade. Rien
+  ne le signale.
+
+Le correctif systémique reste le même : **calculer jusqu'à l'unité observable avant de régler à
+l'œil**, et vérifier qu'un paramètre exposé est effectivement lu. Deux matériaux de halo créés et
+jamais référencés ont été trouvés de cette façon, par une simple comparaison entre ce que la palette
+déclare et ce que le décor utilise.
+
+### 16.9 L'espace colorimétrique
+
+En gamma, Unity additionne les contributions des lampes sur des valeurs **déjà encodées pour
+l'écran**. Deux lampes d'intensité 1 donnent beaucoup plus que 2, les hautes lumières se délavent en
+blanc laiteux, et les dégradés autour d'un lampadaire cassent en bandes visibles. Une rue de nuit
+éclairée par une trentaine de sources est exactement le cas où ça se voit le plus.
+
+Le générateur le propose au lieu de l'imposer : le changement déclenche un réimport complet du
+projet, et ça ne doit jamais être une surprise. Mais il faut le dire clairement — **le
+post-traitement ne peut pas rattraper un éclairage calculé faux en amont**.
+
+### 16.10 Ce que je retiens
+
+Le reproche « ça fait vieux, c'est cheap » ne portait pas sur le nombre de triangles. Il portait sur
+le fait qu'aucune lumière de la scène ne se comportait comme une lumière : rien ne débordait, rien
+ne se reflétait, rien ne traversait l'air. Trois absences, pas un manque de détail.
+
+**Ce qu'on prend pour un problème de modèles est très souvent un problème de plage dynamique.**

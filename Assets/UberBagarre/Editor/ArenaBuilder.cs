@@ -1,3 +1,4 @@
+using UnityEditor;
 using UnityEngine;
 
 namespace UberBagarre.EditorTools
@@ -67,6 +68,25 @@ namespace UberBagarre.EditorTools
                 new Color(0.34f, 0.20f, 0.13f), 0.15f, 0.2f);
 
             return p;
+        }
+
+        /// <summary>
+        /// Ajoute l'arène de jour à la scène OUVERTE, sans rien effacer.
+        ///
+        /// La scène de test est désormais une rue de nuit : c'est le décor du premier combat
+        /// décrit dans le dossier, et c'est aussi celui qui montre ce que fait la chaîne de
+        /// rendu. Mais une rue de nuit coûte cher — reflet planaire, trentaine de lampes,
+        /// bruine. Cette arène reste donc accessible : elle sert de repli pour régler le
+        /// ressenti d'un coup sur une machine modeste, en pleine lumière, sans rien qui
+        /// distraie.
+        /// </summary>
+        [MenuItem("Uber Bagarre/Outils/Ajouter l'arene de jour a la scene ouverte", false, 120)]
+        public static void BuildDayArenaFromMenu()
+        {
+            Build(26f, 3.4f);
+            Debug.Log("[UberBagarre] Arene de jour ajoutee a la scene ouverte. " +
+                      "Pense a regler l'heure sur 1 dans le menu graphique (Tab) ou sur le composant " +
+                      "TimeOfDay, sinon elle restera eclairee comme une rue de nuit.");
         }
 
         public static void Build(float arenaSize, float ringRadius)

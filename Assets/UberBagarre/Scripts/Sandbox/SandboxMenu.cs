@@ -3,6 +3,7 @@ using UberBagarre.Combat;
 using UberBagarre.Feedback;
 using UberBagarre.Player;
 using UberBagarre.UI;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.Sandbox
@@ -27,7 +28,8 @@ namespace UberBagarre.Sandbox
             Combat = 0,
             Waves = 1,
             Stats = 2,
-            Help = 3
+            Graphics = 3,
+            Help = 4
         }
 
         /// <summary>
@@ -68,6 +70,11 @@ namespace UberBagarre.Sandbox
         private PlayerCombat _playerCombat;
 
         [SerializeField] private HitStop _hitStop;
+
+        [SerializeField]
+        [Tooltip("Facade des reglages graphiques. Elle pousse chaque valeur vers TOUTES les cameras " +
+                 "a la fois : sans elle, regler le bloom ne toucherait que le point de vue actif.")]
+        private GraphicsDirector _graphics;
 
         [Header("Apparition")]
         [SerializeField, Min(1f)] private float _spawnDistance = 4.5f;
@@ -477,6 +484,7 @@ namespace UberBagarre.Sandbox
             {
                 case Tab.Waves: DrawWavesTab(content); break;
                 case Tab.Stats: DrawStatsTab(content); break;
+                case Tab.Graphics: DrawGraphicsTab(content); break;
                 case Tab.Help: DrawHelpTab(content); break;
                 default: DrawCombatTab(content); break;
             }
@@ -484,7 +492,7 @@ namespace UberBagarre.Sandbox
 
         private void DrawTabs(Rect rect)
         {
-            string[] names = { "COMBAT", "VAGUES", "STATISTIQUES", "COMMANDES" };
+            string[] names = { "COMBAT", "VAGUES", "STATISTIQUES", "GRAPHISMES", "COMMANDES" };
             float width = rect.width / names.Length;
 
             for (int i = 0; i < names.Length; i++)
@@ -693,6 +701,144 @@ namespace UberBagarre.Sandbox
                 "des coups plus rapides. Multiplier les adversaires sans les renforcer rendrait les\n" +
                 "vagues plus longues, pas plus dures — et allonger un test n'apprend rien.\n" +
                 "Le profil choisi dans l'onglet COMBAT s'applique aussi aux vagues.",
+                GuiKit.Style(12, FontStyle.Italic, TextAnchor.UpperLeft),
+                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+        }
+
+        // ------------------------------------------------------------------ onglet graphismes
+
+        /// <summary>
+        /// Les réglages d'image, en direct.
+        ///
+        /// Ils sont là pour une raison précise : « c'est trop » et « ce n'est pas assez » ne sont
+        /// pas des critiques qu'on peut traiter à distance. Le même bloom paraît discret sur un
+        /// écran calibré et aveuglant sur un autre, et personne ne peut régler ça à la place de
+        /// celui qui regarde. Ces curseurs transforment donc un désaccord en manipulation : on
+        /// pousse jusqu'à ce que ce soit bien, et c'est sauvegardé.
+        /// </summary>
+        private void DrawGraphicsTab(Rect rect)
+        {
+            float y = rect.y;
+
+            if (_graphics == null)
+            {
+                y = Section(rect.x, y, rect.width, "GRAPHISMES", _accent);
+
+                GuiKit.OutlinedLabel(new Rect(rect.x, y, rect.width, 22f),
+                    "Aucun GraphicsDirector dans la scene. Regenere la scene (Uber Bagarre > 2).",
+                    GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft),
+                    new Color(1f, 0.6f, 0.5f), new Color(0f, 0f, 0f, 0.85f), 1f);
+                return;
+            }
+
+            float column = (rect.width - 20f) * 0.5f;
+            float right = rect.x + column + 20f;
+            float ly = y;
+            float ry = y;
+
+            // --- colonne gauche : la lumiere
+            ly = Section(rect.x, ly, column, "LUMIERE", _accent);
+
+            float day = Row(rect.x, ref ly, column, "Heure", _graphics.Day, new Vector2(0f, 1f), "0.00", _accent);
+            if (Changed(day, _graphics.Day)) _graphics.Day = day;
+
+            float bloom = Row(rect.x, ref ly, column, "Bloom", _graphics.Bloom, new Vector2(0f, 4f), "0.00", _accent);
+            if (Changed(bloom, _graphics.Bloom)) _graphics.Bloom = bloom;
+
+            float threshold = Row(rect.x, ref ly, column, "Seuil de bloom", _graphics.Threshold,
+                new Vector2(0.2f, 2.5f), "0.00", _accent);
+            if (Changed(threshold, _graphics.Threshold)) _graphics.Threshold = threshold;
+
+            float exposure = Row(rect.x, ref ly, column, "Exposition", _graphics.Exposure,
+                new Vector2(0.3f, 2.5f), "0.00", _accent);
+            if (Changed(exposure, _graphics.Exposure)) _graphics.Exposure = exposure;
+
+            ly += 6f;
+            ly = Section(rect.x, ly, column, "COULEUR", _playerAccent);
+
+            float saturation = Row(rect.x, ref ly, column, "Saturation", _graphics.Saturation,
+                new Vector2(0f, 2f), "0.00", _playerAccent);
+            if (Changed(saturation, _graphics.Saturation)) _graphics.Saturation = saturation;
+
+            float contrast = Row(rect.x, ref ly, column, "Contraste", _graphics.Contrast,
+                new Vector2(0.5f, 2f), "0.00", _playerAccent);
+            if (Changed(contrast, _graphics.Contrast)) _graphics.Contrast = contrast;
+
+            // --- colonne droite : l'objectif
+            ry = Section(right, ry, column, "OBJECTIF", _enemyAccent);
+
+            float vignette = Row(right, ref ry, column, "Vignette", _graphics.Vignette,
+                new Vector2(0f, 1f), "0.00", _enemyAccent);
+            if (Changed(vignette, _graphics.Vignette)) _graphics.Vignette = vignette;
+
+            float aberration = Row(right, ref ry, column, "Aberration", _graphics.Aberration,
+                new Vector2(0f, 4f), "0.00", _enemyAccent);
+            if (Changed(aberration, _graphics.Aberration)) _graphics.Aberration = aberration;
+
+            float grain = Row(right, ref ry, column, "Grain", _graphics.Grain,
+                new Vector2(0f, 0.3f), "0.000", _enemyAccent);
+            if (Changed(grain, _graphics.Grain)) _graphics.Grain = grain;
+
+            ry += 6f;
+            ry = Section(right, ry, column, "PERFORMANCE", _accent);
+
+            float quality = Row(right, ref ry, column, "Finesse du reflet",
+                9 - _graphics.ReflectionDownsample, new Vector2(1f, 8f), "0", _accent);
+
+            int downsample = 9 - Mathf.RoundToInt(quality);
+            if (downsample != _graphics.ReflectionDownsample) _graphics.ReflectionDownsample = downsample;
+
+            float half = (column - 10f) * 0.5f;
+
+            if (Button(new Rect(right, ry, half, 28f),
+                    _graphics.PostEnabled ? "POST : ON" : "POST : OFF",
+                    _graphics.PostEnabled ? _playerAccent : _enemyAccent))
+            {
+                _graphics.PostEnabled = !_graphics.PostEnabled;
+                _graphics.Save();
+            }
+
+            if (Button(new Rect(right + half + 10f, ry, half, 28f),
+                    _graphics.ReflectionsEnabled ? "REFLETS : ON" : "REFLETS : OFF",
+                    _graphics.ReflectionsEnabled ? _playerAccent : _enemyAccent))
+            {
+                _graphics.ReflectionsEnabled = !_graphics.ReflectionsEnabled;
+                _graphics.Save();
+            }
+
+            ry += 36f;
+
+            // --- ambiances
+            float bottom = Mathf.Max(ly, ry) + 10f;
+            float third = (rect.width - 28f) / 3f;
+
+            if (Button(new Rect(rect.x, bottom, third, 32f), "SOBRE", _playerAccent))
+            {
+                _graphics.ApplyPreset(GraphicsDirector.Preset.Sobre);
+            }
+
+            if (Button(new Rect(rect.x + third + 14f, bottom, third, 32f), "CINEMA", _accent))
+            {
+                _graphics.ApplyPreset(GraphicsDirector.Preset.Cinema);
+            }
+
+            if (Button(new Rect(rect.x + (third + 14f) * 2f, bottom, third, 32f), "BATARD", _enemyAccent))
+            {
+                _graphics.ApplyPreset(GraphicsDirector.Preset.Batard);
+            }
+
+            // Sauvegarde au RELACHEMENT, pas a chaque image : ecrire les preferences a
+            // chaque pixel de deplacement du curseur ferait des centaines d'ecritures disque
+            // pour un seul reglage.
+            if (Event.current.type == EventType.MouseUp) _graphics.Save();
+
+            bottom += 40f;
+
+            GuiKit.OutlinedLabel(new Rect(rect.x, bottom, rect.width, 66f),
+                "HEURE a 0 = nuit, a 1 = plein jour : le soleil, la lune, le ciel, la brume et toutes\n" +
+                "les enseignes suivent le meme curseur. SEUIL DE BLOOM decide a partir de quelle\n" +
+                "luminosite une surface deborde — en dessous de 1, meme un mur eclaire se met a briller.\n" +
+                "REFLETS coute un second rendu de la scene : c'est le premier reglage a baisser si ca rame.",
                 GuiKit.Style(12, FontStyle.Italic, TextAnchor.UpperLeft),
                 new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
         }

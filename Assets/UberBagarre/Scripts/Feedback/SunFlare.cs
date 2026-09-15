@@ -28,6 +28,11 @@ namespace UberBagarre.Feedback
 
         [Header("References")]
         [SerializeField] private Light _sun;
+
+        [SerializeField, Min(0.01f)]
+        [Tooltip("Intensite de la source a laquelle le reflet est a pleine puissance. En dessous, " +
+                 "il s'attenue proportionnellement — ce qui le fait naitre tout seul au lever du jour.")]
+        private float _referenceIntensity = 1.2f;
         [SerializeField] private Camera _camera;
 
         [Header("Halo principal")]
@@ -73,6 +78,14 @@ namespace UberBagarre.Feedback
         {
             if (!_enabled || _sun == null || _camera == null) return 0f;
 
+            // Le reflet doit suivre la PUISSANCE de la source, pas seulement sa direction.
+            // Sans ce test, le halo de soleil continue de s'afficher en pleine nuit alors que
+            // le cycle jour / nuit a eteint la lumiere : un soleil invisible qui eblouit.
+            if (!_sun.enabled || !_sun.gameObject.activeInHierarchy) return 0f;
+
+            float power = Mathf.Clamp01(_sun.intensity / Mathf.Max(0.01f, _referenceIntensity));
+            if (power <= 0.01f) return 0f;
+
             Vector3 toSun = -_sun.transform.forward;
 
             // Derriere la camera : rien a dessiner.
@@ -86,7 +99,7 @@ namespace UberBagarre.Feedback
             }
 
             // Le halo s'intensifie quand on regarde vers le soleil, comme un vrai eblouissement.
-            return Mathf.Clamp01(facing);
+            return Mathf.Clamp01(facing) * power;
         }
 
         private void OnGUI()

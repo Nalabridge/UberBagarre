@@ -24,6 +24,14 @@ namespace UberBagarre.Feedback
         [Header("Textures")]
         [SerializeField] private AnisotropicFiltering _anisotropicFiltering = AnisotropicFiltering.ForceEnable;
 
+        [Header("Lampes")]
+        [SerializeField, Range(1, 16)]
+        [Tooltip("Nombre de lampes calculees par pixel. Le defaut d'Unity est de 4 : dans une " +
+                 "rue de nuit qui compte une trentaine de sources, cela signifie que les lampes " +
+                 "choisies changent selon l'endroit ou l'on regarde, et qu'un neon proche peut " +
+                 "cesser d'eclairer sans raison visible.")]
+        private int _pixelLightCount = 10;
+
         [Header("Ombres")]
         [SerializeField] private ShadowQuality _shadowQuality = ShadowQuality.All;
         [SerializeField] private UnityEngine.ShadowResolution _shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
@@ -64,6 +72,7 @@ namespace UberBagarre.Feedback
         {
             QualitySettings.antiAliasing = Mathf.Max(0, _antiAliasing);
             QualitySettings.anisotropicFiltering = _anisotropicFiltering;
+            QualitySettings.pixelLightCount = Mathf.Clamp(_pixelLightCount, 1, 16);
 
             QualitySettings.shadows = _shadowQuality;
             QualitySettings.shadowResolution = _shadowResolution;

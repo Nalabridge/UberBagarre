@@ -105,6 +105,49 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>
+        /// Crée (ou met à jour) un matériau d'effet à partir du NOM de son shader.
+        ///
+        /// Pourquoi passer par un asset plutôt que laisser le composant faire Shader.Find au
+        /// démarrage : dans une build, un shader qui n'est référencé par aucun matériau n'est
+        /// pas compilé du tout, et Shader.Find renvoie null. Le composant sait retomber sur
+        /// une image non traitée, mais l'effet serait silencieusement absent. Un matériau
+        /// d'asset référencé par la scène règle la question définitivement.
+        ///
+        /// Renvoie null si le shader est introuvable — typiquement juste après avoir ajouté
+        /// les fichiers, avant qu'Unity ne les ait importés.
+        /// </summary>
+        public static Material CreateOrUpdateEffectMaterial(string folder, string materialName, string shaderName)
+        {
+            Shader shader = Shader.Find(shaderName);
+
+            if (shader == null)
+            {
+                Debug.LogWarning("[UberBagarre] Shader introuvable : " + shaderName +
+                                 ". Si les fichiers viennent d'etre ajoutes, laisse Unity finir " +
+                                 "l'import puis relance la construction de la scene.");
+                return null;
+            }
+
+            EnsureFolder(folder);
+            string path = folder + "/" + materialName + ".mat";
+
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+
+            if (material == null)
+            {
+                material = new Material(shader);
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else if (material.shader != shader)
+            {
+                material.shader = shader;
+            }
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        /// <summary>
         /// Crée (ou met à jour) un ciel procédural chaud de fin d'après-midi.
         ///
         /// Pourquoi ça compte autant : une scène créée vide n'a AUCUN ciel. Le fond est alors la
