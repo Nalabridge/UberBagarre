@@ -165,7 +165,7 @@ namespace UberBagarre.EditorTools
         /// surfaces tournées vers le ciel, ce qui sépare les toits du fond. Tout le reste de
         /// la lumière vient des lampadaires et des enseignes.
         /// </summary>
-        private static void BuildLighting(out Light sun, out Light moon)
+        internal static void BuildLighting(out Light sun, out Light moon)
         {
             GameObject root = new GameObject("=== Eclairage ===");
 
@@ -203,7 +203,7 @@ namespace UberBagarre.EditorTools
         /// et l'étalonnage, et on conclurait que l'effet ne marche pas alors qu'il n'est
         /// simplement pas installé sur la caméra qu'on regarde.
         /// </summary>
-        private static GraphicsDirector BuildRendering(Light sun, Light moon, NightStreetBuilder.Result street,
+        internal static GraphicsDirector BuildRendering(Light sun, Light moon, NightStreetBuilder.Result street,
             Camera gameCamera, Camera observerCamera)
         {
             GameObject root = new GameObject("=== Rendu ===");
@@ -250,7 +250,7 @@ namespace UberBagarre.EditorTools
             return director;
         }
 
-        private static UberPostProcess AddPostProcess(Camera camera)
+        internal static UberPostProcess AddPostProcess(Camera camera)
         {
             if (camera == null) return null;
 
@@ -303,7 +303,7 @@ namespace UberBagarre.EditorTools
         /// Cible passive. Elle reste utile même avec un ennemi : on règle les dégâts, les
         /// fenêtres d'impact et le ressenti d'un coup sur une cible qui ne riposte pas.
         /// </summary>
-        private static void BuildPunchingBag(BuildMaterials materials)
+        internal static void BuildPunchingBag(BuildMaterials materials)
         {
             GameObject root = new GameObject("SacDeFrappe");
             root.transform.position = new Vector3(6.2f, 0f, 5.1f);
@@ -336,7 +336,7 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ joueur
 
-        private static GameObject BuildPlayer(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
+        internal static GameObject BuildPlayer(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
             out Camera gameCamera, out Camera observerCamera)
         {
             GameObject playerGo = new GameObject("Player");
@@ -544,11 +544,40 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ ennemi
 
+        /// <summary>Ce qu'un combattant construit rend au reste du generateur.</summary>
+        internal class FighterParts
+        {
+            public GameObject Go;
+            public Combatant Combatant;
+            public EnemyBrain Brain;
+            public KnockdownSystem Knockdown;
+            public FighterBuilder.Result Body;
+            public GuardSystem Guard;
+        }
+
         private static GameObject BuildEnemy(BuildMaterials materials, AttackLibraryBuilder.Library attacks)
         {
-            GameObject enemyGo = new GameObject("Ennemi");
-            enemyGo.transform.position = new Vector3(0f, 0f, SpawnDistance * 0.5f);
-            enemyGo.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+            return BuildFighter(materials, attacks, "Ennemi",
+                new Vector3(0f, 0f, SpawnDistance * 0.5f), 180f,
+                FighterBuilder.Skin.Enemy(materials), 90f, true).Go;
+        }
+
+        /// <summary>
+        /// Construit un combattant complet, la ou on veut et habille comme on veut.
+        ///
+        /// Le prologue en a besoin de cinq : la cible et quatre figurants. Les figurants ne sont
+        /// PAS des mannequins — ce sont les memes corps, avec le meme rig et le meme pilote
+        /// d'animation, simplement prives de cerveau. C'est ce qui rend l'identification
+        /// interessante : s'ils ne bougeaient pas comme la cible, on la reconnaitrait a sa
+        /// respiration plutot qu'a sa veste.
+        /// </summary>
+        internal static FighterParts BuildFighter(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
+            string displayName, Vector3 position, float yaw, FighterBuilder.Skin skin, float health,
+            bool withHealthBar)
+        {
+            GameObject enemyGo = new GameObject(displayName);
+            enemyGo.transform.position = position;
+            enemyGo.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             CharacterController controller = enemyGo.AddComponent<CharacterController>();
             controller.height = PlayerHeight;
@@ -560,7 +589,7 @@ namespace UberBagarre.EditorTools
             GameObject tilt = EditorBuildUtility.CreateEmpty("Inclinaison", enemyGo.transform, Vector3.zero);
 
             FighterBuilder.Result body = FighterBuilder.BuildBody(tilt.transform, enemyGo.transform,
-                FighterBuilder.Skin.Enemy(materials), true, Faction.Enemy, enemyGo);
+                skin, true, Faction.Enemy, enemyGo);
 
             // L'ennemi utilise le MEME composant de bras que le joueur : seul le repere change.
             // A hauteur d'yeux et face a l'avant, les poses de garde ecrites pour la premiere
@@ -582,8 +611,8 @@ namespace UberBagarre.EditorTools
 
             EnemyMotor motor = enemyGo.AddComponent<EnemyMotor>();
 
-            Combatant combatant = AddCombatant(enemyGo, Faction.Enemy, "Bagarreur",
-                armsAnchor.transform, 90f, 100f, 10f, 6f);
+            Combatant combatant = AddCombatant(enemyGo, Faction.Enemy, displayName,
+                armsAnchor.transform, health, 100f, 10f, 6f);
 
             // Fenetre de parade tres courte pour l'ennemi, et c'est un choix d'equilibrage :
             // il leve sa garde en reaction, donc avec la meme fenetre que le joueur il parerait
@@ -644,9 +673,12 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(relay, "_guard", guard);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
-            WorldHealthBar bar = enemyGo.AddComponent<WorldHealthBar>();
-            SerializedWiring.SetObject(bar, "_combatant", combatant);
-            SerializedWiring.SetObject(bar, "_stun", stun);
+            if (withHealthBar)
+            {
+                WorldHealthBar bar = enemyGo.AddComponent<WorldHealthBar>();
+                SerializedWiring.SetObject(bar, "_combatant", combatant);
+                SerializedWiring.SetObject(bar, "_stun", stun);
+            }
 
             AddBruises(enemyGo, combatant, body, materials);
 
@@ -662,7 +694,15 @@ namespace UberBagarre.EditorTools
                 body.Locomotion, arms, avatarDriver, brain, motor, executor, reaction, dodge,
                 enemyGo.GetComponent<KnockdownSystem>(), guard, stun);
 
-            return enemyGo;
+            FighterParts parts = new FighterParts();
+            parts.Go = enemyGo;
+            parts.Combatant = combatant;
+            parts.Brain = brain;
+            parts.Knockdown = enemyGo.GetComponent<KnockdownSystem>();
+            parts.Body = body;
+            parts.Guard = guard;
+
+            return parts;
         }
 
         /// <summary>
@@ -877,7 +917,7 @@ namespace UberBagarre.EditorTools
             return bruises;
         }
 
-        private static void WireHudAndDebug(GameObject player, GameObject enemy, AttackData testAttack)
+        internal static void WireHudAndDebug(GameObject player, GameObject enemy, AttackData testAttack)
         {
             Combatant playerCombatant = player.GetComponent<Combatant>();
             Combatant enemyCombatant = enemy.GetComponent<Combatant>();
@@ -907,7 +947,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(overlay, "_playerCombat", player.GetComponent<PlayerCombat>());
         }
 
-        private static InputBindings GetOrCreateInputBindings()
+        internal static InputBindings GetOrCreateInputBindings()
         {
             string path = SettingsFolder + "/InputBindings.asset";
             InputBindings bindings = AssetDatabase.LoadAssetAtPath<InputBindings>(path);
@@ -1017,7 +1057,7 @@ namespace UberBagarre.EditorTools
         /// physique à chaque image et le ragdoll reste figé debout — en silence, puisque rien
         /// n'est en erreur. Autant que la liste soit lisible ici, à côté de ce qui la remplit.
         /// </summary>
-        private static void SetComponentArray(Object target, string fieldName, params Component[] values)
+        internal static void SetComponentArray(Object target, string fieldName, params Component[] values)
         {
             SerializedObject so = SerializedWiring.Open(target);
             SerializedProperty array = so.FindProperty(fieldName);
@@ -1054,7 +1094,7 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private static void RegisterSceneInBuildSettings()
+        internal static void RegisterSceneInBuildSettings()
         {
             List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
 

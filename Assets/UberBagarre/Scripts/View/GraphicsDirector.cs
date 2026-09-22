@@ -51,6 +51,13 @@ namespace UberBagarre.View
         [Tooltip("Recharger les reglages sauvegardes au demarrage.")]
         private bool _restoreSaved = true;
 
+        [SerializeField]
+        [Tooltip("L'heure fait-elle partie des reglages rechargeables ? Dans un bac a sable, oui : " +
+                 "c'est un reglage de confort. Dans une scene d'histoire, non — une planque a " +
+                 "2 h du matin en plein soleil parce qu'on avait pousse le curseur la veille " +
+                 "n'a aucun sens, et rien a l'ecran n'expliquerait pourquoi.")]
+        private bool _restoreDay = true;
+
         public float Bloom { get { return _bloom; } set { _bloom = Mathf.Max(0f, value); Push(); } }
         public float Threshold { get { return _threshold; } set { _threshold = Mathf.Max(0f, value); Push(); } }
         public float Exposure { get { return _exposure; } set { _exposure = Mathf.Clamp(value, 0.1f, 4f); Push(); } }
@@ -186,7 +193,7 @@ namespace UberBagarre.View
             _vignette = PlayerPrefs.GetFloat(PrefsPrefix + "vignette", _vignette);
             _grain = PlayerPrefs.GetFloat(PrefsPrefix + "grain", _grain);
             _aberration = PlayerPrefs.GetFloat(PrefsPrefix + "aberration", _aberration);
-            _day = PlayerPrefs.GetFloat(PrefsPrefix + "jour", _day);
+            if (_restoreDay) _day = PlayerPrefs.GetFloat(PrefsPrefix + "jour", _day);
             _postEnabled = PlayerPrefs.GetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0) != 0;
             _reflectionsEnabled = PlayerPrefs.GetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0) != 0;
             _reflectionDownsample = PlayerPrefs.GetInt(PrefsPrefix + "refletsQualite", _reflectionDownsample);

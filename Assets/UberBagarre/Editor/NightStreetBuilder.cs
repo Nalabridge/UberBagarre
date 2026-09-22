@@ -67,16 +67,30 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ construction
 
+        /// <summary>
+        /// Construit la rue avec sa propre palette.
+        ///
+        /// Les dimensions passees a la fabrique sont celles du SOL reellement construit, pas
+        /// celles de la rue : le tiling des textures en depend directement, et un sol de
+        /// 100 x 72 texture d'apres une rue de 92 x 32 etire son grain d'un facteur deux dans
+        /// un sens. Ca ne produit aucune erreur, juste un bitume qui ne ressemble a rien.
+        /// </summary>
         public static Result Build()
         {
-            NightMeshFactory.EnsureLibrary();
+            return Build(NightMaterialFactory.Create(GroundLength, GroundDepth));
+        }
 
-            // Les dimensions passees sont celles du SOL reellement construit, pas celles de
-            // la rue : le tiling des textures en depend directement, et un sol de 100 x 72
-            // texture d'apres une rue de 92 x 32 etire son grain d'un facteur deux dans un
-            // sens. Ca ne produit aucune erreur, juste un bitume qui ne ressemble a rien.
-            NightMaterialFactory.Palette palette =
-                NightMaterialFactory.Create(GroundLength, GroundDepth);
+        /// <summary>
+        /// Construit la rue avec une palette FOURNIE.
+        ///
+        /// Le prologue a deux lieux — la maison et la rue — et ils partagent le metal, le bois,
+        /// le verre, la rouille et la voiture. Deux palettes independantes creeraient deux jeux
+        /// de materiaux pour les memes matieres : regler la rouille en corrigerait alors la
+        /// moitie, et l'autre moitie resterait comme avant sans qu'on comprenne pourquoi.
+        /// </summary>
+        public static Result Build(NightMaterialFactory.Palette palette)
+        {
+            NightMeshFactory.EnsureLibrary();
 
             GameObject root = new GameObject("=== Rue de nuit ===");
             GameObject city = EditorBuildUtility.CreateEmpty("Lampadaires", root.transform, Vector3.zero);
@@ -872,7 +886,8 @@ namespace UberBagarre.EditorTools
             Car(root.transform, palette, new Vector3(-26f, 0f, -8.6f), 181f, false, false);
         }
 
-        private static void Car(Transform parent, NightMaterialFactory.Palette palette, Vector3 position,
+        /// <summary>Partagee avec le lieu « maison » : c'est la meme voiture.</summary>
+        internal static void Car(Transform parent, NightMaterialFactory.Palette palette, Vector3 position,
             float yaw, bool rusty, bool headlightsOn)
         {
             GameObject car = EditorBuildUtility.CreateEmpty(rusty ? "Voiture rouillee" : "Voiture", parent, position);
@@ -1076,7 +1091,7 @@ namespace UberBagarre.EditorTools
             Manhole(t, palette, new Vector3(-19f, 0f, 0.8f));
         }
 
-        private static void Dumpster(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
+        internal static void Dumpster(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
         {
             GameObject dumpster = EditorBuildUtility.CreateEmpty("Benne", parent, position);
             dumpster.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -1175,7 +1190,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void Bollard(Transform parent, NightMaterialFactory.Palette palette, Vector3 position)
+        internal static void Bollard(Transform parent, NightMaterialFactory.Palette palette, Vector3 position)
         {
             GameObject bollard = EditorBuildUtility.CreateEmpty("Borne", parent, position);
 
@@ -1239,7 +1254,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void Bottles(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, int count)
+        internal static void Bottles(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, int count)
         {
             GameObject group = EditorBuildUtility.CreateEmpty("Bouteilles", parent, position);
 
@@ -1261,7 +1276,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void Pallet(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
+        internal static void Pallet(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
         {
             GameObject pallet = EditorBuildUtility.CreateEmpty("Palette", parent, position);
             pallet.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -1276,7 +1291,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void Crate(Transform parent, NightMaterialFactory.Palette palette, Vector3 position,
+        internal static void Crate(Transform parent, NightMaterialFactory.Palette palette, Vector3 position,
             float size, float yaw)
         {
             GameObject crate = Box(parent, "Caisse", position, Vector3.one * size, palette.Wood, true);

@@ -2,8 +2,14 @@
 
 Prototype de combat aux poings en vue première personne, qui servira plus tard de base au jeu
 « Über Bagarre » (commander un bagarreur comme on commande un Uber).
-**Pour l'instant, ce dépôt ne contient QUE le prototype de combat.** Pas d'app Uber, pas de missions,
-pas d'économie, pas de ville jouable.
+Le dépôt contient maintenant **deux scènes** :
+
+- **`Prologue.unity`** — le début du jeu tel que le dossier le décrit : la planque insalubre, l'appel
+  de Sami, l'application illégale qu'on installe quand même, la course à une étoile, le trajet, le
+  groupe devant le club, la première bagarre, la photo pour valider, le retour.
+- **`CombatSandbox.unity`** — l'établi de combat : pas de narration, tous les réglages sous la main.
+
+Pas encore d'économie, pas de progression, pas de ville ouverte.
 
 Le décor de test est en revanche celui du premier combat décrit dans le dossier : **la rue devant
 la boîte de nuit, la nuit, sous la bruine**. Néons, bitume mouillé qui reflète réellement la scène,
@@ -95,7 +101,9 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **Ctrl gauche** (tapé au bon moment) | **Parade** : les 0,26 s qui suivent la levée de garde annulent le coup *et* déséquilibrent l'attaquant |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
-| **Tab** | **Menu de bac à sable**, 5 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, **Graphismes**, Commandes |
+| **E** | **Interagir** : répondre au téléphone, lire le courrier, monter en voiture, valider un écran |
+| **T** | **Sortir / ranger le téléphone** (on peut marcher en le regardant, pas frapper) |
+| **Tab** | **Menu de bac à sable** (sandbox uniquement), 5 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, **Graphismes**, Commandes |
 | **F1** | Overlay de debug (états, zones, cadence réelle en coups/s, tampon d'entrée, distances) |
 | **F3** | **Caméra d'observation** — orbite autour de toi, et le combat continue |
 | **+** / **-** | Zoom de la caméra d'observation |
@@ -132,7 +140,8 @@ Tu peux les changer sans toucher à une ligne de code.
 | 16 | Charge, 4 coups contextuels, riposte, jauge d'étourdissement, caméra d'observation | ✅ |
 | 17 | Mode vagues, profils d'adversaire, statistiques de combat, réglages sauvegardés | ✅ |
 | 18 | Rue de nuit générée de A à Z, bloom et tonemap maison, reflet planaire, cycle jour / nuit | ✅ |
-| 19 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 19 | Prologue jouable : maison, téléphone en main, application, identification, tutoriel, photo | ✅ |
+| 20 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -151,6 +160,9 @@ Assets/UberBagarre/
                  soleil, réglages de rendu, sons générés
     UI/          HUD de combat, indicateur de garde, overlay de debug (F1)
     Sandbox/     points de spawn, directeur de spawn, menu de réglage, vagues, statistiques
+    Story/       moteur d'étapes, sous-titres, objectifs, fondu, tutoriel, scénario du prologue
+    Phone/       le téléphone tenu en main, ses écrans, son appareil photo
+    World/       interaction (E), lieux, groupe devant le club, identification de la cible
   Editor/        outils de génération (scène, décor, matériaux, coups)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
@@ -249,6 +261,73 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
   touchée, donc aucune mort ne ressemble à la précédente sans une seule animation.
 - **Ta vie se voit aussi** : plus elle descend, plus les bords de l'écran se referment. À 20 % de
   vie, tu ne vois plus que le centre.
+
+---
+
+## Le prologue
+
+`Uber Bagarre → 3 - Construire la scene Prologue`, puis Play.
+
+### Ce qui se passe
+
+| | |
+|---|---|
+| **02:47, la planque** | Un matelas par terre, deux meubles de cuisine, des bouteilles là où elles sont tombées. Sur la table du salon : trois relances d'impayés. Les lire est le premier objectif, et c'est la seule chose qui explique la suite. |
+| **L'appel** | Sami. Quatre phrases, pas une de plus — l'appli, le principe, la paie, l'illégalité. Il envoie le lien. |
+| **L'installation** | « Source inconnue. Application non référencée. Diffusion interdite sur le territoire. » Et un bouton **INSTALLER QUAND MÊME**. |
+| **La course** | RDV BASTON, une étoile sur cinq, 150 €. Puis la fiche du sujet : antécédents, localisation approximative, et surtout le **signalement**. |
+| **Le trajet** | Monter dans la vieille bagnole rouillée. Fondu au noir, « 20 minutes plus tard ». |
+| **Le groupe** | Cinq personnes devant le club. Aucune n'est marquée. Il faut les **dévisager** une par une et comparer avec le signalement. |
+| **La bagarre** | Quatre consignes qui attendent une réussite, pas un délai : deux directs, un crochet, une garde, un coup à la tête. Puis le K.O. |
+| **La preuve** | Sortir le téléphone, cadrer le corps au sol, déclencher. Photo hors cadre = photo refusée. |
+| **Le retour** | Course validée, 150 €, et le premier avis client. « Propre et rapide. Il a rien dit, il a fait. » |
+
+### Le téléphone
+
+C'est l'objet central du jeu, donc il est construit comme un objet et pas comme un menu : une coque,
+une dalle émissive et une petite lampe. Il se lève et se baisse avec **T**, il s'incline, il vibre
+quand ça sonne, il **éclaire les mains dans le noir** et il **apparaît dans les reflets du bitume
+mouillé**.
+
+Son interface n'est pas collée par-dessus l'image : elle est dessinée **sur la dalle**, à partir de
+ses quatre coins projetés à l'écran. Elle suit donc l'inclinaison du poignet et le balancement.
+
+Deux conséquences de conception, assumées : **on peut marcher en regardant son écran** — c'est la
+posture même du personnage — et **on ne peut pas frapper en le tenant**. Sortir le téléphone en plein
+combat est une décision.
+
+### Comment on trouve Bruno Moretti
+
+Personne n'est marqué à l'arrivée. Le mauvais réflexe aurait été de poser une flèche au-dessus de la
+cible : le joueur n'aurait alors rien repéré du tout, il aurait suivi une flèche, et le signalement
+n'aurait servi à rien.
+
+Ici il faut **regarder les gens**. Rester une seconde sur quelqu'un affiche ce qu'on voit de lui —
+et c'est au joueur de comparer avec la fiche. Le marqueur n'apparaît qu'**après**, sur celui qu'il a
+reconnu : il ne désigne pas la cible, il confirme une décision. Les quatre autres sont des corps
+identiques au sien, avec le même rig et la même respiration ; seule la couleur des vêtements change.
+
+### Le tutoriel
+
+Chaque consigne **attend un résultat**. Tant que les deux directs ne sont pas placés, l'étape ne
+passe pas. Ce n'est pas une punition, c'est la seule garantie que la touche a été essayée — un
+tutoriel qui affiche une commande trois secondes puis passe à la suite n'a rien enseigné à qui
+regardait ailleurs.
+
+Et si le joueur met K.O. avant la fin des consignes, elles sautent : il a déjà prouvé qu'il avait
+compris.
+
+### Deux lieux, une seule scène
+
+La planque est à 600 mètres de la rue dans la même scène, et un seul lieu est allumé à la fois. Le
+fondu au noir du trajet rend les deux méthodes strictement identiques pour le joueur — alors que deux
+scènes Unity obligeraient le joueur, son téléphone, le scénario et la fiche de mission à survivre au
+chargement, donc à exister en double le temps d'une transition.
+
+### Si une étape ne passe pas
+
+La console journalise chaque changement d'étape (`Etape 7/22 : lien`). C'est le premier endroit où
+regarder : un scénario bloqué et un scénario terminé se ressemblent beaucoup à l'écran.
 
 ---
 

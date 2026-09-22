@@ -1263,3 +1263,149 @@ le fait qu'aucune lumière de la scène ne se comportait comme une lumière : ri
 ne se reflétait, rien ne traversait l'air. Trois absences, pas un manque de détail.
 
 **Ce qu'on prend pour un problème de modèles est très souvent un problème de plage dynamique.**
+
+---
+
+## 17. Le prologue : raconter sans quitter le jeu
+
+Demande : *« commençons le prologue, avec le PDF, tu fais l'histoire. »*
+
+Le dossier décrit le début du jeu en un paragraphe : la maison insalubre, l'appel d'un ami,
+l'application interdite, la course à une étoile, le groupe devant la boîte, la bagarre, la photo.
+Tout y est, et rien n'y dit comment le faire tenir dans un moteur.
+
+### 17.1 Pourquoi une liste d'étapes en C# et pas des assets
+
+Une étape d'histoire n'est pas du texte : c'est une **condition de sortie**. « Quand le joueur a
+répondu au téléphone », « quand la cible est au sol », « quand trois coups ont porté ». Ces
+conditions sont du code.
+
+Les sérialiser aurait demandé un mini-langage de script : un éditeur, un interpréteur, et une
+documentation. Le coût aurait été payé tout de suite, le bénéfice jamais — le prologue tient en
+vingt-deux étapes et une seule personne les écrit.
+
+Ce qui comptait vraiment, c'est que la séquence soit **lisible d'un seul tenant**. `PrologueDirector`
+est volontairement un seul fichier avec une seule liste : elle se lit comme un synopsis, et c'est
+elle le document. Éclatée en vingt objets de scène à remplir, la même chose aurait demandé six clics
+pour savoir ce qui se passe après l'appel — et personne ne les aurait faits.
+
+Le moteur, lui, ne connaît pas le prologue. `StoryDirector` sait enchaîner des étapes, afficher un
+objectif, jouer des répliques et geler le joueur. Le scénario est ailleurs. Mélanger les deux aurait
+donné un composant où changer une réplique oblige à relire la boucle de mise à jour.
+
+### 17.2 Une étape se termine quand TROIS choses sont vraies
+
+Ses répliques sont finies, sa durée plancher est écoulée, et sa condition est remplie. Les trois, et
+pas une seule : un objectif rempli par hasard pendant un dialogue couperait la réplique au milieu, et
+une réplique longue retiendrait une étape que le joueur a déjà accomplie.
+
+### 17.3 Le décor parle avant les répliques
+
+Le personnage ne dit jamais qu'il est fauché. Le jeu le montre : un matelas par terre plutôt qu'un
+lit, une cuisine en deux meubles dont un a perdu sa porte, des bouteilles là où elles sont tombées,
+et sur l'écran verrouillé du téléphone trois notifications — découvert bancaire, facture impayée,
+troisième relance de loyer.
+
+Lire le courrier est la seule interaction obligatoire de la séquence, et c'est délibéré : c'est la
+seule chose qui explique pourquoi cet homme va accepter.
+
+### 17.4 Le téléphone devait être un objet, pas un menu
+
+Tout le concept passe par lui : on ne trouve pas les bagarres, on les **reçoit**, comme une course.
+En faire une interface plein écran aurait été le plus simple, et aurait tué l'idée.
+
+Il est donc tenu en main. Il occupe de la place, il s'incline, il vibre, il éclaire les mains dans le
+noir et il apparaît dans les reflets du bitume mouillé. Son interface est dessinée **sur la dalle**,
+à partir de ses quatre coins projetés à l'écran, via une transformation affine — elle suit donc le
+poignet au lieu d'être collée par-dessus.
+
+Deux décisions en découlent, et ce sont des décisions de jeu, pas de rendu :
+
+- **On peut marcher en regardant son écran.** C'est la posture du personnage.
+- **On ne peut pas frapper en le tenant.** Sortir le téléphone en plein combat devient une décision.
+
+Un détail technique mérite d'être écrit parce qu'il décide de la LISIBILITÉ et qu'il a l'air
+anodin : l'espace de mise en page n'est pas une résolution de maquette fixe, c'est la **taille
+projetée en pixels**. Avec une maquette fixe, la matrice vaudrait par exemple 0,6 sur un écran donné
+et un texte écrit en corps 14 s'afficherait en 8 pixels, illisible, sans que rien ne l'explique. À
+l'échelle 1, un corps 14 fait 14 pixels partout, et c'est la mise en page qui s'adapte. Toutes les
+dimensions du téléphone sont donc exprimées en fraction de la hauteur de sa dalle.
+
+### 17.5 Repérer quelqu'un, ce n'est pas suivre une flèche
+
+Le dossier écrit : « arriver devant le groupe et une fois que vous avez repéré l'individu, à vous
+d'engager ». C'est une phrase qui cache une vraie question : comment fait-on « repérer » ?
+
+Poser un marqueur au-dessus de la cible dès l'arrivée aurait été le réflexe, et aurait vidé la scène
+de son idée. Le joueur n'aurait rien repéré : il aurait suivi une flèche, et la fiche de
+signalement — veste rouge, jean clair — n'aurait servi à rien.
+
+Alors personne n'est marqué. Le joueur **dévisage** les gens un par un ; rester une seconde sur
+quelqu'un affiche ce qu'on voit de lui, et c'est au joueur de comparer. Le marqueur n'apparaît
+qu'après, sur celui qu'il a reconnu : il ne désigne pas la cible, il **confirme une décision**.
+
+Cela impose une contrainte qu'il fallait tenir : les quatre figurants sortent du même constructeur
+que la cible. Même corps, même rig, même respiration. S'ils avaient été des mannequins immobiles, on
+aurait repéré la cible au simple fait qu'elle est la seule à bouger, et tout le dispositif se serait
+effondré.
+
+Le signalement, lui, a été choisi pour être lisible **sous cet éclairage**. « Crâne rasé » ne
+distingue personne — aucun personnage n'a de cheveux dans ce jeu. Une veste rouge franche tient le
+coup même sous un néon magenta.
+
+### 17.6 Le tutoriel attend un résultat, pas un délai
+
+Chaque consigne a un compteur. Tant que les deux directs ne sont pas placés, l'étape ne passe pas.
+Ce n'est pas une punition : c'est la seule garantie que la touche a été essayée. Une consigne qui
+s'efface toute seule après trois secondes n'a rien enseigné à qui regardait ailleurs.
+
+Le compteur sert aussi de retour immédiat, et c'est peut-être son rôle le plus utile : chaque coup
+porté le fait avancer, donc le joueur sait tout de suite si son coup a compté. C'est exactement
+l'information qui manque quand on découvre un système de combat.
+
+Et si le joueur met K.O. avant d'avoir fini les consignes, elles sautent. Il a déjà prouvé qu'il
+avait compris.
+
+### 17.7 Deux lieux, une seule scène
+
+La planque est à six cents mètres de la rue, dans la même scène, et un seul lieu est allumé à la
+fois. Deux scènes Unity auraient obligé le joueur, son téléphone, le scénario et la fiche de mission
+à survivre au chargement — donc à être marqués persistants, donc à exister en double le temps d'une
+transition. Le premier bogue de ce genre est invisible et le second est incompréhensible.
+
+Le fondu au noir du trajet rend les deux méthodes strictement identiques pour le joueur. La
+contrepartie — une scène plus lourde et des coordonnées très écartées — ne se voit jamais en jeu.
+
+Le déplacement passe par `ISpawnReceiver`, exactement comme le spawn de combat : c'est le seul
+chemin qui désactive le CharacterController le temps du saut ET réaligne l'angle de visée. Déplacer
+le joueur « à la main » l'aurait fait revenir à sa position d'avant dès l'image suivante, sans la
+moindre erreur pour l'expliquer.
+
+### 17.8 Ce qu'un prologue ne doit jamais faire : se bloquer
+
+Trois garde-fous, et chacun répond à une panne précise :
+
+- **Le joueur ne peut pas mourir.** Une mort au milieu d'un tutoriel laisserait la séquence sur une
+  condition qui ne se réalisera jamais, et le joueur se retrouverait vivant devant un objectif
+  impossible. Tant qu'il n'y a pas d'écran de défaite, ne pas mourir est la seule option cohérente.
+- **L'étape de K.O. attend la MORT, pas la chute.** Un adversaire au sol se relève — c'est tout
+  l'intérêt du système de chute. Terminer l'étape sur une chute aurait fait passer à la photo
+  pendant qu'il se remet debout.
+- **Chaque changement d'étape est journalisé.** À l'écran, un scénario bloqué et un scénario terminé
+  se ressemblent beaucoup.
+
+### 17.9 Une seule source de vérité pour « Bruno Moretti »
+
+Le nom de la cible apparaît à cinq endroits : la fiche du suspect, l'objectif, l'étiquette au-dessus
+de sa tête, la validation et l'avis du client. Cinq copies, c'est quatre occasions de n'en corriger
+que trois. D'où `MissionBriefing`, un composant qui ne fait rien d'autre que porter ces chaînes.
+
+### 17.10 Ce que je retiens
+
+La partie difficile n'était aucune des mécaniques. C'était de décider, à chaque scène, **ce que le
+jeu montre et ce qu'il dit**. Le personnage ne dit pas qu'il est fauché : on lit son courrier. Le jeu
+ne désigne pas la cible : on la reconnaît. Le tutoriel n'explique pas le crochet : il attend qu'on
+en place un.
+
+**Chaque fois qu'on hésite entre le dire et le faire faire, le faire faire est meilleur — et c'est
+presque toujours moins de code.**

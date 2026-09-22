@@ -1,0 +1,487 @@
+using System.Collections.Generic;
+using UberBagarre.Combat;
+using UberBagarre.Phone;
+using UberBagarre.Player;
+using UberBagarre.Story;
+using UberBagarre.View;
+using UberBagarre.World;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+namespace UberBagarre.EditorTools
+{
+    /// <summary>
+    /// Génère la scène du PROLOGUE : la planque, l'appel, l'application, le premier combat.
+    ///
+    /// Elle est séparée de la sandbox de combat, et c'est un choix qui se défend en une
+    /// phrase : on ne veut pas traverser cinq minutes de narration à chaque fois qu'on règle
+    /// la portée d'un crochet. La sandbox reste l'établi, le prologue est le jeu.
+    ///
+    /// Les deux scènes partagent TOUT ce qui compte — le joueur, le rig de combat, le décor de
+    /// nuit, la chaîne de rendu — parce que ce sont les mêmes constructeurs qui les bâtissent.
+    /// Régler un coup dans la sandbox règle le même coup dans le prologue.
+    ///
+    /// Les deux lieux vivent dans cette unique scène, très loin l'un de l'autre, et un seul est
+    /// allumé à la fois (voir LocationDirector). Le fondu au noir de la voiture masque le saut.
+    /// </summary>
+    public static class PrologueSceneBuilder
+    {
+        public const string ScenePath = SandboxSceneBuilder.ScenesFolder + "/Prologue.unity";
+
+        /// <summary>
+        /// Décalage de la planque. Assez loin pour que rien n'en soit visible depuis la rue,
+        /// même sans brume et sans désactivation — une marge, pas une limite exacte.
+        /// </summary>
+        public static readonly Vector3 HouseOrigin = new Vector3(0f, 0f, -600f);
+
+        private const float ClubSidewalkZ = NightStreetBuilder.RoadFar + 0.4f;
+
+        [MenuItem("Uber Bagarre/3 - Construire la scene Prologue", false, 30)]
+        public static void BuildFromMenu()
+        {
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+
+            bool exists = !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(ScenePath));
+
+            if (exists)
+            {
+                bool rebuild = EditorUtility.DisplayDialog(
+                    "Reconstruire la scene Prologue ?",
+                    "La scene existe deja :\n" + ScenePath +
+                    "\n\nElle va etre REMPLACEE. Toutes les modifications faites a la main seront perdues.\n\n" +
+                    "(Les assets - materiaux, reglages, donnees d'attaque - ne sont pas touches.)",
+                    "Reconstruire", "Annuler");
+
+                if (!rebuild) return;
+            }
+
+            Build();
+        }
+
+        public static void Build()
+        {
+            EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.ScenesFolder);
+            ProceduralMeshFactory.EnsureLibrary();
+            NightMeshFactory.EnsureLibrary();
+
+            BuildMaterials materials = BuildMaterials.CreateAll(26f);
+            AttackLibraryBuilder.Library attacks = AttackLibraryBuilder.BuildAll(false);
+
+            NightMaterialFactory.Palette night = NightMaterialFactory.Create(
+                NightStreetBuilder.GroundLength, NightStreetBuilder.GroundDepth);
+
+            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+            Light sun;
+            Light moon;
+            SandboxSceneBuilder.BuildLighting(out sun, out moon);
+
+            NightStreetBuilder.Result street = NightStreetBuilder.Build(night);
+            HouseBuilder.Result house = HouseBuilder.Build(night, HouseOrigin);
+
+            // Le joueur naît chez lui : le prologue commence dans la planque, pas dans la rue.
+            Camera gameCamera;
+            Camera observerCamera;
+            GameObject player = SandboxSceneBuilder.BuildPlayer(materials, attacks,
+                out gameCamera, out observerCamera);
+
+            player.transform.SetPositionAndRotation(house.Arrival.position, house.Arrival.rotation);
+
+            GraphicsDirector graphics = SandboxSceneBuilder.BuildRendering(sun, moon, street,
+                gameCamera, observerCamera);
+
+            MissionBriefing briefing = BuildBriefing();
+
+            SandboxSceneBuilder.FighterParts target;
+            List<SandboxSceneBuilder.FighterParts> crowd;
+            BuildCrowd(materials, attacks, night, street.Root, briefing, player, out target, out crowd);
+
+            SandboxSceneBuilder.WireHudAndDebug(player, target.Go, attacks.Straight);
+
+            Interactable clubCar = BuildClubCarDoor(street.Root);
+
+            PhoneDevice phone = BuildPhone(night, gameCamera, player, briefing);
+
+            BuildStory(player, phone, briefing, house, street, clubCar, target, graphics, attacks);
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            if (saved) SandboxSceneBuilder.RegisterSceneInBuildSettings();
+
+            Selection.activeGameObject = player;
+
+            Debug.Log("[UberBagarre] Scene Prologue generee.\n" +
+                      "  Lieux        : la planque (" + HouseOrigin.z + " en Z) et la rue devant le club\n" +
+                      "  Histoire     : reveil, courrier, appel de " + briefing.FriendName +
+                      ", installation, course, trajet,\n" +
+                      "                 identification dans le groupe, bagarre avec tutoriel, photo, retour\n" +
+                      "  Touches      : E = interagir / repondre / valider, T = telephone,\n" +
+                      "                 clic gauche = frapper (et declencher la photo)\n" +
+                      "  Tout le reste des commandes est identique a la sandbox.\n" +
+                      "  Appuie sur Play.");
+        }
+
+        // ------------------------------------------------------------------ mission
+
+        private static MissionBriefing BuildBriefing()
+        {
+            GameObject go = new GameObject("=== Mission ===");
+            MissionBriefing briefing = go.AddComponent<MissionBriefing>();
+
+            SerializedWiring.SetString(briefing, "_targetName", "BRUNO MORETTI");
+            SerializedWiring.SetString(briefing, "_targetAge", "38 ans");
+
+            // Le signalement doit designer quelque chose de VISIBLE sur le modele, et de
+            // visible SOUS CET ECLAIRAGE. Une veste rouge franche tient le coup sous un neon
+            // magenta ; « crane rase » ne distinguerait rien du tout, puisque personne n'a de
+            // cheveux dans ce jeu.
+            SerializedWiring.SetString(briefing, "_targetClothing", "Veste rouge, jean clair");
+            SerializedWiring.SetString(briefing, "_targetLocation", "Devant le club — Le Vertigo");
+            SerializedWiring.SetString(briefing, "_targetRecord",
+                "Videur. Connu pour cogner d'abord.\nA casse le bras d'un livreur en mars.");
+
+            SerializedWiring.SetString(briefing, "_clientName", "CLIENT VERIFIE");
+            SerializedWiring.SetInt(briefing, "_stars", 1);
+            SerializedWiring.SetInt(briefing, "_reward", 150);
+            SerializedWiring.SetInt(briefing, "_experience", 120);
+            SerializedWiring.SetString(briefing, "_review", "Propre et rapide. Il a rien dit, il a fait.");
+            SerializedWiring.SetString(briefing, "_friendName", "SAMI");
+
+            SerializedWiring.Verify(briefing, "_targetClothing");
+
+            return briefing;
+        }
+
+        // ------------------------------------------------------------------ le groupe
+
+        /// <summary>
+        /// La cible et les quatre figurants.
+        ///
+        /// Ils sortent du MÊME constructeur que l'adversaire de la sandbox, et c'est ce qui
+        /// rend la scène d'identification honnête : ils ont le même corps, le même rig, la même
+        /// respiration. Seule la couleur des vêtements change. Le joueur ne peut donc pas
+        /// repérer la cible autrement qu'en lisant le signalement — ce qui était tout l'intérêt.
+        ///
+        /// Aucun n'a de cerveau au départ, y compris la cible : le groupe attend, comme un
+        /// groupe devant une boîte. Le scénario n'allume celui de la cible qu'une fois qu'elle
+        /// a été reconnue.
+        /// </summary>
+        private static void BuildCrowd(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
+            NightMaterialFactory.Palette night, Transform streetRoot, MissionBriefing briefing,
+            GameObject player, out SandboxSceneBuilder.FighterParts target,
+            out List<SandboxSceneBuilder.FighterParts> crowd)
+        {
+            GameObject root = EditorBuildUtility.CreateEmpty("Groupe devant le club", streetRoot, Vector3.zero);
+
+            Material redJacket = Jacket(night, "M_VesteRouge", new Color(0.62f, 0.09f, 0.08f));
+            Material lightJeans = EditorBuildUtility.CreateOrUpdateMaterial(
+                NightMaterialFactory.MaterialsFolder, "M_JeanClair",
+                new Color(0.46f, 0.50f, 0.58f), 0.09f, 0f);
+
+            FighterBuilder.Skin targetSkin = FighterBuilder.Skin.Enemy(materials);
+            targetSkin.Shirt = redJacket;
+            targetSkin.Pants = lightJeans;
+
+            // La cible encaisse plus que l'adversaire de la sandbox : le tutoriel doit avoir le
+            // temps de dérouler ses quatre consignes avant qu'il ne tombe. Un K.O. au troisième
+            // coup laisserait la moitié des commandes jamais montrées.
+            target = SandboxSceneBuilder.BuildFighter(materials, attacks, briefing.TargetName,
+                new Vector3(1.8f, 0f, 6.2f), 186f, targetSkin, 165f, true);
+
+            target.Go.transform.SetParent(root.transform, true);
+            if (target.Brain != null) target.Brain.enabled = false;
+
+            AddCrowdMember(target, player, briefing.TargetName, true, "Veste rouge. Jean clair.");
+
+            crowd = new List<SandboxSceneBuilder.FighterParts>();
+
+            AddBystander(materials, attacks, night, root.transform, player, crowd,
+                "Type en noir", new Vector3(-4.3f, 0f, 6.7f), 166f,
+                new Color(0.10f, 0.10f, 0.12f), new Color(0.13f, 0.14f, 0.18f),
+                "Veste noire. Capuche.");
+
+            AddBystander(materials, attacks, night, root.transform, player, crowd,
+                "Type en vert", new Vector3(-1.9f, 0f, 5.8f), 202f,
+                new Color(0.14f, 0.26f, 0.16f), new Color(0.16f, 0.17f, 0.22f),
+                "Blouson vert. Pantalon sombre.");
+
+            AddBystander(materials, attacks, night, root.transform, player, crowd,
+                "Type en bleu", new Vector3(4.1f, 0f, 6.6f), 176f,
+                new Color(0.12f, 0.17f, 0.34f), new Color(0.15f, 0.15f, 0.17f),
+                "Veste bleu nuit. Jean foncé.");
+
+            AddBystander(materials, attacks, night, root.transform, player, crowd,
+                "Type en gris", new Vector3(5.9f, 0f, 5.9f), 214f,
+                new Color(0.32f, 0.32f, 0.33f), new Color(0.14f, 0.15f, 0.19f),
+                "Manteau gris. Chaussures de ville.");
+        }
+
+        private static void AddBystander(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
+            NightMaterialFactory.Palette night, Transform root, GameObject player,
+            List<SandboxSceneBuilder.FighterParts> crowd, string name, Vector3 position, float yaw,
+            Color jacket, Color trousers, string description)
+        {
+            FighterBuilder.Skin skin = FighterBuilder.Skin.Enemy(materials);
+            skin.Shirt = Jacket(night, "M_Veste_" + name.Replace(" ", ""), jacket);
+
+            skin.Pants = EditorBuildUtility.CreateOrUpdateMaterial(
+                NightMaterialFactory.MaterialsFolder, "M_Pantalon_" + name.Replace(" ", ""),
+                trousers, 0.08f, 0f);
+
+            SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(
+                materials, attacks, name, position, yaw, skin, 80f, false);
+
+            parts.Go.transform.SetParent(root, true);
+
+            // Pas de cerveau, pas de ragdoll qui parte tout seul : un figurant qui riposte
+            // transformerait la scène d'identification en bagarre générale, et le joueur
+            // n'aurait plus aucune raison de lire la fiche.
+            if (parts.Brain != null) parts.Brain.enabled = false;
+
+            AddCrowdMember(parts, player, name, false, description);
+            crowd.Add(parts);
+        }
+
+        private static void AddCrowdMember(SandboxSceneBuilder.FighterParts parts, GameObject player,
+            string displayName, bool isTarget, string description)
+        {
+            if (parts == null || parts.Go == null) return;
+
+            CrowdMember member = parts.Go.AddComponent<CrowdMember>();
+
+            SerializedWiring.SetString(member, "_displayName", displayName);
+            SerializedWiring.SetBool(member, "_isTarget", isTarget);
+            SerializedWiring.SetString(member, "_description", description);
+
+            // Seule la TETE est confiee a CrowdMember. Le bassin, lui, est deja pilote a
+            // chaque image par le cycle de marche : deux composants qui ecrivent la meme
+            // rotation produisent un tremblement dont la cause est invisible, puisque les deux
+            // ont raison separement. La nuque, elle, n'est touchee par personne d'autre.
+            if (parts.Body != null) SerializedWiring.SetObject(member, "_head", parts.Body.Neck);
+
+            SerializedWiring.SetObject(member, "_lookTarget", player.transform);
+            SerializedWiring.Verify(member, "_lookTarget");
+        }
+
+        private static Material Jacket(NightMaterialFactory.Palette night, string name, Color color)
+        {
+            // Graine derivee des caracteres du nom, pas de GetHashCode : le hachage de chaine
+            // n'est pas garanti stable d'une execution a l'autre, ce qui regenererait la
+            // texture a chaque construction pour un resultat different a chaque fois.
+            int seed = 17;
+            for (int i = 0; i < name.Length; i++) seed = seed * 31 + name[i];
+
+            Texture2D weave = EditorBuildUtility.CreateOrUpdateFabricTexture(
+                NightMaterialFactory.TexturesFolder, "T_" + name, 256, color, 4, 0.11f,
+                (seed & 0x7FFFFFFF) % 9000);
+
+            return EditorBuildUtility.CreateOrUpdateMaterial(NightMaterialFactory.MaterialsFolder,
+                name, Color.white, 0.12f, 0f, weave, new Vector2(12f, 12f));
+        }
+
+        // ------------------------------------------------------------------ la voiture du club
+
+        private static Interactable BuildClubCarDoor(Transform streetRoot)
+        {
+            // La voiture garée devant le club est déjà construite par la rue : on n'ajoute
+            // qu'un volume d'interaction à l'endroit de sa portière conducteur.
+            GameObject door = EditorBuildUtility.CreateEmpty("Portiere (retour)", streetRoot,
+                new Vector3(-10.5f, 1f, 3.5f));
+
+            BoxCollider collider = door.AddComponent<BoxCollider>();
+            collider.size = new Vector3(2.6f, 2f, 2.6f);
+            collider.isTrigger = true;
+
+            Interactable interactable = door.AddComponent<Interactable>();
+            SerializedWiring.SetString(interactable, "_label", "Reprendre la voiture");
+            SerializedWiring.SetString(interactable, "_hint", "Retour a la planque");
+            SerializedWiring.SetFloat(interactable, "_range", 3f);
+            SerializedWiring.SetBool(interactable, "_once", true);
+            SerializedWiring.SetBool(interactable, "_enabledForPlayer", false);
+
+            return interactable;
+        }
+
+        // ------------------------------------------------------------------ le telephone
+
+        /// <summary>
+        /// Le téléphone, construit dans la main : un corps, une dalle émissive et une lampe.
+        ///
+        /// Il est enfant de la CAMÉRA, donc il suit la visée sans une ligne de code. Et comme
+        /// c'est un vrai objet, il apparaît dans les reflets du bitume mouillé — consulter son
+        /// téléphone au bord d'une flaque, la nuit, se voit dans la flaque.
+        /// </summary>
+        private static PhoneDevice BuildPhone(NightMaterialFactory.Palette night, Camera camera,
+            GameObject player, MissionBriefing briefing)
+        {
+            Material body = EditorBuildUtility.CreateOrUpdateMaterial(
+                NightMaterialFactory.MaterialsFolder, "M_Telephone",
+                new Color(0.055f, 0.055f, 0.065f), 0.72f, 0.5f);
+
+            Material glass = NightMaterialFactory.CreateNeon(NightMaterialFactory.MaterialsFolder,
+                "M_EcranTelephone", new Color(0.85f, 0.88f, 1f), 1.6f);
+
+            GameObject phoneGo = EditorBuildUtility.CreateEmpty("Telephone", camera.transform, Vector3.zero);
+
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Coque", phoneGo.transform,
+                Vector3.zero, new Vector3(0.076f, 0.154f, 0.009f), body, false);
+
+            // La dalle est légèrement en avant de la coque, côté caméra : c'est le -Z local,
+            // puisque le téléphone est orienté comme la caméra et que l'écran nous fait face.
+            GameObject screen = EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Dalle",
+                phoneGo.transform, new Vector3(0f, 0.002f, -0.0052f),
+                new Vector3(0.070f, 0.148f, 0.001f), glass, false);
+
+            GameObject lightGo = EditorBuildUtility.CreateEmpty("Lueur d'ecran", phoneGo.transform,
+                new Vector3(0f, 0f, -0.05f));
+
+            Light light = lightGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = 2.4f;
+            light.intensity = 0.85f;
+            light.color = new Color(0.85f, 0.88f, 1f);
+            light.renderMode = LightRenderMode.ForcePixel;
+            light.shadows = LightShadows.None;
+
+            PlayerInputReader input = player.GetComponent<PlayerInputReader>();
+
+            PhoneDevice device = phoneGo.AddComponent<PhoneDevice>();
+            SerializedWiring.SetObject(device, "_anchor", camera.transform);
+            SerializedWiring.SetObject(device, "_screenTransform", screen.transform);
+            SerializedWiring.SetObject(device, "_screenRenderer", screen.GetComponent<Renderer>());
+            SerializedWiring.SetObject(device, "_screenLight", light);
+            SerializedWiring.SetObject(device, "_input", input);
+            SerializedWiring.Verify(device, "_screenTransform");
+
+            PhoneDisplay display = phoneGo.AddComponent<PhoneDisplay>();
+            SerializedWiring.SetObject(display, "_device", device);
+            SerializedWiring.SetObject(display, "_camera", camera);
+            SerializedWiring.SetObject(display, "_briefing", briefing);
+
+            PhoneCamera photo = phoneGo.AddComponent<PhoneCamera>();
+            SerializedWiring.SetObject(photo, "_device", device);
+            SerializedWiring.SetObject(photo, "_input", input);
+            SerializedWiring.SetObject(photo, "_camera", camera);
+
+            return device;
+        }
+
+        // ------------------------------------------------------------------ narration
+
+        private static void BuildStory(GameObject player, PhoneDevice phone, MissionBriefing briefing,
+            HouseBuilder.Result house, NightStreetBuilder.Result street, Interactable clubCar,
+            SandboxSceneBuilder.FighterParts target, GraphicsDirector graphics,
+            AttackLibraryBuilder.Library attacks)
+        {
+            GameObject root = new GameObject("=== Histoire ===");
+
+            PlayerInputReader input = player.GetComponent<PlayerInputReader>();
+            Camera camera = player.GetComponentInChildren<Camera>();
+
+            SubtitleDisplay subtitles = root.AddComponent<SubtitleDisplay>();
+            ObjectiveDisplay objectives = root.AddComponent<ObjectiveDisplay>();
+            ScreenFader fader = root.AddComponent<ScreenFader>();
+            TutorialPrompt tutorial = root.AddComponent<TutorialPrompt>();
+
+            StoryDirector story = root.AddComponent<StoryDirector>();
+            SerializedWiring.SetObject(story, "_input", input);
+            SerializedWiring.SetObject(story, "_subtitles", subtitles);
+            SerializedWiring.SetObject(story, "_objectives", objectives);
+
+            // --- interaction, sur le joueur : elle vise depuis sa caméra.
+            InteractionSystem interaction = player.AddComponent<InteractionSystem>();
+            SerializedWiring.SetObject(interaction, "_input", input);
+            SerializedWiring.SetObject(interaction, "_camera", camera);
+
+            TargetFinder finder = player.AddComponent<TargetFinder>();
+            SerializedWiring.SetObject(finder, "_camera", camera);
+            SerializedWiring.SetObject(finder, "_briefing", briefing);
+            SerializedWiring.SetObject(finder, "_crowdRoot", street.Root);
+            SerializedWiring.SetBool(finder, "_searching", false);
+            SerializedWiring.Verify(finder, "_crowdRoot");
+
+            // --- les lieux
+            GameObject streetArrival = EditorBuildUtility.CreateEmpty("Arrivee rue", street.Root,
+                new Vector3(0f, 0f, -6.5f));
+
+            LocationDirector locations = root.AddComponent<LocationDirector>();
+            SerializedWiring.SetObject(locations, "_player", player);
+            SerializedWiring.SetInt(locations, "_startIndex", 0);
+
+            SerializedObject so = SerializedWiring.Open(locations);
+            SerializedProperty array = so.FindProperty("_locations");
+
+            if (array != null)
+            {
+                array.arraySize = 2;
+
+                SerializedProperty home = array.GetArrayElementAtIndex(0);
+                home.FindPropertyRelative("name").stringValue = "Maison";
+                home.FindPropertyRelative("root").objectReferenceValue = house.Root;
+                home.FindPropertyRelative("arrival").objectReferenceValue = house.Arrival;
+
+                SerializedProperty outside = array.GetArrayElementAtIndex(1);
+                outside.FindPropertyRelative("name").stringValue = "Rue";
+                outside.FindPropertyRelative("root").objectReferenceValue = street.Root;
+                outside.FindPropertyRelative("arrival").objectReferenceValue = streetArrival.transform;
+
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else
+            {
+                Debug.LogWarning("[UberBagarre] Champ '_locations' introuvable sur LocationDirector.", locations);
+            }
+
+            // --- le scenario
+            PrologueDirector prologue = root.AddComponent<PrologueDirector>();
+
+            SerializedWiring.SetObject(prologue, "_story", story);
+            SerializedWiring.SetObject(prologue, "_subtitles", subtitles);
+            SerializedWiring.SetObject(prologue, "_objectives", objectives);
+            SerializedWiring.SetObject(prologue, "_fader", fader);
+            SerializedWiring.SetObject(prologue, "_tutorial", tutorial);
+            SerializedWiring.SetObject(prologue, "_briefing", briefing);
+
+            SerializedWiring.SetObject(prologue, "_input", input);
+            SerializedWiring.SetObject(prologue, "_player", player.GetComponent<Combatant>());
+            SerializedWiring.SetObject(prologue, "_playerGuard", player.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(prologue, "_phone", phone);
+            SerializedWiring.SetObject(prologue, "_interaction", interaction);
+
+            SerializedWiring.SetObject(prologue, "_locations", locations);
+            SerializedWiring.SetObject(prologue, "_finder", finder);
+            SerializedWiring.SetObject(prologue, "_letters", house.Letters);
+            SerializedWiring.SetObject(prologue, "_carAtHouse", house.Car);
+            SerializedWiring.SetObject(prologue, "_carAtClub", clubCar);
+
+            SerializedWiring.SetObject(prologue, "_target", target.Combatant);
+            SerializedWiring.SetObject(prologue, "_targetBrain", target.Brain);
+            SerializedWiring.SetObject(prologue, "_targetKnockdown", target.Knockdown);
+            SerializedWiring.SetObject(prologue, "_targetTransform", target.Go.transform);
+
+            SerializedWiring.SetObject(prologue, "_straight", attacks.Straight);
+            SerializedWiring.SetObject(prologue, "_hook", attacks.Hook);
+
+            // Relecture des références dont l'absence ne provoquerait AUCUNE erreur, seulement
+            // un prologue qui s'arrête sans raison visible à l'étape correspondante.
+            SerializedWiring.Verify(prologue, "_letters");
+            SerializedWiring.Verify(prologue, "_carAtHouse");
+            SerializedWiring.Verify(prologue, "_carAtClub");
+            SerializedWiring.Verify(prologue, "_targetKnockdown");
+            SerializedWiring.Verify(prologue, "_straight");
+
+            // Le prologue commence de nuit, quelle que soit la valeur sauvegardee du curseur
+            // d'heure : une planque a 2 h du matin en plein soleil n'a plus aucun sens.
+            if (graphics == null) return;
+
+            SerializedWiring.SetFloat(graphics, "_day", 0f);
+            SerializedWiring.SetBool(graphics, "_restoreDay", false);
+            SerializedWiring.Verify(graphics, "_restoreDay");
+        }
+    }
+}

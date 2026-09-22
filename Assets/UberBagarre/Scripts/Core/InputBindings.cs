@@ -68,6 +68,16 @@ namespace UberBagarre.Core
         [Tooltip("Relance le combat : tout le monde revient a plein et retourne a son spawn.")]
         public InputBinding restartFight = InputBinding.FromKey(KeyCode.R);
 
+        [Header("Histoire")]
+        [Tooltip("Interagir : repondre au telephone, ouvrir une porte, monter en voiture, " +
+                 "avancer un dialogue. Une seule touche pour tout : le joueur n'a jamais a se " +
+                 "demander laquelle il faut.")]
+        public InputBinding interact = InputBinding.FromKey(KeyCode.E);
+
+        [Tooltip("Sortir ou ranger le telephone. T comme telephone — et surtout pas une lettre " +
+                 "deja prise par le deplacement en AZERTY.")]
+        public InputBinding phone = InputBinding.FromKey(KeyCode.T);
+
 #if UNITY_EDITOR
         /// <summary>
         /// Restaure toutes les touches par défaut.

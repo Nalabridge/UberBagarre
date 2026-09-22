@@ -33,6 +33,16 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        public static void SetString(Object target, string fieldName, string value)
+        {
+            SerializedObject so = new SerializedObject(target);
+            SerializedProperty property = Find(so, target, fieldName);
+            if (property == null) return;
+
+            property.stringValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         public static void SetBool(Object target, string fieldName, bool value)
         {
             SerializedObject so = new SerializedObject(target);

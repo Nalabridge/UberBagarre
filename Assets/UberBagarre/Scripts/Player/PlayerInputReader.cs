@@ -69,6 +69,19 @@ namespace UberBagarre.Player
         public bool ObserverZoomOutHeld { get; private set; }
         public bool RestartFightPressed { get; private set; }
 
+        /// <summary>
+        /// Interaction et telephone : lus HORS du bloc de jeu, comme les touches d'interface.
+        ///
+        /// C'est indispensable pour le prologue : pendant un dialogue ou une transition, les
+        /// commandes de combat et de deplacement sont coupees, mais il faut encore pouvoir
+        /// repondre au telephone ou passer une replique. Une touche d'histoire coupee en meme
+        /// temps que le combat bloquerait le joueur sans rien lui dire.
+        /// </summary>
+        public bool InteractPressed { get; private set; }
+
+        public bool InteractHeld { get; private set; }
+        public bool PhonePressed { get; private set; }
+
         public InputBindings Bindings
         {
             get { return _bindings; }
@@ -85,6 +98,22 @@ namespace UberBagarre.Player
             get { return _gameplayInputEnabled; }
             set { _gameplayInputEnabled = value; }
         }
+
+        /// <summary>
+        /// Coupe les COUPS sans couper le deplacement ni la visee.
+        ///
+        /// Un seul systeme s'en sert : le telephone. Marcher en regardant son ecran est la
+        /// posture meme du personnage, mais frapper avec un telephone dans la main ne l'est
+        /// pas. Separer les deux verrous evite d'avoir a choisir entre "fige sur place" et
+        /// "peut mettre un direct a travers son propre ecran".
+        /// </summary>
+        public bool CombatInputEnabled
+        {
+            get { return _combatInputEnabled; }
+            set { _combatInputEnabled = value; }
+        }
+
+        private bool _combatInputEnabled = true;
 
         private void Awake()
         {
@@ -108,6 +137,9 @@ namespace UberBagarre.Player
             ObserverZoomInHeld = _provider.GetHeld(_bindings.observerZoomIn);
             ObserverZoomOutHeld = _provider.GetHeld(_bindings.observerZoomOut);
             RestartFightPressed = _provider.GetPressedThisFrame(_bindings.restartFight);
+            InteractPressed = _provider.GetPressedThisFrame(_bindings.interact);
+            InteractHeld = _provider.GetHeld(_bindings.interact);
+            PhonePressed = _provider.GetPressedThisFrame(_bindings.phone);
 
             if (!_gameplayInputEnabled)
             {
@@ -138,6 +170,27 @@ namespace UberBagarre.Player
             UppercutHeld = _provider.GetHeld(_bindings.attackUppercut);
             KickHeld = _provider.GetHeld(_bindings.attackKick);
             LowKickHeld = _provider.GetHeld(_bindings.attackLowKick);
+
+            if (!_combatInputEnabled) ClearCombatInput();
+        }
+
+        /// <summary>Remet a zero tout ce qui declenche un coup, une garde ou une esquive.</summary>
+        private void ClearCombatInput()
+        {
+            DodgePressed = false;
+            GuardHeld = false;
+
+            StraightPressed = false;
+            HookPressed = false;
+            UppercutPressed = false;
+            KickPressed = false;
+            LowKickPressed = false;
+
+            StraightHeld = false;
+            HookHeld = false;
+            UppercutHeld = false;
+            KickHeld = false;
+            LowKickHeld = false;
         }
 
         private void ClearGameplayInput()
