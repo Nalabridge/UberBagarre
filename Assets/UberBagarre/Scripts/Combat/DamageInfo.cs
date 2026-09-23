@@ -64,6 +64,27 @@ namespace UberBagarre.Combat
         /// </summary>
         public float BonusKnockdownChance;
 
+        /// <summary>
+        /// Vitesse du poing (ou du pied) au moment du contact, en m/s, dans le monde.
+        ///
+        /// La direction « vers l'avant de l'attaquant » ne dit rien de la trajectoire : un
+        /// crochet arrive de côté, un uppercut d'en bas, et les deux ont pourtant le même
+        /// avant. Or c'est la TRAJECTOIRE qui décide dans quel sens une tête part. Sans elle,
+        /// tous les coups poussent le corps vers l'arrière, et un crochet au menton ressemble
+        /// exactement à un direct. Zéro si le coup n'a pas été suivi assez longtemps.
+        /// </summary>
+        public Vector3 Velocity;
+
+        /// <summary>La direction de frappe la plus fidèle disponible : la trajectoire, sinon l'avant.</summary>
+        public Vector3 StrikeDirection
+        {
+            get
+            {
+                if (Velocity.sqrMagnitude > 0.25f) return Velocity.normalized;
+                return Direction.sqrMagnitude > 0.0001f ? Direction.normalized : Vector3.forward;
+            }
+        }
+
         public bool IsHeavy
         {
             get { return Attack != null && Attack.isHeavy; }

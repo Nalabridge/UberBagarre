@@ -7,6 +7,7 @@ using UberBagarre.Player;
 using UberBagarre.Sandbox;
 using UberBagarre.UI;
 using UberBagarre.View;
+using UberBagarre.World;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -474,6 +475,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(reaction, "_executor", executor);
             SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
+            // Physique locale des coups. Sur le joueur, la tete n'existe pas (vue premiere
+            // personne) : c'est la CAMERA qui encaisse le choc, dans le sens ou il arrive.
+            AddImpactPhysics(playerGo, combatant, body, punch, cameraGo.transform);
+            playerGo.AddComponent<CharacterPusher>();
+
             KnockdownSystem knockdown = AddKnockdown(playerGo, combatant, body, executor, motor, tilt.transform);
             SerializedWiring.SetObject(knockdown, "_cameraRoot", cameraKnockdown.transform);
             SerializedWiring.SetBool(knockdown, "_collapseOnDeath", true);
@@ -681,6 +687,9 @@ namespace UberBagarre.EditorTools
             }
 
             AddBruises(enemyGo, combatant, body, materials);
+
+            AddImpactPhysics(enemyGo, combatant, body, null, null);
+            enemyGo.AddComponent<CharacterPusher>();
 
             // Le ragdoll est pose en DERNIER : il a besoin de connaitre tous les pilotes a couper,
             // donc tous doivent exister.
@@ -1057,6 +1066,27 @@ namespace UberBagarre.EditorTools
         /// physique à chaque image et le ragdoll reste figé debout — en silence, puisque rien
         /// n'est en erreur. Autant que la liste soit lisible ici, à côté de ce qui la remplit.
         /// </summary>
+        /// <summary>
+        /// Branche la physique d'impact par os. La caméra n'est renseignée que pour le joueur :
+        /// l'adversaire, lui, n'a pas de point de vue à secouer.
+        /// </summary>
+        internal static BodyImpactPhysics AddImpactPhysics(GameObject owner, Combatant combatant,
+            FighterBuilder.Result body, CameraPunch cameraPunch, Transform cameraReference)
+        {
+            BodyImpactPhysics physics = owner.AddComponent<BodyImpactPhysics>();
+            SerializedWiring.SetObject(physics, "_rig", body.Rig);
+            SerializedWiring.SetObject(physics, "_combatant", combatant);
+
+            if (cameraPunch != null)
+            {
+                SerializedWiring.SetObject(physics, "_cameraPunch", cameraPunch);
+                SerializedWiring.SetObject(physics, "_cameraReference", cameraReference);
+            }
+
+            SerializedWiring.Verify(physics, "_rig");
+            return physics;
+        }
+
         internal static void SetComponentArray(Object target, string fieldName, params Component[] values)
         {
             SerializedObject so = SerializedWiring.Open(target);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UberBagarre.World;
 using UnityEngine;
 
 namespace UberBagarre.Combat
@@ -44,6 +45,14 @@ namespace UberBagarre.Combat
         private DamageInfo _template;
         private Vector3 _previousPosition;
         private bool _hasPreviousPosition;
+        private Vector3 _velocity;
+
+        [Header("Objets du decor")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Impulsion transmise a un objet physique touche, par unite de force d'impact. " +
+                 "C'est ce qui fait voler une bouteille ou basculer un plot quand le poing passe " +
+                 "dedans : un decor qui ne reagit pas aux coups se lit comme un fond peint.")]
+        private float _propImpulse = 0.9f;
 
         /// <summary>Émis à chaque cible touchée. Le retour d'impact s'y abonne.</summary>
         public event Action<Hurtbox, Vector3> Hit;
@@ -79,6 +88,7 @@ namespace UberBagarre.Combat
             _open = true;
             _alreadyHit.Clear();
             _hasPreviousPosition = false;
+            _velocity = Vector3.zero;
         }
 
         public void Close()
@@ -92,6 +102,13 @@ namespace UberBagarre.Combat
             if (!_open) return;
 
             Vector3 position = Origin.position;
+
+            // La vitesse est mesuree AVANT le test : c'est elle qui voyage avec le coup et qui
+            // decide dans quel sens le corps touche va partir. Le temps non mis a l'echelle
+            // n'est pas voulu ici — pendant un ralenti d'impact, le poing avance moins et la
+            // vitesse reelle du geste, rapportee au temps du jeu, reste la meme.
+            float dt = Time.deltaTime;
+            if (_hasPreviousPosition && dt > 0.0001f) _velocity = (position - _previousPosition) / dt;
 
             // Un poing rapide peut franchir sa propre largeur en une frame : on teste aussi
             // le segment parcouru depuis la frame precedente, pas seulement la position finale.
@@ -139,7 +156,14 @@ namespace UberBagarre.Combat
                 if (collider == null) continue;
 
                 Hurtbox hurtbox = collider.GetComponentInParent<Hurtbox>();
-                if (hurtbox == null || hurtbox.Faction == _ownerFaction) continue;
+
+                if (hurtbox == null)
+                {
+                    PushProp(collider, position);
+                    continue;
+                }
+
+                if (hurtbox.Faction == _ownerFaction) continue;
                 if (_alreadyHit.Contains(hurtbox.Owner)) continue;
 
                 Vector3 point = collider.ClosestPoint(position);
@@ -177,11 +201,44 @@ namespace UberBagarre.Combat
                 info.Point = _candidatePoints[i];
                 info.Attacker = _owner;
                 info.AttackerFaction = _ownerFaction;
+                info.Velocity = _velocity;
                 hurtbox.Receive(info);
 
                 Action<Hurtbox, Vector3> hit = Hit;
                 if (hit != null) hit(hurtbox, info.Point);
             }
+        }
+
+        /// <summary>
+        /// Pousse un objet physique du décor traversé par le poing.
+        ///
+        /// Une seule impulsion par objet et par coup, comme pour les combattants : sans la liste
+        /// des objets déjà touchés, un poing qui reste une demi-seconde dans une caisse lui
+        /// appliquerait trente impulsions et l'enverrait en orbite.
+        /// </summary>
+        private void PushProp(Collider collider, Vector3 position)
+        {
+            Rigidbody body = collider.attachedRigidbody;
+            if (body == null || body.isKinematic) return;
+            if (_owner != null && body.transform.IsChildOf(_owner.transform)) return;
+            if (_alreadyHit.Contains(body)) return;
+
+            _alreadyHit.Add(body);
+
+            Vector3 direction = _velocity.sqrMagnitude > 0.25f ? _velocity.normalized : _template.Direction.normalized;
+            if (direction.sqrMagnitude < 0.0001f) direction = transform.forward;
+
+            // Un peu de montée : un objet frappé ne glisse pas au sol, il décolle. Sans elle, une
+            // bouteille touchée file à plat comme un palet.
+            direction = (direction + Vector3.up * 0.25f).normalized;
+
+            float impulse = _propImpulse * Mathf.Max(1f, _template.ImpactForce);
+            Vector3 point = collider.ClosestPoint(position);
+
+            body.AddForceAtPosition(direction * impulse, point, ForceMode.Impulse);
+
+            PhysicsProp prop = body.GetComponent<PhysicsProp>();
+            if (prop != null) prop.NotifyStruck(point, direction * impulse);
         }
 
         private void OnDrawGizmos()

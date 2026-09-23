@@ -1,4 +1,5 @@
 using UberBagarre.View;
+using UberBagarre.World;
 using UnityEngine;
 
 namespace UberBagarre.EditorTools
@@ -1083,7 +1084,9 @@ namespace UberBagarre.EditorTools
 
             Pallet(t, palette, new Vector3(-24.5f, SidewalkHeight, 11.4f), 22f);
             Crate(t, palette, new Vector3(-22.6f, SidewalkHeight, 11.1f), 0.8f, -12f);
-            Crate(t, palette, new Vector3(-22.1f, SidewalkHeight + 0.8f, 11.3f), 0.66f, 31f);
+            // Centre de masse AU-DESSUS de la caisse du dessous : décalée comme avant, elle
+            // basculait toute seule au premier pas de simulation.
+            Crate(t, palette, new Vector3(-22.5f, SidewalkHeight + 0.8f, 11.2f), 0.66f, 31f);
 
             Grate(t, palette, new Vector3(-4f, 0f, RoadFar - 0.9f));
             Grate(t, palette, new Vector3(16f, 0f, RoadNear + 0.9f));
@@ -1118,18 +1121,22 @@ namespace UberBagarre.EditorTools
         {
             GameObject pile = EditorBuildUtility.CreateEmpty("Sacs poubelle", parent, position);
 
-            float[] x = { 0f, 0.55f, -0.4f, 0.2f };
-            float[] y = { 0.3f, 0.26f, 0.28f, 0.72f };
-            float[] z = { 0f, 0.3f, 0.35f, 0.16f };
+            // Les hauteurs valent le rayon du collider (la moitié de la plus grande échelle) :
+            // des sacs physiques qui se chevauchent au départ s'écartent violemment à la
+            // première image, et la pile explose avant même qu'on l'ait touchée.
+            float[] x = { 0f, 0.55f, -0.45f, 0.2f };
+            float[] y = { 0.31f, 0.27f, 0.29f, 0.82f };
+            float[] z = { 0f, 0.3f, 0.4f, 0.16f };
             float[] s = { 0.62f, 0.54f, 0.58f, 0.46f };
 
             for (int i = 0; i < x.Length; i++)
             {
                 GameObject bag = EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Sac", pile.transform,
                     new Vector3(x[i], y[i], z[i]), new Vector3(s[i], s[i] * 0.85f, s[i] * 0.92f),
-                    palette.DarkMetal, i == 0);
+                    palette.DarkMetal, true);
 
                 bag.transform.localRotation = Quaternion.Euler(i * 17f, i * 41f, i * 23f);
+                MakePhysical(bag, 3f, PhysicsProp.Matter.Mou, 1.2f);
             }
         }
 
@@ -1214,6 +1221,21 @@ namespace UberBagarre.EditorTools
 
             Cylinder(cone.transform, "Bande", new Vector3(0f, 0.34f, 0f), new Vector3(0.21f, 0.035f, 0.21f),
                 palette.RoadPaint, false);
+
+            // Deux volumes : une embase plate, qui le fait tenir debout, et une capsule pour le
+            // corps, qui le fait ROULER une fois couché — un plot renversé qui glisse à plat
+            // comme une boîte se voit tout de suite.
+            BoxCollider foot = cone.AddComponent<BoxCollider>();
+            foot.center = new Vector3(0f, 0.025f, 0f);
+            foot.size = new Vector3(0.42f, 0.05f, 0.42f);
+
+            CapsuleCollider body = cone.AddComponent<CapsuleCollider>();
+            body.center = new Vector3(0f, 0.32f, 0f);
+            body.radius = 0.12f;
+            body.height = 0.56f;
+            body.direction = 1;
+
+            MakePhysical(cone, 2.4f, PhysicsProp.Matter.Plastique, 0.15f);
         }
 
         private static void NewsBox(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
@@ -1226,6 +1248,8 @@ namespace UberBagarre.EditorTools
 
             Box(box.transform, "Vitre", new Vector3(0f, 0.85f, -0.23f), new Vector3(0.42f, 0.5f, 0.03f),
                 palette.Glass, false);
+
+            MakePhysical(box, 22f, PhysicsProp.Matter.Metal, 0.1f);
 
             for (int i = -1; i <= 1; i += 2)
             {
@@ -1267,13 +1291,49 @@ namespace UberBagarre.EditorTools
                 bool standing = i % 3 == 0;
 
                 GameObject bottle = Cylinder(group.transform, "Bouteille",
-                    offset + new Vector3(0f, standing ? 0.12f : 0.04f, 0f),
-                    new Vector3(0.05f, 0.12f, 0.05f), palette.Glass, false);
+                    offset + new Vector3(0f, standing ? 0.12f : 0.026f, 0f),
+                    new Vector3(0.05f, 0.12f, 0.05f), palette.Glass, true);
 
                 bottle.transform.localRotation = standing
                     ? Quaternion.identity
                     : Quaternion.Euler(90f, i * 47f, 0f);
+
+                MakePhysical(bottle, 0.35f, PhysicsProp.Matter.Verre, 0.1f);
             }
+        }
+
+        /// <summary>
+        /// Rend un objet du décor physique : corps rigide, son d'impact, masse réaliste.
+        ///
+        /// Le corps rigide va sur la RACINE de l'objet : tous les colliders de ses enfants
+        /// deviennent alors un seul collider composé, et une caisse faite de six planches reste
+        /// une caisse au lieu de se disloquer en six morceaux.
+        ///
+        /// L'interpolation est activée parce que ces objets passent souvent très près de la
+        /// caméra en volant ; sans elle, ils saccadent au rythme de la physique et non de
+        /// l'affichage. Les objets légers passent en détection continue : une bouteille frappée
+        /// traverse sinon un mur en une seule image.
+        /// </summary>
+        internal static Rigidbody MakePhysical(GameObject go, float mass, PhysicsProp.Matter matter, float damping)
+        {
+            go.isStatic = false;
+
+            Rigidbody body = go.GetComponent<Rigidbody>();
+            if (body == null) body = go.AddComponent<Rigidbody>();
+
+            body.mass = mass;
+            body.linearDamping = damping;
+            body.angularDamping = 0.35f;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.collisionDetectionMode = mass < 2f
+                ? CollisionDetectionMode.ContinuousDynamic
+                : CollisionDetectionMode.Discrete;
+
+            PhysicsProp prop = go.GetComponent<PhysicsProp>();
+            if (prop == null) prop = go.AddComponent<PhysicsProp>();
+
+            SerializedWiring.SetEnum(prop, "_matter", (int)matter);
+            return body;
         }
 
         internal static void Pallet(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
@@ -1289,13 +1349,23 @@ namespace UberBagarre.EditorTools
                 Box(pallet.transform, "Planche", new Vector3(0f, 0.11f, -0.45f + i * 0.3f),
                     new Vector3(1.2f, 0.05f, 0.2f), palette.Wood, false);
             }
+
+            MakePhysical(pallet, 11f, PhysicsProp.Matter.Bois, 0.1f);
         }
 
+        /// <summary>
+        /// Une caisse physique. <paramref name="position"/> est le CENTRE DE SA BASE, pas son
+        /// centre : une caisse statique enfoncée à moitié dans le trottoir ne se voyait pas,
+        /// une caisse physique enfoncée est éjectée au premier pas de simulation.
+        /// </summary>
         internal static void Crate(Transform parent, NightMaterialFactory.Palette palette, Vector3 position,
             float size, float yaw)
         {
-            GameObject crate = Box(parent, "Caisse", position, Vector3.one * size, palette.Wood, true);
+            GameObject crate = Box(parent, "Caisse", position + Vector3.up * size * 0.5f,
+                Vector3.one * size, palette.Wood, true);
+
             crate.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+            MakePhysical(crate, 6f * size, PhysicsProp.Matter.Bois, 0.05f);
         }
 
         /// <summary>

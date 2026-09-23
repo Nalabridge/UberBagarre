@@ -86,6 +86,7 @@ namespace UberBagarre.Sandbox
         [SerializeField] private Vector2 _attackSpeedRange = new Vector2(0.5f, 2.5f);
         [SerializeField] private Vector2 _hitStopRange = new Vector2(0.05f, 1f);
         [SerializeField] private Vector2 _inputBufferRange = new Vector2(0f, 0.4f);
+        [SerializeField] private Vector2 _impactPhysicsRange = new Vector2(0f, 2.5f);
 
         [Header("Apparence")]
         [SerializeField] private Color _panelColor = new Color(0.06f, 0.07f, 0.10f, 0.96f);
@@ -108,6 +109,7 @@ namespace UberBagarre.Sandbox
         private float _attackSpeed = 1f;
         private float _hitStopStrength = 0.25f;
         private float _inputBufferSeconds = 0.22f;
+        private float _impactPhysics = 1f;
         private Archetype _archetype = Archetype.Voyou;
 
         public bool IsOpen { get { return _open; } }
@@ -137,6 +139,7 @@ namespace UberBagarre.Sandbox
 
             if (_hitStop != null) _hitStopStrength = _hitStop.SlowTimeScale;
             if (_playerCombat != null) _inputBufferSeconds = _playerCombat.InputBuffer;
+            _impactPhysics = BodyImpactPhysics.GlobalScale;
 
             Combatant enemy = FirstEnemy();
             if (enemy == null) return;
@@ -165,6 +168,7 @@ namespace UberBagarre.Sandbox
             _attackSpeed = PlayerPrefs.GetFloat(PrefsPrefix + "attackSpeed", _attackSpeed);
             _hitStopStrength = PlayerPrefs.GetFloat(PrefsPrefix + "hitStop", _hitStopStrength);
             _inputBufferSeconds = PlayerPrefs.GetFloat(PrefsPrefix + "inputBuffer", _inputBufferSeconds);
+            _impactPhysics = PlayerPrefs.GetFloat(PrefsPrefix + "impactPhysics", _impactPhysics);
             _archetype = (Archetype)PlayerPrefs.GetInt(PrefsPrefix + "archetype", (int)_archetype);
 
             ApplyPlayer();
@@ -184,6 +188,7 @@ namespace UberBagarre.Sandbox
             PlayerPrefs.SetFloat(PrefsPrefix + "attackSpeed", _attackSpeed);
             PlayerPrefs.SetFloat(PrefsPrefix + "hitStop", _hitStopStrength);
             PlayerPrefs.SetFloat(PrefsPrefix + "inputBuffer", _inputBufferSeconds);
+            PlayerPrefs.SetFloat(PrefsPrefix + "impactPhysics", _impactPhysics);
             PlayerPrefs.SetInt(PrefsPrefix + "archetype", (int)_archetype);
             PlayerPrefs.Save();
         }
@@ -251,6 +256,8 @@ namespace UberBagarre.Sandbox
 
             if (_hitStop != null) _hitStop.SlowTimeScale = _hitStopStrength;
             if (_playerCombat != null) _playerCombat.InputBuffer = _inputBufferSeconds;
+
+            BodyImpactPhysics.GlobalScale = _impactPhysics;
         }
 
         private void ApplyEnemies()
@@ -447,6 +454,7 @@ namespace UberBagarre.Sandbox
             }
 
             _archetype = Archetype.Voyou;
+            BodyImpactPhysics.GlobalScale = 1f;
             ForgetPreferences();
             ReadCurrentValues();
         }
@@ -538,12 +546,15 @@ namespace UberBagarre.Sandbox
             float newSpeed = Row(left, ref y, column, "Vitesse des coups", _attackSpeed, _attackSpeedRange, "x0.00", _accent);
             float newHitStop = Row(left, ref y, column, "Ralenti d'impact", _hitStopStrength, _hitStopRange, "0.00", _accent);
             float newBuffer = Row(left, ref y, column, "Tampon de touche", _inputBufferSeconds, _inputBufferRange, "0.00 s", _accent);
+            float newPhysics = Row(left, ref y, column, "Physique des coups", _impactPhysics, _impactPhysicsRange, "x0.00", _accent);
 
-            if (Changed(newSpeed, _attackSpeed) || Changed(newHitStop, _hitStopStrength) || Changed(newBuffer, _inputBufferSeconds))
+            if (Changed(newSpeed, _attackSpeed) || Changed(newHitStop, _hitStopStrength)
+                || Changed(newBuffer, _inputBufferSeconds) || Changed(newPhysics, _impactPhysics))
             {
                 _attackSpeed = newSpeed;
                 _hitStopStrength = newHitStop;
                 _inputBufferSeconds = newBuffer;
+                _impactPhysics = newPhysics;
                 ApplyFeel();
             }
 

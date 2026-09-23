@@ -120,6 +120,19 @@ namespace UberBagarre.Feedback
         /// Aucune hauteur n'est imposée nulle part : le son n'a donc pas de note, ce qui est la
         /// condition pour qu'il ne sonne pas comme un jouet.
         /// </summary>
+        /// <summary>
+        /// Fabrique un clip d'impact avec la même synthèse que les coups.
+        ///
+        /// Exposé pour les objets du décor : une bouteille qui tombe et un poing qui touche
+        /// doivent venir de la même famille de sons, sinon le décor sonne comme une banque
+        /// d'effets différente plaquée sur le combat.
+        /// </summary>
+        public static AudioClip CreateImpactClip(string clipName, float duration, float brightness,
+            float attack, float weight)
+        {
+            return BuildImpact(clipName, duration, brightness, attack, weight);
+        }
+
         private static AudioClip BuildImpact(string clipName, float duration, float brightness,
             float attack, float weight)
         {

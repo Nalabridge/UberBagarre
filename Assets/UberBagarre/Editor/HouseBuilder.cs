@@ -473,10 +473,12 @@ namespace UberBagarre.EditorTools
                 new Vector3(0.62f, 0.14f, 0.34f), palette.Mattress, false)
                 .transform.localRotation = Quaternion.Euler(0f, 12f, 0f);
 
-            NightStreetBuilder.Crate(bed.transform, night, new Vector3(0.95f, 0.22f, 0.85f), 0.44f, 14f);
+            NightStreetBuilder.Crate(bed.transform, night, new Vector3(0.95f, 0f, 0.85f), 0.44f, 14f);
 
-            Cylinder(bed.transform, "Bouteille", new Vector3(0.95f, 0.55f, 0.85f),
-                new Vector3(0.06f, 0.12f, 0.06f), night.Glass, false);
+            GameObject bottle = Cylinder(bed.transform, "Bouteille", new Vector3(0.95f, 0.57f, 0.85f),
+                new Vector3(0.06f, 0.12f, 0.06f), night.Glass, true);
+
+            NightStreetBuilder.MakePhysical(bottle, 0.35f, PhysicsProp.Matter.Verre, 0.1f);
         }
 
         private static void Kitchen(Transform parent, NightMaterialFactory.Palette night, Palette palette,
@@ -491,7 +493,7 @@ namespace UberBagarre.EditorTools
                 new Vector3(3.2f, 0.9f, 0.62f), palette.Laminate, true);
 
             Box(t, "Paillasse", new Vector3(-1.3f, 0.92f, wallZ),
-                new Vector3(3.26f, 0.05f, 0.66f), night.Metal, false);
+                new Vector3(3.26f, 0.05f, 0.66f), night.Metal, true);
 
             // Évier : une cuve creusée par deux boîtes, et un mitigeur. Trois formes, et la
             // cuisine cesse d'être un meuble.
@@ -529,6 +531,7 @@ namespace UberBagarre.EditorTools
                 night.DarkMetal, true);
 
             bag.transform.localRotation = Quaternion.Euler(9f, 24f, 4f);
+            NightStreetBuilder.MakePhysical(bag, 3f, PhysicsProp.Matter.Mou, 1.2f);
         }
 
         private static void LivingRoom(Transform parent, NightMaterialFactory.Palette night, Palette palette,
@@ -615,17 +618,21 @@ namespace UberBagarre.EditorTools
             Box(chair.transform, "Dossier", new Vector3(0f, 0.72f, -0.19f),
                 new Vector3(0.42f, 0.5f, 0.04f), palette.Laminate, false);
 
+            // Les pieds portent des colliders : une chaise physique dont seule l'assise est
+            // solide tombe de 44 cm au premier pas de simulation et se pose à plat sur le sol.
             for (int x = -1; x <= 1; x += 2)
             {
                 for (int z = -1; z <= 1; z += 2)
                 {
                     Box(chair.transform, "Pied", new Vector3(x * 0.18f, 0.22f, z * 0.18f),
-                        new Vector3(0.04f, 0.44f, 0.04f), palette.Laminate, false);
+                        new Vector3(0.04f, 0.44f, 0.04f), palette.Laminate, true);
                 }
             }
 
+            NightStreetBuilder.MakePhysical(chair, 4f, PhysicsProp.Matter.Bois, 0.1f);
+
             // --- téléviseur posé sur une caisse
-            NightStreetBuilder.Crate(t, night, new Vector3(2.1f, 0.3f, -1.5f), 0.6f, -6f);
+            NightStreetBuilder.Crate(t, night, new Vector3(2.1f, 0f, -1.5f), 0.6f, -6f);
 
             GameObject tv = EditorBuildUtility.CreateEmpty("Televiseur", t, new Vector3(2.1f, 0.6f, -1.5f));
             tv.transform.localRotation = Quaternion.Euler(0f, -32f, 0f);
@@ -635,6 +642,8 @@ namespace UberBagarre.EditorTools
 
             Box(tv.transform, "Dalle", new Vector3(0f, 0.24f, -0.26f),
                 new Vector3(0.44f, 0.33f, 0.03f), night.Glass, false);
+
+            NightStreetBuilder.MakePhysical(tv, 11f, PhysicsProp.Matter.Plastique, 0.1f);
         }
 
         /// <summary>
@@ -660,9 +669,11 @@ namespace UberBagarre.EditorTools
                 flyer.transform.localRotation = Quaternion.Euler(0f, i * 23f - 40f, 0f);
             }
 
-            Box(clutter.transform, "Carton", new Vector3(4.0f, 0.18f, -2.3f),
-                new Vector3(0.52f, 0.36f, 0.42f), palette.Paper, true)
-                .transform.localRotation = Quaternion.Euler(0f, 17f, 0f);
+            GameObject carton = Box(clutter.transform, "Carton", new Vector3(4.0f, 0.18f, -2.3f),
+                new Vector3(0.52f, 0.36f, 0.42f), palette.Paper, true);
+
+            carton.transform.localRotation = Quaternion.Euler(0f, 17f, 0f);
+            NightStreetBuilder.MakePhysical(carton, 1.5f, PhysicsProp.Matter.Mou, 0.4f);
         }
 
         private static void BuildBathroom(Transform parent, NightMaterialFactory.Palette night,
