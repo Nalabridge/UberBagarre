@@ -33,6 +33,11 @@ namespace UberBagarre.Phone
         [SerializeField] private Camera _camera;
         [SerializeField] private MissionBriefing _briefing;
 
+        [SerializeField]
+        [Tooltip("Progression du joueur : niveau, argent, reputation. Optionnelle — sans elle, " +
+                 "l'ecran de profil affiche un compte vierge.")]
+        private PlayerProgress _progress;
+
         [Header("Dalle")]
         [SerializeField, Min(0.005f)]
         [Tooltip("Largeur de la dalle en metres, mesuree sur l'axe X local de l'ecran.")]
@@ -61,6 +66,22 @@ namespace UberBagarre.Phone
 
         private float _w;
         private float _h;
+
+        /// <summary>
+        /// La course affichée. Le scénario la change d'un chapitre à l'autre : le téléphone
+        /// montre toujours LE contrat en cours, jamais une liste.
+        /// </summary>
+        public MissionBriefing Briefing
+        {
+            get { return _briefing; }
+            set { _briefing = value; }
+        }
+
+        /// <summary>Ligne affichée sous le viseur photo (« 1 / 2 »). Vide = rien.</summary>
+        public string PhotoCounter { get; set; }
+
+        /// <summary>Capacité à annoncer sur l'écran de profil. Vide = aucune annonce.</summary>
+        public string UnlockedAbility { get; set; }
 
         private void Awake()
         {
@@ -153,6 +174,7 @@ namespace UberBagarre.Phone
                 case PhoneDevice.Screen.Mission: DrawMission(body); break;
                 case PhoneDevice.Screen.Photo: DrawCamera(body); break;
                 case PhoneDevice.Screen.Valide: DrawValidated(body); break;
+                case PhoneDevice.Screen.Profil: DrawProfile(body); break;
                 default: DrawLock(body); break;
             }
 
@@ -369,8 +391,7 @@ namespace UberBagarre.Phone
                 Font(0.040f), FontStyle.Bold, TextAnchor.MiddleLeft, _ink);
 
             Label(new Rect(body.x, body.y + U(0.10f), body.width, U(0.04f)),
-                "Reputation : aucune — 0 course", Font(0.021f), FontStyle.Normal,
-                TextAnchor.MiddleLeft, _dim);
+                ReputationLine(), Font(0.021f), FontStyle.Normal, TextAnchor.MiddleLeft, _dim);
 
             // La carte de contrat. Elle est seule a l'ecran, et c'est voulu : une liste de
             // missions au premier lancement donnerait un choix que le joueur ne peut pas
@@ -501,8 +522,8 @@ namespace UberBagarre.Phone
                 blink ? "REC" : " ", Font(0.028f), FontStyle.Bold, TextAnchor.MiddleCenter, _bad);
 
             Label(new Rect(body.x, view.yMax + U(0.03f), body.width, U(0.09f)),
-                "CADRE LA CIBLE AU SOL", Font(0.026f), FontStyle.Bold, TextAnchor.UpperCenter,
-                _ink, true);
+                string.IsNullOrEmpty(PhotoCounter) ? "CADRE LA CIBLE AU SOL" : "CADRE LA CIBLE AU SOL\n" + PhotoCounter,
+                Font(0.026f), FontStyle.Bold, TextAnchor.UpperCenter, _ink, true);
 
             float size = U(0.11f);
             Rect shutter = new Rect(body.center.x - size * 0.5f, body.yMax - U(0.15f), size, size);
@@ -542,11 +563,92 @@ namespace UberBagarre.Phone
             Rect review = new Rect(body.x, body.y + U(0.60f), body.width, U(0.16f));
             GuiKit.Fill(review, new Color(1f, 1f, 1f, 0.07f));
 
-            Stars(new Rect(review.x + U(0.02f), review.y + U(0.015f), review.width, U(0.03f)), 5);
+            Stars(new Rect(review.x + U(0.02f), review.y + U(0.015f), review.width, U(0.03f)),
+                _briefing != null ? _briefing.ReviewStars : 5);
 
             Label(new Rect(review.x + U(0.02f), review.y + U(0.055f), review.width - U(0.04f), U(0.10f)),
                 "\"" + (_briefing != null ? _briefing.Review : "") + "\"",
                 Font(0.021f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+        }
+
+        /// <summary>
+        /// Le profil : la « page notée avec des avis » du dossier.
+        ///
+        /// L'ordre de lecture est voulu : d'abord le niveau et la barre d'expérience (ce qui va
+        /// changer le jeu), puis la réputation (ce que les clients pensent), puis le dernier avis
+        /// en toutes lettres. Une note seule ne raconte rien ; une phrase de client, si.
+        /// </summary>
+        private void DrawProfile(Rect body)
+        {
+            Label(new Rect(body.x, body.y, body.width, U(0.04f)), "PROFIL",
+                Font(0.024f), FontStyle.Bold, TextAnchor.MiddleLeft, _warn);
+
+            int level = _progress != null ? _progress.Level : 1;
+
+            Label(new Rect(body.x, body.y + U(0.05f), body.width, U(0.07f)), "NIVEAU " + level,
+                Font(0.056f), FontStyle.Bold, TextAnchor.MiddleLeft, _ink);
+
+            float progress = _progress != null ? _progress.LevelProgress : 0f;
+            Rect bar = new Rect(body.x, body.y + U(0.135f), body.width, U(0.014f));
+            GuiKit.Fill(bar, new Color(1f, 1f, 1f, 0.12f));
+            GuiKit.Fill(new Rect(bar.x, bar.y, bar.width * progress, bar.height), _brand);
+
+            Label(new Rect(body.x, body.y + U(0.155f), body.width, U(0.035f)),
+                _progress != null ? _progress.Experience + " / " + _progress.NextThreshold + " XP" : "0 XP",
+                Font(0.020f), FontStyle.Normal, TextAnchor.MiddleLeft, _dim);
+
+            Row(new Rect(body.x, body.y + U(0.20f), body.width, U(0.05f)), "SOLDE",
+                (_progress != null ? _progress.Money : 0) + " EUR", _good);
+
+            Row(new Rect(body.x, body.y + U(0.25f), body.width, U(0.05f)), "COURSES",
+                (_progress != null ? _progress.Contracts : 0).ToString(), _ink);
+
+            float reputation = _progress != null ? _progress.Reputation : 0f;
+
+            Label(new Rect(body.x, body.y + U(0.315f), body.width, U(0.035f)),
+                reputation > 0f ? "REPUTATION  " + reputation.ToString("0.0") + " / 5" : "REPUTATION  —",
+                Font(0.021f), FontStyle.Bold, TextAnchor.MiddleLeft, _warn);
+
+            Stars(new Rect(body.x, body.y + U(0.355f), body.width, U(0.03f)), Mathf.RoundToInt(reputation));
+
+            // L'annonce de capacité : elle occupe la place d'honneur tant qu'elle est neuve.
+            if (!string.IsNullOrEmpty(UnlockedAbility))
+            {
+                float pulse = 0.55f + 0.45f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3f));
+                Rect unlock = new Rect(body.x, body.y + U(0.405f), body.width, U(0.10f));
+
+                GuiKit.Fill(unlock, new Color(_brand.r, _brand.g, _brand.b, 0.18f + 0.2f * pulse));
+                GuiKit.Outline(unlock, Mathf.Max(1f, U(0.003f)), _brand);
+
+                Label(new Rect(unlock.x + U(0.02f), unlock.y + U(0.01f), unlock.width - U(0.04f), U(0.03f)),
+                    "NOUVELLE CAPACITE", Font(0.019f), FontStyle.Bold, TextAnchor.UpperLeft, _brand);
+
+                Label(new Rect(unlock.x + U(0.02f), unlock.y + U(0.045f), unlock.width - U(0.04f), U(0.05f)),
+                    UnlockedAbility, Font(0.028f), FontStyle.Bold, TextAnchor.UpperLeft, _ink, true);
+            }
+
+            if (_progress == null || _progress.Reviews.Count == 0) return;
+
+            PlayerProgress.Review last = _progress.Reviews[0];
+            Rect review = new Rect(body.x, body.y + U(0.525f), body.width, U(0.19f));
+            GuiKit.Fill(review, new Color(1f, 1f, 1f, 0.07f));
+
+            Stars(new Rect(review.x + U(0.02f), review.y + U(0.015f), review.width, U(0.03f)), last.Stars);
+
+            Label(new Rect(review.x + U(0.02f), review.y + U(0.055f), review.width - U(0.04f), U(0.10f)),
+                "\"" + last.Text + "\"", Font(0.021f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+
+            Label(new Rect(review.x + U(0.02f), review.yMax - U(0.035f), review.width - U(0.04f), U(0.03f)),
+                "— " + last.Client, Font(0.018f), FontStyle.Normal, TextAnchor.MiddleRight,
+                new Color(1f, 1f, 1f, 0.4f));
+        }
+
+        private string ReputationLine()
+        {
+            if (_progress == null || _progress.Contracts == 0) return "Reputation : aucune — 0 course";
+
+            return "Reputation : " + _progress.Reputation.ToString("0.0") + " — " + _progress.Contracts +
+                   (_progress.Contracts > 1 ? " courses" : " course");
         }
 
         // ------------------------------------------------------------------ briques

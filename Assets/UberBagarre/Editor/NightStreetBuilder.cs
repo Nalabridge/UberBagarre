@@ -221,21 +221,21 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ utilitaires
 
-        private static GameObject Box(Transform parent, string name, Vector3 position, Vector3 size,
+        internal static GameObject Box(Transform parent, string name, Vector3 position, Vector3 size,
             Material material, bool collider)
         {
             return EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, parent, position, size,
                 material, collider);
         }
 
-        private static GameObject Slab(Transform parent, string name, Vector3 position, Vector3 size,
+        internal static GameObject Slab(Transform parent, string name, Vector3 position, Vector3 size,
             Material material)
         {
             return EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, name, parent, position, size,
                 material, false);
         }
 
-        private static GameObject Cylinder(Transform parent, string name, Vector3 position, Vector3 size,
+        internal static GameObject Cylinder(Transform parent, string name, Vector3 position, Vector3 size,
             Material material, bool collider)
         {
             return EditorBuildUtility.CreatePrimitive(PrimitiveType.Cylinder, name, parent, position, size,
@@ -248,7 +248,7 @@ namespace UberBagarre.EditorTools
         /// par pixel, et le résultat change selon l'endroit où l'on regarde. Les sources qui
         /// comptent pour le combat sont donc forcées, les décoratives sont en sommet.
         /// </summary>
-        private static Light AddLight(Transform parent, string name, Vector3 localPosition, Color color,
+        internal static Light AddLight(Transform parent, string name, Vector3 localPosition, Color color,
             float intensity, float range, bool important, bool shadows)
         {
             GameObject go = EditorBuildUtility.CreateEmpty(name, parent, localPosition);
@@ -266,7 +266,7 @@ namespace UberBagarre.EditorTools
             return light;
         }
 
-        private static NeonFlicker AddFlicker(GameObject target, NeonFlicker.Pattern pattern,
+        internal static NeonFlicker AddFlicker(GameObject target, NeonFlicker.Pattern pattern,
             float baseIntensity, float amount, float speed, float seed)
         {
             NeonFlicker flicker = target.AddComponent<NeonFlicker>();
@@ -1117,7 +1117,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void TrashPile(Transform parent, NightMaterialFactory.Palette palette, Vector3 position)
+        internal static void TrashPile(Transform parent, NightMaterialFactory.Palette palette, Vector3 position)
         {
             GameObject pile = EditorBuildUtility.CreateEmpty("Sacs poubelle", parent, position);
 
@@ -1208,7 +1208,7 @@ namespace UberBagarre.EditorTools
                 palette.RoadPaint, false);
         }
 
-        private static void Cone(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
+        internal static void Cone(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
         {
             GameObject cone = EditorBuildUtility.CreateEmpty("Plot", parent, position);
             cone.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -1317,6 +1317,23 @@ namespace UberBagarre.EditorTools
         internal static Rigidbody MakePhysical(GameObject go, float mass, PhysicsProp.Matter matter, float damping)
         {
             go.isStatic = false;
+
+            // Le cylindre primitif d'Unity porte un collider en CAPSULE : ses bouts sont des
+            // demi-sphères. Posée debout, une bouteille ou un fût physique bascule donc tout
+            // seul au premier pas de simulation, et la scène démarre avec tout le décor par
+            // terre. On le remplace par l'enveloppe convexe du cylindre, qui tient debout ET
+            // roule une fois couchée.
+            CapsuleCollider capsule = go.GetComponent<CapsuleCollider>();
+            MeshFilter filter = go.GetComponent<MeshFilter>();
+
+            if (capsule != null && filter != null && filter.sharedMesh != null && filter.sharedMesh.name == "Cylinder")
+            {
+                Object.DestroyImmediate(capsule);
+
+                MeshCollider hull = go.AddComponent<MeshCollider>();
+                hull.sharedMesh = filter.sharedMesh;
+                hull.convex = true;
+            }
 
             Rigidbody body = go.GetComponent<Rigidbody>();
             if (body == null) body = go.AddComponent<Rigidbody>();

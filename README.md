@@ -97,6 +97,10 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 | **En l'air** + attaque | **Coup plongeant** — 24 dégâts, 75 % de chute |
 | **En glissade** + attaque | **Balayage** — 85 % de chute |
 | **Cible au sol** + coup de pied | **COUP DE GRÂCE** — 28 dégâts |
+| **G** | **Coup de tête** — de tout près, 21 dégâts, sonne. *Dans l'histoire, il se débloque au niveau 2* |
+| **X** | **Bousculer** — deux paumes dans le torse : peu de dégâts, gros recul, fait de la place à un contre deux |
+| **E** (rien de visé) | **Ramasser** l'objet léger devant soi (bouteille, cône, caisse, sac…) — **E** à nouveau pour le lâcher |
+| **Clic gauche** (objet en main) | **Lancer** l'objet : il blesse qui il touche, une bouteille éclate |
 | **Ctrl gauche** (maintenu) | **Garde** : absorbe 72 % des dégâts, coûte de l'endurance à chaque coup |
 | **Ctrl gauche** (tapé au bon moment) | **Parade** : les 0,26 s qui suivent la levée de garde annulent le coup *et* déséquilibrent l'attaquant |
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
@@ -141,7 +145,9 @@ Tu peux les changer sans toucher à une ligne de code.
 | 17 | Mode vagues, profils d'adversaire, statistiques de combat, réglages sauvegardés | ✅ |
 | 18 | Rue de nuit générée de A à Z, bloom et tonemap maison, reflet planaire, cycle jour / nuit | ✅ |
 | 19 | Prologue jouable : maison, téléphone en main, application, identification, tutoriel, photo | ✅ |
-| 20 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 20 | Physique des coups par os, décor qui bouge, coup de tête, bousculade, objets à lancer | ✅ |
+| 21 | Progression (argent, XP, niveaux, avis), chapitre 1 : les frères Kovac au parking | ✅ |
+| 22 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -152,7 +158,8 @@ Assets/UberBagarre/
   Scripts/
     Core/        input (backend-agnostique), interfaces partagées
     Player/      déplacement, visée, curseur, head bob, pilotage des mains
-    View/        squelette, IK deux os, cycle de marche, mains articulées, marques de coup
+    View/        squelette, IK deux os, cycle de marche, mains articulées, marques de coup,
+                 physique des coups par os (BodyImpactPhysics)
     Combat/      combattant, états, attaques, hitbox/hurtbox par zone, vie, stamina, stats,
                  esquive, garde et parade, chute et relevé
     Enemy/       moteur, IA, répertoire de coups, garde réactive, séquence de test
@@ -161,8 +168,10 @@ Assets/UberBagarre/
     UI/          HUD de combat, indicateur de garde, overlay de debug (F1)
     Sandbox/     points de spawn, directeur de spawn, menu de réglage, vagues, statistiques
     Story/       moteur d'étapes, sous-titres, objectifs, fondu, tutoriel, scénario du prologue
+                 et du chapitre 1, progression (argent, XP, niveaux, avis)
     Phone/       le téléphone tenu en main, ses écrans, son appareil photo
-    World/       interaction (E), lieux, groupe devant le club, identification de la cible
+    World/       interaction (E), lieux, groupe devant le club, identification de la cible,
+                 objets physiques (frapper, pousser, ramasser, lancer)
   Editor/        outils de génération (scène, décor, matériaux, coups)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
@@ -328,6 +337,44 @@ chargement, donc à exister en double le temps d'une transition.
 
 La console journalise chaque changement d'étape (`Etape 7/22 : lien`). C'est le premier endroit où
 regarder : un scénario bloqué et un scénario terminé se ressemblent beaucoup à l'écran.
+
+---
+
+## Le chapitre 1 — deux étoiles
+
+Le prologue ne s'arrête plus sur un carton : il enchaîne. Pour tester le chapitre sans rejouer le
+prologue, coche **`Start At Chapter One`** sur `PrologueDirector` (objet `=== Histoire ===`) — la
+course du prologue est alors encaissée d'office, niveau 2 compris.
+
+| | |
+|---|---|
+| **Fin du prologue** | La photo validée paie 150 € et **120 XP** : c'est le **niveau 2**, et le téléphone ouvre la page de **réputation** (niveau, XP, argent, avis). Capacité débloquée : **coup de tête (G)**. |
+| **Deux jours plus tard** | L'appli vibre : RDV BASTON **deux étoiles**. Deux sujets, une course, 320 €. Fiche : **les frères Kovac**, survêtements, un noir, un bordeaux. |
+| **Le parking du Vertigo** | Niveau -1, mâts à LED froids, bitume mouillé qui reflète, une camionnette blanche portes ouvertes. Les frères déchargent, de dos. |
+| **L'embuscade** | Elle part quand on s'approche de la camionnette — ou dès qu'on les attaque de loin, bouteille comprise. |
+| **Ce qui change à deux** | Trois consignes : **X** pour bousculer (écarter l'un, casser sa garde), **G** pour le coup de tête qu'on vient de gagner, **E + clic** pour lancer une bouteille. Le parking en est rempli, avec des caisses et des fûts qui roulent. |
+| **Deux preuves** | Une photo **par frère**, au sol. Le téléphone compte (« 1 / 2 »), refuse un doublon et refuse un sujet encore debout. |
+| **Niveau 3** | 260 XP de plus : capacité **Encaisseur** (+15 PV max). Nouvel avis : 4 étoiles, « Efficace. Un peu brutal pour le prix. » |
+| **La planque, 01:05** | Le compte est fait avec **ton** argent réel contre le loyer de 640 €. Sami rappelle : un garage vers le port, trois étoiles. *À suivre.* |
+
+---
+
+## La physique des coups
+
+Un coup n'est plus une animation de recul jouée d'un bloc : c'est une **impulsion appliquée au point
+d'impact**. Chaque os (bassin, colonne, poitrine, tête, bras, avant-bras, cuisses, tibias) est un
+ressort amorti qui reçoit `ω = (r × J) / I` par rapport à son propre pivot, puis revient à la pose
+animée en dépassant un peu.
+
+- **La trajectoire du poing décide**, pas le nom du coup : un crochet fait tourner la tête, un
+  uppercut la relève, un direct l'envoie en arrière. La hitbox mesure sa vitesse au contact.
+- **Ventre** : le corps se plie. **Torse** : coup du lapin, la tête reste en arrière. **Jambe** : la
+  cuisse ou le tibia touché part. **Garde** : ce sont les avant-bras qui encaissent.
+- **Toi aussi** : un coup à la tête secoue ta caméra dans le sens du coup.
+- **Le décor bouge** : bouteilles, cônes, caisses, sacs, poubelles, chaise, télé… Frapper un objet le
+  pousse **au point touché** ; il devient dangereux un court instant (un coup de pied dans une
+  bouteille la renvoie dans une figure). Le verre éclate. On pousse aussi les objets en marchant.
+- Réglage : **TAB → Combat → Physique des coups** (0 = coupé, 1 = normal, 2,5 = cartoon).
 
 ---
 

@@ -42,6 +42,10 @@ namespace UberBagarre.Story
                  "brique du systeme de reputation decrit dans le dossier.")]
         private string _review = "Propre et rapide. Il a rien dit, il a fait.";
 
+        [SerializeField, Range(1, 5)]
+        [Tooltip("Note laissee par le client avec son avis.")]
+        private int _reviewStars = 5;
+
         [Header("Contact")]
         [SerializeField] private string _friendName = "SAMI";
 
@@ -55,6 +59,7 @@ namespace UberBagarre.Story
         public int Reward { get { return _reward; } }
         public int Experience { get { return _experience; } }
         public string Review { get { return _review; } }
+        public int ReviewStars { get { return _reviewStars; } }
         public string FriendName { get { return _friendName; } }
     }
 }

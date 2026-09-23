@@ -1409,3 +1409,157 @@ en place un.
 
 **Chaque fois qu'on hésite entre le dire et le faire faire, le faire faire est meilleur — et c'est
 presque toujours moins de code.**
+
+---
+
+## 18. Quand on tape, ça bouge : physique des coups, décor, chapitre 1
+
+Demande : *« le combat est nul, je veux un truc interactif : quand on tape, ça bouge avec de la
+physique là où j'ai tapé — et continue le prologue. »*
+
+Le reproche était juste. Le recul existant déplaçait le combattant entier et inclinait son buste
+d'un bloc : même réponse pour un direct au menton, un crochet dans les côtes et un coup de pied dans
+la cuisse. Le corps n'avait pas de parties, et le décor n'existait que pour être regardé.
+
+### 18.1 Des ressorts par os, pas un ragdoll actif
+
+La solution évidente — un ragdoll actif en permanence, poussé par des moteurs vers la pose animée —
+se bat contre l'animation procédurale : deux systèmes écrivent les mêmes os, chacun a raison, et le
+résultat tremble. Il faut ensuite des semaines de réglage pour qu'un personnage tienne debout.
+
+`BodyImpactPhysics` fait plus simple : chaque articulation (bassin, colonne, poitrine, tête, bras,
+avant-bras, cuisses, tibias) porte un **ressort amorti à trois axes** qui s'AJOUTE à la pose animée.
+Un coup est une impulsion `J` appliquée en un point : chaque os de la chaîne reçoit
+`ω = (r × J) / I` par rapport à son propre pivot, avec une atténuation le long de la chaîne. Le
+ressort ramène ensuite l'os à zéro en dépassant un peu (amortissement 0,36 : sous-critique exprès —
+c'est le dépassement qui fait « encaisser »).
+
+Propriété décisive : un ressort additif **ne diverge pas**. Au pire il revient à zéro. Il ne peut ni
+faire tomber le personnage, ni le coincer dans une pose, ni désynchroniser le corps des hitbox.
+
+### 18.2 La trajectoire, pas le nom du coup
+
+La direction « vers l'avant de l'attaquant » ne dit rien du geste : un crochet arrive de côté, un
+uppercut d'en bas, et ils ont le même avant. La hitbox mesure donc sa **vitesse** d'une image à
+l'autre et la transmet dans `DamageInfo.Velocity`. `StrikeDirection` prend la trajectoire quand
+elle est fiable (> 0,5 m/s), l'avant sinon. Résultat, sans une ligne spécifique par coup : le
+crochet fait tourner la tête, l'uppercut la relève, le direct l'envoie en arrière.
+
+### 18.3 Choisir l'os : la zone d'abord, la géométrie ensuite
+
+Les hurtbox font 38 cm de rayon. « L'os le plus proche du point d'impact » aurait donc désigné les
+avant-bras levés en garde sur la plupart des coups au corps. L'ordre est inversé : la **zone** touchée
+choisit la famille d'os (tête → tête, jambe → cuisse ou tibia, corps → bassin / colonne / poitrine,
+coup bloqué → avant-bras), et la géométrie ne départage qu'à l'intérieur de cette famille.
+
+Deux réflexes que la mécanique seule ne produit pas sont ajoutés à la main : le **pliage** sur un
+coup au ventre, et le **coup du lapin** sur un coup au torse (la tête reste en arrière pendant que
+le buste part).
+
+### 18.4 Ajouter après l'animation, retirer avant la suivante
+
+Tous les écrivains d'os travaillent en `LateUpdate` (locomotion 80, ancrage des mains 90, mains 100).
+L'impact passe à 500, donc **après** eux, et retire son offset au `Update` suivant. Sans ce retrait,
+la nuque — que personne d'autre n'écrit — aurait accumulé l'offset d'image en image jusqu'à tourner
+sur elle-même.
+
+### 18.5 Le décor qui bouge
+
+`PhysicsProp` fait d'un objet de décor un corps rigide avec une **matière** (verre, bois, métal,
+plastique, mou) qui décide du son et de la casse. Trois chemins le mettent en mouvement :
+
+- **frappé** : la hitbox qui touche un collider qui n'est pas une hurtbox pousse l'objet au point
+  touché (`AddForceAtPosition`), une fois par geste. L'objet devient dangereux 0,7 s, au nom de celui
+  qui l'a frappé : une bouteille envoyée d'un coup de pied dans une figure doit faire mal ;
+- **bousculé** : `CharacterPusher` pousse ce que le joueur percute en marchant ;
+- **lancé** : `PropHandler` (E pour ramasser, clic gauche pour lancer). Le projectile blesse via la
+  hurtbox la plus proche de la victime — donc par tout le chemin normal d'un coup : zone, garde,
+  recul, physique des os, bleus. Une bouteille sur le crâne compte comme un coup à la tête.
+
+Deux pièges de construction, corrigés dans `NightStreetBuilder.MakePhysical` :
+
+- la primitive Cylinder d'Unity porte un **CapsuleCollider** : une bouteille ou un fût debout
+  basculait tout seul au démarrage. Il est remplacé par un `MeshCollider` convexe ;
+- les caisses étaient positionnées par leur **centre**, donc à moitié dans le sol : un corps rigide
+  à moitié enterré est éjecté à la première image. Elles le sont maintenant par leur **base**.
+
+### 18.6 Un verrou de combat par propriétaire
+
+Le téléphone coupait les coups avec un booléen. En ajoutant l'objet tenu en main, deux systèmes
+l'écrivaient à chaque image : ranger le téléphone rendait les poings alors qu'on tenait encore une
+bouteille. `PlayerInputReader.SetCombatLock(owner, locked)` tient une liste de propriétaires : les
+coups reviennent quand **plus personne** ne les bloque. Chaque propriétaire libère son verrou dans
+`OnDisable` — et `PropHandler` le libère aussi si l'objet tenu est détruit (verre cassé en main).
+
+### 18.7 Coup de tête et bousculade
+
+Deux gestes de corps à corps, qui n'existent que parce qu'on se bat désormais à plusieurs :
+
+- **Bousculer (X)** : deux paumes dans le torse, 3 dégâts, 15 de force d'impact. Il ne sert pas à
+  blesser mais à **faire de la place** — écarter l'un pour ne pas finir entre les deux.
+- **Coup de tête (G)** : une hitbox sous le front du joueur (et sous la nuque des ennemis), 21
+  dégâts, 22 % de chute, portée minuscule. La caméra plonge vers l'avant pendant le geste : c'est
+  elle, la tête.
+
+Tous deux court-circuitent la résolution contextuelle (charge, coup plongeant…) : un coup de tête en
+sprintant reste un coup de tête. Le coup de tête a un verrou de capacité, `HeadbuttUnlocked`, que le
+**scénario** ouvre.
+
+### 18.8 La progression compte, le scénario récompense
+
+`PlayerProgress` tient l'argent, l'expérience, le niveau, les courses et les avis. Il ne décide
+d'**aucun** effet de jeu : il prévient (`LeveledUp`). C'est `PrologueDirector` qui décide que le
+niveau 2 ouvre le coup de tête et que le niveau 3 donne +15 PV. Mettre les effets dans la table de
+niveaux en aurait fait un endroit où l'on règle aussi des dégâts.
+
+Les paliers (0, 100, 350, 700, 1200, 1900) sont choisis pour que **la toute première course** fasse
+passer un niveau : le joueur doit voir le système exister à la fin du prologue, pas au bout de trois
+heures. Une course qui franchit deux paliers les annonce **un par un**, pour que chacun débloque sa
+capacité.
+
+La page de **réputation** du téléphone (écran Profil) affiche niveau, XP, argent, note moyenne et
+avis. C'est la demande du dossier : « une page notée avec des avis que les clients lui ont laissés ».
+
+### 18.9 Le chapitre 1 : ce que deux adversaires enseignent
+
+Le prologue apprenait les coups. Le chapitre 1 apprend ce qui n'a de sens qu'à **deux contre un** :
+se placer, bousculer, se servir du décor. D'où le choix du lieu — un parking de nuit, rempli de
+bouteilles, de caisses et de fûts qui roulent — et d'une embuscade qui part à l'approche de la
+camionnette **ou au premier coup porté**, pour qu'un joueur qui ouvre les hostilités de loin avec
+une bouteille ne soit pas rattrapé par l'histoire.
+
+La capacité gagnée à la fin du prologue (le coup de tête) est demandée dans la bagarre qui suit
+immédiatement : une capacité débloquée qu'on n'essaie pas tout de suite est une capacité oubliée.
+
+Le parking est un **troisième lieu** de la même scène (+600 m en Z), géré par le même
+`LocationDirector` : rien de nouveau n'a été nécessaire pour le trajet.
+
+Les leçons prennent désormais leur condition de saut en paramètre : dans le prologue, « la cible est
+au sol » ; au chapitre 1, « les deux frères sont K.O. ».
+
+### 18.10 Deux preuves, pas deux clics
+
+La photo exige maintenant une **liste** de sujets. Chacun compte une fois, et il doit être **au
+sol** : photographier deux fois le même frère ne prouve rien sur l'autre, et photographier un sujet
+debout ne prouve rien du tout. Le téléphone affiche le compte (« 1 / 2 »), et l'appli répond à chaque
+refus (« Déjà envoyé », « Le sujet doit être au sol », « Sujet absent du cadre »). Une preuve qui ne
+peut pas être ratée n'est pas une preuve.
+
+### 18.11 Tester la suite sans rejouer le début
+
+`PrologueDirector._startAtChapterOne` saute directement au chapitre. Le problème n'est pas le saut
+(`StoryDirector.JumpTo` existait) mais l'**état** : sans le prologue, le joueur n'a ni argent, ni
+niveau 2, ni coup de tête. `EnsureChapterOneState` encaisse donc la course du prologue d'office —
+par le même chemin que le jeu, `CompleteContract`, ce qui déclenche le même passage de niveau et
+débloque la même capacité. Un raccourci de test qui prend un autre chemin que le jeu teste autre
+chose que le jeu.
+
+Le compte final (« 480 euros sur la table, il en manque 160 ») est calculé à l'entrée de l'étape à
+partir de l'argent **réel** : une somme écrite en dur aurait menti au premier réglage de récompense.
+
+### 18.12 Ce que je retiens
+
+« Le combat est nul » ne voulait pas dire « il manque des coups ». Il en avait déjà une quinzaine.
+Il manquait la **réponse** : un coup qui arrive quelque part doit changer quelque chose à cet
+endroit-là — une tête qui tourne, un ventre qui se plie, une bouteille qui roule. Ce n'est pas ce
+que le joueur fait qui rend un combat vivant, c'est ce que le monde lui renvoie.

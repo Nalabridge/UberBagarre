@@ -41,6 +41,19 @@ namespace UberBagarre.Player
         [SerializeField] private AttackData _kick;
         [SerializeField] private AttackData _lowKick;
 
+        [SerializeField]
+        [Tooltip("Coup de tete (G). Colle a l'adversaire uniquement.")]
+        private AttackData _headbutt;
+
+        [SerializeField]
+        [Tooltip("Bousculade a deux mains (X). Peu de degats, gros recul.")]
+        private AttackData _shove;
+
+        [SerializeField]
+        [Tooltip("Le coup de tete est-il disponible ? Dans l'histoire, c'est une CAPACITE qu'on " +
+                 "debloque en montant de niveau ; dans le bac a sable, il l'est toujours.")]
+        private bool _headbuttUnlocked = true;
+
         [Header("Coups contextuels")]
         [SerializeField]
         [Tooltip("Remplace le direct quand on sprinte.")]
@@ -165,6 +178,8 @@ namespace UberBagarre.Player
             _dive = ResolveAttack(_dive, AttackData.DiveAsset, "Coup plongeant");
             _sweep = ResolveAttack(_sweep, AttackData.SweepAsset, "Balayage");
             _stomp = ResolveAttack(_stomp, AttackData.StompAsset, "Coup de grace");
+            _headbutt = ResolveAttack(_headbutt, AttackData.HeadbuttAsset, "Coup de tete");
+            _shove = ResolveAttack(_shove, AttackData.ShoveAsset, "Bousculade");
 
             if (_executor == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun AttackExecutor assigne.", this);
             if (_input == null) Debug.LogError("[UberBagarre] PlayerCombat : aucun PlayerInputReader assigne.", this);
@@ -218,12 +233,19 @@ namespace UberBagarre.Player
             return attack;
         }
 
+        /// <summary>Débloqué par la progression dans l'histoire.</summary>
+        public bool HeadbuttUnlocked
+        {
+            get { return _headbuttUnlocked; }
+            set { _headbuttUnlocked = value; }
+        }
+
         private void CountOutdatedAttacks()
         {
             AttackData[] attacks =
             {
                 _straight, _hook, _uppercut, _kick, _lowKick,
-                _shoulderCharge, _dive, _sweep, _stomp
+                _shoulderCharge, _dive, _sweep, _stomp, _headbutt, _shove
             };
             OutdatedAttacks = 0;
 
@@ -355,6 +377,12 @@ namespace UberBagarre.Player
             // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches pressees
             // dans la meme image doivent donner un resultat previsible, pas le coup qui se trouve
             // en premier dans le code.
+            // Le coup de tete et la bousculade ne passent PAS par la substitution contextuelle :
+            // sprinter puis presser G ne doit pas sortir une charge d'epaule, et un coup de tete
+            // sur un homme a terre n'aurait pas de sens.
+            if (_input.HeadbuttPressed && _headbuttUnlocked && _headbutt != null) return _headbutt;
+            if (_input.ShovePressed && _shove != null) return _shove;
+
             if (_input.LowKickPressed) return Resolve(_lowKick);
             if (_input.KickPressed) return Resolve(_kick);
             if (_input.UppercutPressed) return Resolve(_uppercut);

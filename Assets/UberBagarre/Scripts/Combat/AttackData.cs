@@ -14,7 +14,14 @@ namespace UberBagarre.Combat
     public enum AttackLimb
     {
         Hand = 0,
-        Foot = 1
+        Foot = 1,
+
+        /// <summary>
+        /// La tête. Les mains agrippent (elles suivent le même chemin que pour un coup de
+        /// poing), mais c'est une hitbox au FRONT qui porte le coup, emmenée par l'élan du buste
+        /// et de la caméra.
+        /// </summary>
+        Head = 2
     }
 
     /// <summary>
@@ -217,6 +224,8 @@ namespace UberBagarre.Combat
         public const string DiveAsset = "A_CoupPlongeant";
         public const string SweepAsset = "A_Balayage";
         public const string StompAsset = "A_CoupDeGrace";
+        public const string HeadbuttAsset = "A_CoupDeTete";
+        public const string ShoveAsset = "A_Bousculade";
 
         /// <summary>
         /// Charge un coup depuis Resources. Renvoie null si l'asset n'existe pas.

@@ -68,6 +68,31 @@ namespace UberBagarre.Story
         [Header("Coups du tutoriel")]
         [SerializeField] private AttackData _straight;
         [SerializeField] private AttackData _hook;
+        [SerializeField] private AttackData _headbutt;
+        [SerializeField] private AttackData _shove;
+
+        [Header("Progression")]
+        [SerializeField] private PlayerProgress _progress;
+        [SerializeField] private PhoneDisplay _phoneDisplay;
+        [SerializeField] private PlayerCombat _playerCombat;
+        [SerializeField] private PropHandler _props;
+
+        [Header("Chapitre 1 — Deux etoiles")]
+        [SerializeField] private MissionBriefing _briefingTwo;
+        [SerializeField] private Interactable _carAtParking;
+
+        [SerializeField]
+        [Tooltip("La camionnette blanche : il faut s'en approcher pour declencher l'embuscade.")]
+        private Transform _van;
+
+        [SerializeField] private Combatant[] _brothers = new Combatant[0];
+        [SerializeField] private EnemyBrain[] _brotherBrains = new EnemyBrain[0];
+        [SerializeField] private string _parkingLocation = "Parking";
+
+        [SerializeField]
+        [Tooltip("Commencer directement au chapitre 1, avec la progression du prologue deja " +
+                 "acquise. Pour tester la suite sans rejouer vingt minutes d'histoire.")]
+        private bool _startAtChapterOne;
 
         [Header("Reglages")]
         [SerializeField, Min(0.5f)] private float _installDuration = 3.2f;
@@ -77,6 +102,18 @@ namespace UberBagarre.Story
                  "premiere bagarre doit s'apprendre, pas se gagner. Une reserve confortable vaut " +
                  "mieux qu'un ecran de defaite qui n'existe pas encore.")]
         private float _playerHealth = 200f;
+        [SerializeField, Min(0f)]
+        [Tooltip("PV gagnes au niveau 3 (capacite ENCAISSEUR).")]
+        private float _toughnessBonus = 15f;
+
+        [SerializeField]
+        [Tooltip("Le loyer du mois. C'est le chiffre contre lequel le joueur compte son argent.")]
+        private int _rent = 640;
+
+        [SerializeField, Min(2f)]
+        [Tooltip("Distance a la camionnette qui declenche l'embuscade des freres.")]
+        private float _ambushDistance = 9f;
+
         [SerializeField] private string _houseLocation = "Maison";
         [SerializeField] private string _streetLocation = "Rue";
 
@@ -96,6 +133,16 @@ namespace UberBagarre.Story
         private bool _photoValidated;
         private bool _leftHouse;
         private bool _leftClub;
+        private bool _leftParking;
+        private int _shoveHits;
+        private int _headbuttHits;
+        private int _throwHitsAtStart;
+        private bool _brothersProvoked;
+        private bool _toughnessApplied;
+
+        // --- preuves photo : ce qui doit etre photographie, et ce qui l'a ete
+        private readonly List<Transform> _photoRequired = new List<Transform>(2);
+        private readonly List<Transform> _photographed = new List<Transform>(2);
 
         private void OnEnable()
         {
@@ -111,7 +158,9 @@ namespace UberBagarre.Story
             if (_letters != null) _letters.Activated += OnLettersRead;
             if (_carAtHouse != null) _carAtHouse.Activated += OnCarAtHouse;
             if (_carAtClub != null) _carAtClub.Activated += OnCarAtClub;
+            if (_carAtParking != null) _carAtParking.Activated += OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken += OnPhotoTaken;
+            if (_progress != null) _progress.LeveledUp += OnLeveledUp;
         }
 
         private void OnDisable()
@@ -128,7 +177,9 @@ namespace UberBagarre.Story
             if (_letters != null) _letters.Activated -= OnLettersRead;
             if (_carAtHouse != null) _carAtHouse.Activated -= OnCarAtHouse;
             if (_carAtClub != null) _carAtClub.Activated -= OnCarAtClub;
+            if (_carAtParking != null) _carAtParking.Activated -= OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken -= OnPhotoTaken;
+            if (_progress != null) _progress.LeveledUp -= OnLeveledUp;
         }
 
         private void Start()
@@ -145,7 +196,11 @@ namespace UberBagarre.Story
 
             if (_player != null && _player.Health != null) _player.Health.SetMaxHealth(_playerHealth, true);
 
-            if (_story != null) _story.Play(BuildBeats());
+            if (_story == null) return;
+
+            _story.Play(BuildBeats());
+
+            if (_startAtChapterOne) _story.JumpTo("chapitre-1");
         }
 
         private void Update()
@@ -197,6 +252,37 @@ namespace UberBagarre.Story
             _photoValidated = false;
             _leftHouse = false;
             _leftClub = false;
+            _leftParking = false;
+            _shoveHits = 0;
+            _headbuttHits = 0;
+            _throwHitsAtStart = 0;
+            _brothersProvoked = false;
+            _toughnessApplied = false;
+            _photoRequired.Clear();
+            _photographed.Clear();
+
+            if (_progress != null) _progress.ResetProgress();
+
+            // Le coup de tete est une CAPACITE : il se gagne a la fin du prologue.
+            if (_playerCombat != null) _playerCombat.HeadbuttUnlocked = false;
+
+            if (_phoneDisplay != null)
+            {
+                _phoneDisplay.Briefing = _briefing;
+                _phoneDisplay.UnlockedAbility = null;
+                _phoneDisplay.PhotoCounter = null;
+            }
+
+            for (int i = 0; i < _brotherBrains.Length; i++)
+            {
+                if (_brotherBrains[i] != null) _brotherBrains[i].enabled = false;
+            }
+
+            if (_carAtParking != null)
+            {
+                _carAtParking.ResetUsage();
+                _carAtParking.SetAvailable(false);
+            }
 
             if (_phone != null)
             {
@@ -406,20 +492,20 @@ namespace UberBagarre.Story
 
             // ---------------------------------------------------------- la bagarre
             beats.Add(Lesson("tuto-direct", "CLIC GAUCHE", "Place deux directs", 2,
-                delegate { return _straightHits; })
+                delegate { return _straightHits; }, TargetDefeated)
                 .Goal("Mets " + target + " K.O.")
                 .Say("MOI", "Bon."));
 
             beats.Add(Lesson("tuto-crochet", "CLIC DROIT", "Un crochet : plus lent, plus lourd", 1,
-                delegate { return _hookHits; }));
+                delegate { return _hookHits; }, TargetDefeated));
 
             beats.Add(Lesson("tuto-garde", "CTRL GAUCHE", "Garde. Au bon moment, c'est une parade", 1,
-                delegate { return _guardEvents; }));
+                delegate { return _guardEvents; }, TargetDefeated));
 
             // La reference au dossier : le systeme de degats par zone, facon Skate 3. La tete
             // vaut le double, et c'est la seule facon de finir vite.
             beats.Add(Lesson("tuto-tete", "VISE HAUT", "La tête encaisse le double", 1,
-                delegate { return _headHits; }));
+                delegate { return _headHits; }, TargetDefeated));
 
             // La condition est la MORT, pas la chute. Un adversaire au sol se releve — c'est
             // tout l'interet du systeme de chute — donc terminer l'etape sur une chute ferait
@@ -439,6 +525,8 @@ namespace UberBagarre.Story
                 .Say("APPLI", "Preuve exigée. Photo du sujet au sol.")
                 .Enter(delegate
                 {
+                    RequirePhotos(_targetTransform);
+
                     // Le rappel de touche sert ici de mode d'emploi, pas d'exercice : le
                     // compteur est a zero, la consigne reste affichee tant que la photo n'est
                     // pas prise. Sans elle, « envoie la photo » ne dit pas quelle touche.
@@ -458,7 +546,19 @@ namespace UberBagarre.Story
             beats.Add(new StoryBeat("validee")
                 .Say("APPLI", "Course validée. " + (_briefing != null ? _briefing.Reward : 150) + " euros.")
                 .Say("APPLI", "Le client a laissé un avis.")
+                .Enter(delegate { Pay(_briefing); })
                 .Wait(2.5f));
+
+            // La premiere course fait passer le premier palier : le joueur doit VOIR le systeme
+            // de progression exister avant de rentrer, pas le decouvrir dans un menu.
+            beats.Add(new StoryBeat("niveau")
+                .Say("APPLI", "Première course. Ta page de réputation est ouverte.")
+                .Say("APPLI", "Niveau 2. Capacité débloquée : coup de tête.")
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Profil);
+                })
+                .Wait(2f));
 
             beats.Add(new StoryBeat("retour")
                 .Goal("Retourne à ta voiture")
@@ -502,16 +602,458 @@ namespace UberBagarre.Story
                     _fader.ShowCard("ÜBER BAGARRE\nPROLOGUE");
                 }));
 
+            // Pas de retour a l'image entre les deux cartons : le noir du prologue devient le
+            // noir du chapitre. Un fondu d'une seconde entre deux ecrans noirs ressemble a un
+            // chargement rate.
             beats.Add(new StoryBeat("carton-final")
                 .Freeze()
                 .Wait(4.5f)
                 .Exit(delegate
                 {
-                    if (_fader != null) _fader.FadeIn(1.5f);
-                    if (_objectives != null) _objectives.Set("Prologue terminé");
+                    if (_fader != null) _fader.ShowCard(null);
                 }));
 
+            beats.Add(new StoryBeat("entracte")
+                .Freeze()
+                .Wait(1f));
+
+            AddChapterOne(beats, friend);
+
             return beats;
+        }
+
+        // ------------------------------------------------------------------ chapitre 1
+
+        /// <summary>
+        /// Chapitre 1 : deux étoiles, deux frères.
+        ///
+        /// Le chapitre enseigne ce que le prologue ne pouvait pas enseigner, parce qu'il faut
+        /// être DEUX en face pour que ça ait un sens : bousculer pour faire de la place, cogner de
+        /// la tête quand on est collé, et se servir du décor. Le parking est rempli de bouteilles,
+        /// de caisses et de fûts pour ça — tout y bouge quand on le frappe.
+        ///
+        /// La récompense du prologue (le coup de tête) est utilisée ici même, dans la première
+        /// bagarre qui suit : une capacité débloquée qu'on n'essaie pas tout de suite est une
+        /// capacité oubliée.
+        /// </summary>
+        private void AddChapterOne(List<StoryBeat> beats, string friend)
+        {
+            string targets = _briefingTwo != null ? _briefingTwo.TargetName : "LES FRÈRES KOVAC";
+            string clothing = _briefingTwo != null ? _briefingTwo.TargetClothing : "";
+            string elder = BrotherName(0, "DRAGAN");
+            string younger = BrotherName(1, "MILAN");
+
+            beats.Add(new StoryBeat("chapitre-1")
+                .Freeze()
+                .Wait(3.4f)
+                .Enter(delegate
+                {
+                    EnsureChapterOneState();
+
+                    if (_fader == null) return;
+                    _fader.SetBlackImmediate();
+                    _fader.ShowCard("CHAPITRE 1\nDEUX ÉTOILES");
+                })
+                .Exit(delegate
+                {
+                    if (_fader == null) return;
+                    _fader.ShowCard(null);
+                    _fader.FadeIn(1.6f);
+                }));
+
+            beats.Add(new StoryBeat("deux-jours")
+                .Wait(1.6f)
+                .Say("MOI", "Deux jours. Le frigo a tenu un jour et demi.")
+                .Say("MOI", "Et l'appli a pas arrêté de vibrer."));
+
+            // ---------------------------------------------------------- la commande
+            beats.Add(new StoryBeat("notification")
+                .Goal("Accepte le RDV BASTON")
+                .Say("APPLI", "Nouveau RDV BASTON. Deux étoiles.")
+                .Say("APPLI", "Deux sujets, une seule course. Le client paie le double.")
+                .Enter(delegate
+                {
+                    _confirm = false;
+
+                    if (_phoneDisplay != null) _phoneDisplay.Briefing = _briefingTwo;
+                    if (_phone == null) return;
+
+                    _phone.Available = true;
+                    _phone.SetScreen(PhoneDevice.Screen.Accueil);
+                    _phone.Raise();
+                })
+                .Until(delegate { return _confirm; })
+                .Exit(delegate
+                {
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Cible);
+                }));
+
+            beats.Add(new StoryBeat("fiche-2")
+                .Goal("Lis la fiche des sujets")
+                .Say("APPLI", "Sujets : " + targets + ". " + clothing + ".")
+                .Say("APPLI", "Parking du Vertigo, niveau moins un. Ils déchargent une camionnette blanche.")
+                .Say("MOI", "Deux frères. Ça frappe en famille, ce genre-là.")
+                .Say("MOI", "Faudra pas rester entre les deux.")
+                .Wait(1.5f));
+
+            beats.Add(new StoryBeat("depart-2")
+                .Goal("Rejoins ta voiture")
+                .Enter(delegate
+                {
+                    _leftHouse = false;
+
+                    if (_carAtHouse != null)
+                    {
+                        _carAtHouse.ResetUsage();
+                        _carAtHouse.SetAvailable(true);
+                    }
+
+                    if (_phone != null) _phone.Lower();
+                })
+                .Until(delegate { return _leftHouse; }));
+
+            // ---------------------------------------------------------- le parking
+            beats.Add(new StoryBeat("route-2")
+                .Freeze()
+                .Wait(4.4f)
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.Available = false;
+                    if (_interaction != null) _interaction.Active = false;
+                    if (_fader == null) return;
+
+                    _fader.FadeOut(1f);
+                    _fader.ShowCard("PARKING DU VERTIGO\n23:52");
+                })
+                .Exit(delegate
+                {
+                    if (_locations != null) _locations.GoTo(_parkingLocation);
+                    if (_phone != null)
+                    {
+                        _phone.Available = true;
+                        _phone.SetScreen(PhoneDevice.Screen.Mission);
+                    }
+
+                    if (_interaction != null) _interaction.Active = true;
+                    if (_fader != null) _fader.FadeIn(1.2f);
+                }));
+
+            beats.Add(new StoryBeat("arrivee-2")
+                .Wait(1.4f)
+                .Enter(delegate
+                {
+                    if (_fader != null) _fader.ShowCard(null);
+                })
+                .Say("MOI", "Niveau moins un. Ça sent l'huile et la pisse.")
+                .Say("MOI", "La camionnette blanche, au fond. Ils sont à côté."));
+
+            // L'embuscade part de la camionnette OU du premier coup : un joueur qui ouvre les
+            // hostilites de loin, avec une bouteille, ne doit pas attendre que l'histoire le
+            // rattrape.
+            beats.Add(new StoryBeat("approche")
+                .Goal("Approche-toi de la camionnette")
+                .Until(delegate { return _brothersProvoked || PlayerNear(_van, _ambushDistance); }));
+
+            beats.Add(new StoryBeat("embuscade")
+                .Goal("Mets les deux frères K.O.")
+                .Say(elder, "Hé. T'es perdu, toi ?")
+                .Say(younger, "Regarde-le. Il a une tête d'appli.")
+                .Say("MOI", "Rien de personnel.")
+                .Enter(delegate
+                {
+                    SetBrothersActive(true);
+                    _throwHitsAtStart = _props != null ? _props.ThrowHits : 0;
+                }));
+
+            // ---------------------------------------------------------- ce qui change a deux
+            beats.Add(Lesson("tuto-bousculade", "X", "Bouscule : ça les écarte et ça casse leur garde", 1,
+                delegate { return _shoveHits; }, BrothersKnockedOut)
+                .Goal("Mets les deux frères K.O."));
+
+            beats.Add(Lesson("tuto-coup-de-tete", "G", "Coup de tête : de tout près, ça sonne", 1,
+                delegate { return _headbuttHits; }, BrothersKnockedOut)
+                .Goal("Mets les deux frères K.O."));
+
+            beats.Add(Lesson("tuto-objet", "E  puis  CLIC GAUCHE", "Ramasse une bouteille et lance-la", 1,
+                delegate { return _props != null ? _props.ThrowHits - _throwHitsAtStart : 1; },
+                BrothersKnockedOut)
+                .Goal("Mets les deux frères K.O."));
+
+            beats.Add(new StoryBeat("ko-2")
+                .Goal("Mets les deux frères K.O.")
+                .Enter(delegate
+                {
+                    if (_tutorial != null) _tutorial.Hide();
+                })
+                .Until(BrothersKnockedOut));
+
+            // ---------------------------------------------------------- deux preuves
+            beats.Add(new StoryBeat("photo-2")
+                .Goal("Photographie les deux frères")
+                .Say("APPLI", "Preuve exigée. Une photo par sujet.")
+                .Enter(delegate
+                {
+                    Transform[] proofs = new Transform[_brothers.Length];
+                    for (int i = 0; i < _brothers.Length; i++)
+                    {
+                        proofs[i] = _brothers[i] != null ? _brothers[i].transform : null;
+                    }
+
+                    RequirePhotos(proofs);
+
+                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "T pour le téléphone. Un cliché par frère", 0);
+
+                    if (_phone == null) return;
+                    _phone.SetScreen(PhoneDevice.Screen.Photo);
+                    _phone.Raise();
+                })
+                .Until(delegate { return _photoValidated; })
+                .Exit(delegate
+                {
+                    if (_tutorial != null) _tutorial.Hide();
+                    if (_phoneDisplay != null) _phoneDisplay.PhotoCounter = null;
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Valide);
+                }));
+
+            beats.Add(new StoryBeat("validee-2")
+                .Say("APPLI", "Course validée. " + (_briefingTwo != null ? _briefingTwo.Reward : 320) + " euros.")
+                .Say("APPLI", "Deux sujets, deux preuves. Le client a laissé un avis.")
+                .Enter(delegate { Pay(_briefingTwo); })
+                .Wait(2.5f));
+
+            beats.Add(new StoryBeat("niveau-3")
+                .Say("APPLI", "Niveau 3. Capacité débloquée : encaisseur.")
+                .Say("APPLI", "Les clients lisent les avis. Les tiens commencent à circuler.")
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Profil);
+                })
+                .Wait(2f));
+
+            beats.Add(new StoryBeat("retour-2")
+                .Goal("Retourne à ta voiture")
+                .Enter(delegate
+                {
+                    _leftParking = false;
+
+                    if (_carAtParking != null)
+                    {
+                        _carAtParking.ResetUsage();
+                        _carAtParking.SetAvailable(true);
+                    }
+
+                    if (_phone != null) _phone.Lower();
+                })
+                .Until(delegate { return _leftParking; }));
+
+            beats.Add(new StoryBeat("rentree-2")
+                .Freeze()
+                .Wait(4f)
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.Available = false;
+                    if (_interaction != null) _interaction.Active = false;
+                    if (_fader != null)
+                    {
+                        _fader.FadeOut(1f);
+                        _fader.ShowCard("LA PLANQUE\n01:05");
+                    }
+                })
+                .Exit(delegate
+                {
+                    SetBrothersActive(false);
+
+                    if (_locations != null) _locations.GoTo(_houseLocation);
+                    if (_phone != null) _phone.Available = true;
+                    if (_interaction != null) _interaction.Active = true;
+                    if (_fader != null) _fader.FadeIn(1.4f);
+                }));
+
+            // Le compte est calcule a l'entree, pas ecrit en dur : c'est la vraie somme du
+            // joueur, et c'est elle qui doit tomber a cote du loyer.
+            beats.Add(new StoryBeat("compte")
+                .Wait(1.2f)
+                .Enter(delegate
+                {
+                    int money = _progress != null ? _progress.Money : 0;
+                    int missing = Mathf.Max(0, _rent - money);
+
+                    List<DialogueLine> lines = new List<DialogueLine>(3);
+                    lines.Add(DialogueLine.Say("MOI", money + " euros sur la table."));
+
+                    if (missing > 0)
+                    {
+                        lines.Add(DialogueLine.Say("MOI", "Il en manque " + missing + " pour le loyer."));
+                    }
+                    else
+                    {
+                        lines.Add(DialogueLine.Say("MOI", "Le loyer est payé. Pour la première fois depuis l'hiver."));
+                    }
+
+                    if (_subtitles != null) _subtitles.Play(lines);
+                }));
+
+            beats.Add(new StoryBeat("sonnerie-2")
+                .Goal("Réponds au téléphone")
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.Ring(friend);
+                })
+                .Until(delegate
+                {
+                    return _phone != null && _phone.Current == PhoneDevice.Screen.EnAppel;
+                }));
+
+            beats.Add(new StoryBeat("appel-2")
+                .Say(friend, "Les Kovac. Les deux. Dans le même soir.")
+                .Say(friend, "T'as vu ta page ? Les gens laissent des avis sur toi, mec.")
+                .Say(friend, "Y a un garage vers le port. Trois étoiles. Ils paient en liquide.")
+                .Say("MOI", "Trois étoiles, c'est combien de types ?")
+                .Say(friend, "Ça, l'appli le dit jamais avant.")
+                .Exit(delegate
+                {
+                    if (_phone != null) _phone.HangUp();
+                    if (_fader == null) return;
+
+                    _fader.FadeOut(2f);
+                    _fader.ShowCard("ÜBER BAGARRE\nCHAPITRE 1\n\nÀ SUIVRE");
+                }));
+
+            beats.Add(new StoryBeat("carton-chapitre-1")
+                .Freeze()
+                .Wait(5f)
+                .Exit(delegate
+                {
+                    if (_fader != null)
+                    {
+                        _fader.ShowCard(null);
+                        _fader.FadeIn(1.5f);
+                    }
+
+                    if (_phone != null) _phone.Lower();
+                    if (_objectives != null) _objectives.Set("Chapitre 1 terminé");
+                }));
+        }
+
+        /// <summary>
+        /// Met le monde dans l'état exact de la fin du prologue, pour un départ direct au
+        /// chapitre 1. Sans effet quand on y arrive en jouant : la course est déjà encaissée.
+        /// </summary>
+        private void EnsureChapterOneState()
+        {
+            if (_player != null && _player.Health != null) _player.Health.ResetToFull();
+            if (_targetBrain != null) _targetBrain.enabled = false;
+            if (_finder != null) _finder.Searching = false;
+            if (_tutorial != null) _tutorial.Hide();
+
+            if (_progress == null || _progress.Contracts > 0) return;
+
+            Pay(_briefing);
+
+            if (_locations != null) _locations.GoTo(_houseLocation);
+            if (_phone != null)
+            {
+                _phone.Available = true;
+                _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                _phone.Lower();
+            }
+        }
+
+        private string BrotherName(int index, string fallback)
+        {
+            if (index >= _brothers.Length || _brothers[index] == null) return fallback;
+
+            string name = _brothers[index].DisplayName;
+            return string.IsNullOrEmpty(name) ? fallback : name.ToUpperInvariant();
+        }
+
+        private void SetBrothersActive(bool active)
+        {
+            for (int i = 0; i < _brotherBrains.Length; i++)
+            {
+                if (_brotherBrains[i] != null) _brotherBrains[i].enabled = active;
+            }
+        }
+
+        private bool IsBrother(Combatant combatant)
+        {
+            if (combatant == null) return false;
+
+            for (int i = 0; i < _brothers.Length; i++)
+            {
+                if (_brothers[i] == combatant) return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Les deux frères sont K.O. — morts au sens du contrat, pas juste au sol.</summary>
+        private bool BrothersKnockedOut()
+        {
+            int counted = 0;
+
+            for (int i = 0; i < _brothers.Length; i++)
+            {
+                Combatant brother = _brothers[i];
+                if (brother == null) continue;
+
+                counted++;
+                if (brother.Health != null && brother.Health.IsAlive) return false;
+            }
+
+            return counted > 0;
+        }
+
+        private bool PlayerNear(Transform point, float distance)
+        {
+            if (point == null || _player == null) return true;
+
+            Vector3 offset = _player.transform.position - point.position;
+            offset.y = 0f;
+
+            return offset.sqrMagnitude <= distance * distance;
+        }
+
+        // ------------------------------------------------------------------ progression
+
+        /// <summary>Encaisse une course. Le passage de niveau arrive par l'événement de la progression.</summary>
+        private void Pay(MissionBriefing contract)
+        {
+            if (_progress == null || contract == null) return;
+
+            _progress.CompleteContract(contract.Reward, contract.Experience, contract.ReviewStars,
+                contract.Review, contract.ClientName);
+        }
+
+        /// <summary>
+        /// Ce que chaque niveau débloque. C'est ICI, et pas dans la table d'expérience, que se
+        /// décide l'effet de jeu : la progression compte, le scénario récompense.
+        /// </summary>
+        private void OnLeveledUp(int level)
+        {
+            if (level >= 2 && _playerCombat != null) _playerCombat.HeadbuttUnlocked = true;
+
+            if (level == 2 && _phoneDisplay != null)
+            {
+                _phoneDisplay.UnlockedAbility = "COUP DE TÊTE — touche G";
+            }
+
+            if (level >= 3 && !_toughnessApplied)
+            {
+                _toughnessApplied = true;
+
+                if (_player != null && _player.Health != null && _toughnessBonus > 0f)
+                {
+                    _player.Health.SetMaxHealth(_player.Health.MaxHealth + _toughnessBonus, true);
+                }
+
+                if (_phoneDisplay != null)
+                {
+                    _phoneDisplay.UnlockedAbility = "ENCAISSEUR — +" + Mathf.RoundToInt(_toughnessBonus) + " PV";
+                }
+            }
+
+            Debug.Log("[UberBagarre] Niveau " + level + " atteint.", this);
         }
 
         /// <summary>
@@ -520,7 +1062,7 @@ namespace UberBagarre.Story
         /// avant la fin du tutoriel a déjà prouvé qu'il avait compris.
         /// </summary>
         private StoryBeat Lesson(string id, string key, string instruction, int required,
-            System.Func<int> counter)
+            System.Func<int> counter, System.Func<bool> skip)
         {
             StoryBeat beat = new StoryBeat(id);
 
@@ -531,7 +1073,7 @@ namespace UberBagarre.Story
 
             beat.Until(delegate
             {
-                if (TargetDefeated()) return true;
+                if (skip != null && skip()) return true;
 
                 int done = counter();
                 if (_tutorial == null) return done >= required;
@@ -576,7 +1118,17 @@ namespace UberBagarre.Story
         {
             if (_player == null || victim == null) return;
             if (info.Attacker != _player.gameObject) return;
-            if (_target != null && victim != _target) return;
+
+            bool onBrother = IsBrother(victim);
+            bool onTarget = _target == null ? !onBrother : victim == _target;
+            if (!onTarget && !onBrother) return;
+
+            if (onBrother) _brothersProvoked = true;
+
+            if (_shove != null && info.Attack == _shove) _shoveHits++;
+            else if (_headbutt != null && info.Attack == _headbutt) _headbuttHits++;
+
+            if (!onTarget) return;
 
             if (info.Zone == HitZone.Head) _headHits++;
 
@@ -609,28 +1161,103 @@ namespace UberBagarre.Story
             _leftClub = true;
         }
 
+        private void OnCarAtParking(Interactable source)
+        {
+            _leftParking = true;
+        }
+
         /// <summary>
-        /// La photo n'est valide que si la cible est réellement dans le cadre.
+        /// Prépare une demande de preuve : la liste de ce qui doit être photographié.
+        /// Une liste vide valide la première photo — c'est le cas d'une scène sans cible.
+        /// </summary>
+        private void RequirePhotos(params Transform[] subjects)
+        {
+            _photoValidated = false;
+            _photoRequired.Clear();
+            _photographed.Clear();
+
+            if (subjects != null)
+            {
+                for (int i = 0; i < subjects.Length; i++)
+                {
+                    if (subjects[i] != null) _photoRequired.Add(subjects[i]);
+                }
+            }
+
+            UpdatePhotoCounter();
+        }
+
+        private void UpdatePhotoCounter()
+        {
+            if (_phoneDisplay == null) return;
+
+            _phoneDisplay.PhotoCounter = _photoRequired.Count > 1
+                ? _photographed.Count + " / " + _photoRequired.Count
+                : null;
+        }
+
+        /// <summary>
+        /// La photo n'est valide que si un sujet exigé est réellement dans le cadre — et au sol.
         ///
         /// C'est une petite exigence, et c'est elle qui fait la différence entre « appuyer sur
         /// un bouton » et « fournir une preuve ». Le dossier est explicite : la photo VALIDE la
-        /// tâche. Elle doit donc pouvoir être ratée.
+        /// tâche. Elle doit donc pouvoir être ratée. Avec plusieurs sujets, chacun compte une
+        /// fois : photographier deux fois le même frère ne prouve rien sur l'autre.
         /// </summary>
         private void OnPhotoTaken(Transform aimed)
         {
-            if (_targetTransform == null)
+            if (_photoRequired.Count == 0)
             {
                 _photoValidated = true;
                 return;
             }
 
-            if (aimed != null && (aimed == _targetTransform || aimed.IsChildOf(_targetTransform)))
+            Transform subject = null;
+
+            for (int i = 0; i < _photoRequired.Count; i++)
+            {
+                Transform candidate = _photoRequired[i];
+                if (aimed != null && (aimed == candidate || aimed.IsChildOf(candidate)))
+                {
+                    subject = candidate;
+                    break;
+                }
+            }
+
+            if (subject == null)
+            {
+                Say("APPLI", "Sujet absent du cadre.");
+                return;
+            }
+
+            if (_photographed.Contains(subject))
+            {
+                Say("APPLI", "Déjà envoyé. Il en manque " + (_photoRequired.Count - _photographed.Count) + ".");
+                return;
+            }
+
+            Combatant proof = subject.GetComponentInParent<Combatant>();
+            if (proof != null && proof.IsAlive)
+            {
+                Say("APPLI", "Refusé. Le sujet doit être au sol.");
+                return;
+            }
+
+            _photographed.Add(subject);
+            UpdatePhotoCounter();
+
+            if (_photographed.Count >= _photoRequired.Count)
             {
                 _photoValidated = true;
                 return;
             }
 
-            if (_subtitles != null) _subtitles.Play(DialogueLine.Say("APPLI", "Sujet absent du cadre."));
+            Say("APPLI", "Reçu. Encore " + (_photoRequired.Count - _photographed.Count) + ".");
+        }
+
+        private void Say(string speaker, string text)
+        {
+            if (_subtitles != null) _subtitles.Play(DialogueLine.Say(speaker, text));
         }
     }
 }

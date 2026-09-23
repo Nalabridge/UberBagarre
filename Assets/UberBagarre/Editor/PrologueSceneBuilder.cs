@@ -36,6 +36,9 @@ namespace UberBagarre.EditorTools
         /// </summary>
         public static readonly Vector3 HouseOrigin = new Vector3(0f, 0f, -600f);
 
+        /// <summary>Le parking du chapitre 1, de l'autre côté de la rue, aussi loin que la planque.</summary>
+        public static readonly Vector3 ParkingOrigin = new Vector3(0f, 0f, 600f);
+
         private const float ClubSidewalkZ = NightStreetBuilder.RoadFar + 0.4f;
 
         [MenuItem("Uber Bagarre/3 - Construire la scene Prologue", false, 30)]
@@ -80,6 +83,7 @@ namespace UberBagarre.EditorTools
 
             NightStreetBuilder.Result street = NightStreetBuilder.Build(night);
             HouseBuilder.Result house = HouseBuilder.Build(night, HouseOrigin);
+            ParkingBuilder.Result parking = ParkingBuilder.Build(night, ParkingOrigin);
 
             // Le joueur naît chez lui : le prologue commence dans la planque, pas dans la rue.
             Camera gameCamera;
@@ -92,7 +96,13 @@ namespace UberBagarre.EditorTools
             GraphicsDirector graphics = SandboxSceneBuilder.BuildRendering(sun, moon, street,
                 gameCamera, observerCamera);
 
+            // Le bitume du parking reflete comme celui de la rue, et obeit au meme reglage.
+            SandboxSceneBuilder.SetComponentArray(graphics, "_reflections",
+                street.Ground != null ? street.Ground.GetComponent<PlanarReflection>() : null,
+                parking.Ground != null ? parking.Ground.GetComponent<PlanarReflection>() : null);
+
             MissionBriefing briefing = BuildBriefing();
+            MissionBriefing briefingTwo = BuildBriefingTwo();
 
             SandboxSceneBuilder.FighterParts target;
             List<SandboxSceneBuilder.FighterParts> crowd;
@@ -100,11 +110,14 @@ namespace UberBagarre.EditorTools
 
             SandboxSceneBuilder.WireHudAndDebug(player, target.Go, attacks.Straight);
 
+            SandboxSceneBuilder.FighterParts[] brothers = BuildBrothers(materials, attacks, night, parking);
+
             Interactable clubCar = BuildClubCarDoor(street.Root);
 
             PhoneDevice phone = BuildPhone(night, gameCamera, player, briefing);
 
-            BuildStory(player, phone, briefing, house, street, clubCar, target, graphics, attacks);
+            BuildStory(player, phone, briefing, house, street, clubCar, target, graphics, attacks,
+                briefingTwo, parking, brothers);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -116,12 +129,17 @@ namespace UberBagarre.EditorTools
             Selection.activeGameObject = player;
 
             Debug.Log("[UberBagarre] Scene Prologue generee.\n" +
-                      "  Lieux        : la planque (" + HouseOrigin.z + " en Z) et la rue devant le club\n" +
-                      "  Histoire     : reveil, courrier, appel de " + briefing.FriendName +
+                      "  Lieux        : la planque (" + HouseOrigin.z + " en Z), la rue devant le club,\n" +
+                      "                 le parking du Vertigo (" + ParkingOrigin.z + " en Z)\n" +
+                      "  Prologue     : reveil, courrier, appel de " + briefing.FriendName +
                       ", installation, course, trajet,\n" +
-                      "                 identification dans le groupe, bagarre avec tutoriel, photo, retour\n" +
-                      "  Touches      : E = interagir / repondre / valider, T = telephone,\n" +
-                      "                 clic gauche = frapper (et declencher la photo)\n" +
+                      "                 identification dans le groupe, bagarre avec tutoriel, photo, niveau 2\n" +
+                      "  Chapitre 1   : deux etoiles, les freres Kovac au parking, bousculade, coup de tete,\n" +
+                      "                 objets a lancer, deux photos, niveau 3, appel de " + briefing.FriendName + "\n" +
+                      "  Touches      : E = interagir / repondre / valider / ramasser, T = telephone,\n" +
+                      "                 clic gauche = frapper, lancer l'objet tenu, declencher la photo\n" +
+                      "                 G = coup de tete (debloque au niveau 2), X = bousculer\n" +
+                      "  Test direct  : coche '_startAtChapterOne' sur PrologueDirector pour sauter au chapitre 1.\n" +
                       "  Tout le reste des commandes est identique a la sandbox.\n" +
                       "  Appuie sur Play.");
         }
@@ -155,6 +173,85 @@ namespace UberBagarre.EditorTools
             SerializedWiring.Verify(briefing, "_targetClothing");
 
             return briefing;
+        }
+
+        /// <summary>
+        /// Le contrat du chapitre 1 : deux étoiles, deux sujets.
+        ///
+        /// Le signalement désigne ce qui DISTINGUE les frères du décor, pas ce qui les
+        /// distingue entre eux : il n'y a personne d'autre au parking. L'énigme du prologue
+        /// était « lequel ? », celle-ci est « comment, à un contre deux ? ».
+        /// </summary>
+        private static MissionBriefing BuildBriefingTwo()
+        {
+            GameObject go = new GameObject("=== Mission 2 ===");
+            MissionBriefing briefing = go.AddComponent<MissionBriefing>();
+
+            SerializedWiring.SetString(briefing, "_targetName", "LES FRÈRES KOVAC");
+            SerializedWiring.SetString(briefing, "_targetAge", "31 et 27 ans");
+            SerializedWiring.SetString(briefing, "_targetClothing", "Survêtements, un noir, un bordeaux");
+            SerializedWiring.SetString(briefing, "_targetLocation", "Parking du Vertigo — niveau -1");
+            SerializedWiring.SetString(briefing, "_targetRecord",
+                "Revendent ce qui tombe des camions.\nToujours ensemble. Jamais sans une bouteille.");
+
+            SerializedWiring.SetString(briefing, "_clientName", "CLIENT VERIFIE — 2e commande");
+            SerializedWiring.SetInt(briefing, "_stars", 2);
+            SerializedWiring.SetInt(briefing, "_reward", 320);
+            SerializedWiring.SetInt(briefing, "_experience", 260);
+            SerializedWiring.SetString(briefing, "_review", "Efficace. Un peu brutal pour le prix.");
+            SerializedWiring.SetInt(briefing, "_reviewStars", 4);
+            SerializedWiring.SetString(briefing, "_friendName", "SAMI");
+
+            SerializedWiring.Verify(briefing, "_reviewStars");
+
+            return briefing;
+        }
+
+        /// <summary>
+        /// Les frères Kovac, au fond du parking, en train de vider la camionnette.
+        ///
+        /// Ils sortent du même constructeur que tous les autres combattants — même corps, même
+        /// physique d'impact, mêmes coups. Ce qui en fait un chapitre différent, c'est qu'ils
+        /// sont DEUX : il faut se placer pour ne pas finir entre eux, et le décor (bouteilles,
+        /// caisses, fûts) devient une arme ou un obstacle.
+        ///
+        /// Leurs cerveaux sont éteints : ils déchargent, de dos, jusqu'à ce que le scénario les
+        /// réveille à l'approche de la camionnette.
+        /// </summary>
+        private static SandboxSceneBuilder.FighterParts[] BuildBrothers(BuildMaterials materials,
+            AttackLibraryBuilder.Library attacks, NightMaterialFactory.Palette night,
+            ParkingBuilder.Result parking)
+        {
+            GameObject root = EditorBuildUtility.CreateEmpty("Freres Kovac", parking.Root, Vector3.zero);
+
+            SandboxSceneBuilder.FighterParts elder = BuildBrother(materials, attacks, night, root.transform,
+                "Dragan", parking.FirstBrother, 80f, new Color(0.06f, 0.06f, 0.075f), 118f);
+
+            SandboxSceneBuilder.FighterParts younger = BuildBrother(materials, attacks, night, root.transform,
+                "Milan", parking.SecondBrother, 37f, new Color(0.32f, 0.05f, 0.11f), 104f);
+
+            return new[] { elder, younger };
+        }
+
+        private static SandboxSceneBuilder.FighterParts BuildBrother(BuildMaterials materials,
+            AttackLibraryBuilder.Library attacks, NightMaterialFactory.Palette night, Transform root,
+            string name, Vector3 position, float yaw, Color tracksuit, float health)
+        {
+            FighterBuilder.Skin skin = FighterBuilder.Skin.Enemy(materials);
+
+            // Veste et pantalon dans le meme tissu : c'est ce qui fait un survetement, et c'est
+            // ce qui les rend reconnaissables sous les mats a LED, qui ecrasent les nuances.
+            Material suit = Jacket(night, "M_Survetement_" + name, tracksuit);
+            skin.Shirt = suit;
+            skin.Pants = suit;
+
+            SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(
+                materials, attacks, name, position, yaw, skin, health, true);
+
+            parts.Go.transform.SetParent(root, true);
+            if (parts.Brain != null) parts.Brain.enabled = false;
+
+            return parts;
         }
 
         // ------------------------------------------------------------------ le groupe
@@ -376,7 +473,8 @@ namespace UberBagarre.EditorTools
         private static void BuildStory(GameObject player, PhoneDevice phone, MissionBriefing briefing,
             HouseBuilder.Result house, NightStreetBuilder.Result street, Interactable clubCar,
             SandboxSceneBuilder.FighterParts target, GraphicsDirector graphics,
-            AttackLibraryBuilder.Library attacks)
+            AttackLibraryBuilder.Library attacks, MissionBriefing briefingTwo, ParkingBuilder.Result parking,
+            SandboxSceneBuilder.FighterParts[] brothers)
         {
             GameObject root = new GameObject("=== Histoire ===");
 
@@ -387,6 +485,15 @@ namespace UberBagarre.EditorTools
             ObjectiveDisplay objectives = root.AddComponent<ObjectiveDisplay>();
             ScreenFader fader = root.AddComponent<ScreenFader>();
             TutorialPrompt tutorial = root.AddComponent<TutorialPrompt>();
+            PlayerProgress progress = root.AddComponent<PlayerProgress>();
+
+            PhoneDisplay display = phone != null ? phone.GetComponent<PhoneDisplay>() : null;
+            if (display != null) SerializedWiring.SetObject(display, "_progress", progress);
+
+            // Le coup de tete se GAGNE : il est verrouille des la construction, et c'est le
+            // passage au niveau 2, a la fin du prologue, qui l'ouvre.
+            PlayerCombat playerCombat = player.GetComponent<PlayerCombat>();
+            if (playerCombat != null) SerializedWiring.SetBool(playerCombat, "_headbuttUnlocked", false);
 
             StoryDirector story = root.AddComponent<StoryDirector>();
             SerializedWiring.SetObject(story, "_input", input);
@@ -397,6 +504,15 @@ namespace UberBagarre.EditorTools
             InteractionSystem interaction = player.AddComponent<InteractionSystem>();
             SerializedWiring.SetObject(interaction, "_input", input);
             SerializedWiring.SetObject(interaction, "_camera", camera);
+
+            // Ramasser passe APRES l'interaction : si une portiere est visee, E lui revient.
+            PropHandler props = player.GetComponent<PropHandler>();
+
+            if (props != null)
+            {
+                SerializedWiring.SetObject(props, "_interaction", interaction);
+                SerializedWiring.SetObject(props, "_phone", phone);
+            }
 
             TargetFinder finder = player.AddComponent<TargetFinder>();
             SerializedWiring.SetObject(finder, "_camera", camera);
@@ -418,7 +534,7 @@ namespace UberBagarre.EditorTools
 
             if (array != null)
             {
-                array.arraySize = 2;
+                array.arraySize = 3;
 
                 SerializedProperty home = array.GetArrayElementAtIndex(0);
                 home.FindPropertyRelative("name").stringValue = "Maison";
@@ -429,6 +545,11 @@ namespace UberBagarre.EditorTools
                 outside.FindPropertyRelative("name").stringValue = "Rue";
                 outside.FindPropertyRelative("root").objectReferenceValue = street.Root;
                 outside.FindPropertyRelative("arrival").objectReferenceValue = streetArrival.transform;
+
+                SerializedProperty lot = array.GetArrayElementAtIndex(2);
+                lot.FindPropertyRelative("name").stringValue = "Parking";
+                lot.FindPropertyRelative("root").objectReferenceValue = parking.Root;
+                lot.FindPropertyRelative("arrival").objectReferenceValue = parking.Arrival;
 
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
@@ -466,6 +587,31 @@ namespace UberBagarre.EditorTools
 
             SerializedWiring.SetObject(prologue, "_straight", attacks.Straight);
             SerializedWiring.SetObject(prologue, "_hook", attacks.Hook);
+            SerializedWiring.SetObject(prologue, "_headbutt", attacks.Headbutt);
+            SerializedWiring.SetObject(prologue, "_shove", attacks.Shove);
+
+            SerializedWiring.SetObject(prologue, "_progress", progress);
+            SerializedWiring.SetObject(prologue, "_phoneDisplay", display);
+            SerializedWiring.SetObject(prologue, "_playerCombat", playerCombat);
+            SerializedWiring.SetObject(prologue, "_props", props);
+
+            // --- chapitre 1
+            SerializedWiring.SetObject(prologue, "_briefingTwo", briefingTwo);
+            SerializedWiring.SetObject(prologue, "_carAtParking", parking.Car);
+            SerializedWiring.SetObject(prologue, "_van", parking.Van);
+            SerializedWiring.SetString(prologue, "_parkingLocation", "Parking");
+
+            Component[] brotherBodies = new Component[brothers.Length];
+            Component[] brotherBrains = new Component[brothers.Length];
+
+            for (int i = 0; i < brothers.Length; i++)
+            {
+                brotherBodies[i] = brothers[i] != null ? brothers[i].Combatant : null;
+                brotherBrains[i] = brothers[i] != null ? brothers[i].Brain : null;
+            }
+
+            SandboxSceneBuilder.SetComponentArray(prologue, "_brothers", brotherBodies);
+            SandboxSceneBuilder.SetComponentArray(prologue, "_brotherBrains", brotherBrains);
 
             // Relecture des références dont l'absence ne provoquerait AUCUNE erreur, seulement
             // un prologue qui s'arrête sans raison visible à l'étape correspondante.
@@ -474,6 +620,9 @@ namespace UberBagarre.EditorTools
             SerializedWiring.Verify(prologue, "_carAtClub");
             SerializedWiring.Verify(prologue, "_targetKnockdown");
             SerializedWiring.Verify(prologue, "_straight");
+            SerializedWiring.Verify(prologue, "_carAtParking");
+            SerializedWiring.Verify(prologue, "_van");
+            SerializedWiring.Verify(prologue, "_progress");
 
             // Le prologue commence de nuit, quelle que soit la valeur sauvegardee du curseur
             // d'heure : une planque a 2 h du matin en plein soleil n'a plus aucun sens.

@@ -103,6 +103,9 @@ namespace UberBagarre.EditorTools
                       "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
                       "  Poings       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
                       "  Pieds        : F = coup de pied de face, V = coup de pied bas (fait tomber)\n" +
+                      "  Corps a corps: G = coup de tete, X = bousculer (casse la garde, fait de la place)\n" +
+                      "  Objets       : E = ramasser / lacher, clic gauche = lancer. Tout ce qui est leger\n" +
+                      "                 bouge quand on le frappe : bouteilles, cones, caisses, sacs, chaise\n" +
                       "  Defense      : Ctrl gauche = garde (les 0,26 premieres secondes PARENT le coup),\n" +
                       "                 Alt gauche = esquive (direction = WASD)\n" +
                       "  Contextuel   : en sprintant = charge d'epaule, en l'air = coup plongeant,\n" +
@@ -453,6 +456,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_hands", hands);
             SerializedWiring.SetObject(executor, "_locomotion", body.Locomotion);
             SerializedWiring.SetObject(executor, "_cameraPunch", punch);
+
+            // Le front du joueur vit sous la CAMERA : c'est son elan qui porte le coup de tete.
+            Hitbox forehead = FighterBuilder.AddHeadHitbox(cameraGo.transform, new Vector3(0f, 0.02f, 0.12f),
+                Faction.Player, playerGo);
+            SerializedWiring.SetObject(executor, "_headHitbox", forehead);
             SerializedWiring.SetObject(executor, "_hitStop", hitStop);
             SerializedWiring.SetObject(executor, "_footPoseSpace", playerGo.transform);
             SerializedWiring.SetObject(executor, "_leftHitbox", body.LeftHitbox);
@@ -480,6 +488,17 @@ namespace UberBagarre.EditorTools
             AddImpactPhysics(playerGo, combatant, body, punch, cameraGo.transform);
             playerGo.AddComponent<CharacterPusher>();
 
+            // Ramasser et lancer : le point de tenue est sous la camera, en bas a droite du
+            // champ, la ou une main tiendrait une bouteille sans masquer la cible.
+            GameObject holdPoint = EditorBuildUtility.CreateEmpty("PointDeTenue", cameraGo.transform,
+                new Vector3(0.20f, -0.20f, 0.42f));
+
+            PropHandler props = playerGo.AddComponent<PropHandler>();
+            SerializedWiring.SetObject(props, "_input", input);
+            SerializedWiring.SetObject(props, "_camera", camera);
+            SerializedWiring.SetObject(props, "_holdPoint", holdPoint.transform);
+            SerializedWiring.Verify(props, "_holdPoint");
+
             KnockdownSystem knockdown = AddKnockdown(playerGo, combatant, body, executor, motor, tilt.transform);
             SerializedWiring.SetObject(knockdown, "_cameraRoot", cameraKnockdown.transform);
             SerializedWiring.SetBool(knockdown, "_collapseOnDeath", true);
@@ -501,6 +520,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(combat, "_dive", attacks.Dive);
             SerializedWiring.SetObject(combat, "_sweep", attacks.Sweep);
             SerializedWiring.SetObject(combat, "_stomp", attacks.Stomp);
+            SerializedWiring.SetObject(combat, "_headbutt", attacks.Headbutt);
+            SerializedWiring.SetObject(combat, "_shove", attacks.Shove);
 
             SerializedWiring.SetObject(driver, "_guard", guard);
 
@@ -636,6 +657,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
             SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
             SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
+            SerializedWiring.SetObject(executor, "_headHitbox", body.HeadHitbox);
             SerializedWiring.SetObject(executor, "_guard", guard);
 
             StunMeter stun = AddStunMeter(enemyGo, combatant, executor);
@@ -725,7 +747,7 @@ namespace UberBagarre.EditorTools
             SerializedProperty attacks = so.FindProperty("_attacks");
             if (attacks == null) return;
 
-            attacks.arraySize = 5;
+            attacks.arraySize = 7;
 
             // Les coups de pied portent plus loin (la jambe mesure 20 cm de plus que le bras) et
             // se rechargent plus lentement : ils restent rares, donc ils restent des evenements.
@@ -734,6 +756,12 @@ namespace UberBagarre.EditorTools
             SetAttackOption(attacks.GetArrayElementAtIndex(2), library.Uppercut, 0.8f, 0f, 0.95f, 3.4f);
             SetAttackOption(attacks.GetArrayElementAtIndex(3), library.Kick, 0.9f, 0.75f, 1.35f, 4.5f);
             SetAttackOption(attacks.GetArrayElementAtIndex(4), library.LowKick, 1.1f, 0.55f, 1.25f, 3.8f);
+
+            // Le coup de tete n'a de sens que colle au joueur : sa fenetre de distance est tres
+            // courte, donc il sort surtout quand le joueur s'approche trop. C'est une punition
+            // de placement, pas un coup de routine.
+            SetAttackOption(attacks.GetArrayElementAtIndex(5), library.Headbutt, 0.9f, 0f, 0.85f, 5.5f);
+            SetAttackOption(attacks.GetArrayElementAtIndex(6), library.Shove, 0.6f, 0f, 1.0f, 6f);
 
             SerializedProperty sequence = so.FindProperty("_scriptedSequence");
             if (sequence != null)

@@ -50,6 +50,8 @@ namespace UberBagarre.Player
         public bool UppercutPressed { get; private set; }
         public bool KickPressed { get; private set; }
         public bool LowKickPressed { get; private set; }
+        public bool HeadbuttPressed { get; private set; }
+        public bool ShovePressed { get; private set; }
 
         // Versions MAINTENUES des attaques. Elles existent pour que la cadence de frappe ne
         // depende pas de la vitesse a laquelle le joueur arrive a cliquer : maintenir enchaine.
@@ -109,11 +111,34 @@ namespace UberBagarre.Player
         /// </summary>
         public bool CombatInputEnabled
         {
-            get { return _combatInputEnabled; }
-            set { _combatInputEnabled = value; }
+            get { return _combatLocks.Count == 0; }
         }
 
-        private bool _combatInputEnabled = true;
+        /// <summary>
+        /// Pose ou retire un verrou de combat au nom d'un propriétaire.
+        ///
+        /// Plusieurs systèmes coupent les coups : le téléphone levé, un objet tenu en main. Avec
+        /// un simple booléen, chacun l'écrirait à chaque image et le dernier à parler gagnerait —
+        /// ranger le téléphone rendrait les coups alors qu'on tient encore une bouteille. Un
+        /// verrou par propriétaire règle la question : les coups reviennent quand PLUS PERSONNE
+        /// ne les bloque.
+        /// </summary>
+        public void SetCombatLock(object owner, bool locked)
+        {
+            if (owner == null) return;
+
+            if (locked)
+            {
+                if (!_combatLocks.Contains(owner)) _combatLocks.Add(owner);
+            }
+            else
+            {
+                _combatLocks.Remove(owner);
+            }
+        }
+
+        private readonly System.Collections.Generic.List<object> _combatLocks =
+            new System.Collections.Generic.List<object>(2);
 
         private void Awake()
         {
@@ -164,6 +189,8 @@ namespace UberBagarre.Player
             UppercutPressed = _provider.GetPressedThisFrame(_bindings.attackUppercut);
             KickPressed = _provider.GetPressedThisFrame(_bindings.attackKick);
             LowKickPressed = _provider.GetPressedThisFrame(_bindings.attackLowKick);
+            HeadbuttPressed = _provider.GetPressedThisFrame(_bindings.attackHeadbutt);
+            ShovePressed = _provider.GetPressedThisFrame(_bindings.attackShove);
 
             StraightHeld = _provider.GetHeld(_bindings.attackStraight);
             HookHeld = _provider.GetHeld(_bindings.attackHook);
@@ -171,7 +198,7 @@ namespace UberBagarre.Player
             KickHeld = _provider.GetHeld(_bindings.attackKick);
             LowKickHeld = _provider.GetHeld(_bindings.attackLowKick);
 
-            if (!_combatInputEnabled) ClearCombatInput();
+            if (_combatLocks.Count > 0) ClearCombatInput();
         }
 
         /// <summary>Remet a zero tout ce qui declenche un coup, une garde ou une esquive.</summary>
@@ -185,6 +212,8 @@ namespace UberBagarre.Player
             UppercutPressed = false;
             KickPressed = false;
             LowKickPressed = false;
+            HeadbuttPressed = false;
+            ShovePressed = false;
 
             StraightHeld = false;
             HookHeld = false;
@@ -208,6 +237,8 @@ namespace UberBagarre.Player
             UppercutPressed = false;
             KickPressed = false;
             LowKickPressed = false;
+            HeadbuttPressed = false;
+            ShovePressed = false;
             StraightHeld = false;
             HookHeld = false;
             UppercutHeld = false;

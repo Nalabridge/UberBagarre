@@ -57,7 +57,10 @@ namespace UberBagarre.Phone
             Photo = 8,
 
             /// <summary>Mission validée : paiement, expérience, avis du client.</summary>
-            Valide = 9
+            Valide = 9,
+
+            /// <summary>Profil : niveau, expérience, réputation, avis, capacités.</summary>
+            Profil = 10
         }
 
         [Header("References")]
@@ -223,6 +226,12 @@ namespace UberBagarre.Phone
 
         // ------------------------------------------------------------------ cycle
 
+        private void OnDisable()
+        {
+            // Un telephone desactive ne doit pas laisser les poings bloques derriere lui.
+            if (_input != null) _input.SetCombatLock(this, false);
+        }
+
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
@@ -330,6 +339,7 @@ namespace UberBagarre.Phone
                 case Screen.Mission: return new Color(1f, 0.30f, 0.62f);
                 case Screen.Photo: return new Color(0.85f, 0.92f, 1f);
                 case Screen.Valide: return new Color(0.48f, 1f, 0.62f);
+                case Screen.Profil: return new Color(1f, 0.78f, 0.36f);
                 case Screen.Verrouille: return new Color(0.70f, 0.78f, 0.95f);
                 default: return new Color(1f, 0.36f, 0.66f);
             }
@@ -343,7 +353,7 @@ namespace UberBagarre.Phone
         {
             if (_input == null) return;
 
-            _input.CombatInputEnabled = _raise < 0.35f;
+            _input.SetCombatLock(this, _raise >= 0.35f);
         }
     }
 }

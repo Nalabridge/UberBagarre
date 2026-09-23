@@ -54,10 +54,20 @@ namespace UberBagarre.EditorTools
             public AttackData Sweep;
             public AttackData Stomp;
 
+            /// <summary>Coups de corps : ils ne passent ni par un poing ni par un pied.</summary>
+            public AttackData Headbutt;
+            public AttackData Shove;
+
             /// <summary>Tous les coups, dans l'ordre d'apprentissage.</summary>
             public AttackData[] All
             {
-                get { return new[] { Straight, Hook, Uppercut, Kick, LowKick, Charge, Dive, Sweep, Stomp }; }
+                get
+                {
+                    return new[]
+                    {
+                        Straight, Hook, Uppercut, Kick, LowKick, Charge, Dive, Sweep, Stomp, Headbutt, Shove
+                    };
+                }
             }
         }
 
@@ -66,7 +76,7 @@ namespace UberBagarre.EditorTools
         {
             bool confirm = EditorUtility.DisplayDialog(
                 "Regenerer les coups ?",
-                "Les assets d'attaque (Direct, Crochet, Uppercut, Coup de pied, Coup de pied bas) " +
+                "Les assets d'attaque (Direct, Crochet, Uppercut, Coups de pied, Coup de tete, Bousculade...) " +
                 "vont etre REMPLACES par les valeurs par defaut.\n\n" +
                 "Toutes tes modifications de degats, de timings et de poses seront perdues.",
                 "Remplacer", "Annuler");
@@ -107,6 +117,9 @@ namespace UberBagarre.EditorTools
             library.Dive = GetOrCreate(AttackData.DiveAsset, overwrite, ConfigureDive);
             library.Sweep = GetOrCreate(AttackData.SweepAsset, overwrite, ConfigureSweep);
             library.Stomp = GetOrCreate(AttackData.StompAsset, overwrite, ConfigureStomp);
+
+            library.Headbutt = GetOrCreate(AttackData.HeadbuttAsset, overwrite, ConfigureHeadbutt);
+            library.Shove = GetOrCreate(AttackData.ShoveAsset, overwrite, ConfigureShove);
 
             return library;
         }
@@ -778,6 +791,123 @@ namespace UberBagarre.EditorTools
         /// sa duree a n'etre nulle part : ni en garde, ni en extension. C'est exactement la
         /// sensation de mollesse.
         /// </summary>
+        /// <summary>
+        /// Coup de tête — celui que le dossier cite à côté du poing et du pied.
+        ///
+        /// Trois temps, et c'est le deuxième qui fait tout : les deux mains AGRIPPENT le col,
+        /// la tête part en arrière pour armer, puis les mains TIRENT pendant que la tête plonge.
+        /// Sans l'agrippement, un coup de tête ressemble à une révérence ; sans l'armé en
+        /// arrière, il n'a aucun poids.
+        ///
+        /// C'est la caméra qui porte le coup chez le joueur (le corps n'a pas de tête en vue
+        /// première personne) : l'élan de 40 cm vers l'avant emmène la hitbox du front. Portée
+        /// très courte par construction — il faut être collé à l'adversaire, et c'est voulu.
+        /// </summary>
+        private static void ConfigureHeadbutt(AttackData a)
+        {
+            a.displayName = "Coup de tete";
+            a.limb = AttackLimb.Head;
+            a.hand = AttackHand.Rear;
+            a.isHeavy = true;
+            a.chargeable = false;
+            a.knockdownChance = 0.22f;
+            a.duration = 0.44f;
+            a.cooldown = 0.16f;
+            a.hitWindowStart = 0.40f;
+            a.hitWindowEnd = 0.64f;
+            a.comboCancelAt = 0.80f;
+            a.hitRadius = 0.20f;
+            a.damage = 21f;
+            a.impactForce = 8.5f;
+            a.staminaCost = 16f;
+            a.shakeIntensity = 0.14f;
+            a.shakeDuration = 0.20f;
+            a.hitStopDuration = 0.032f;
+            a.weightCurve = PunchWeightCurve();
+
+            Vector3 grabRight = new Vector3(0.140f, -0.135f, 0.455f);
+            Vector3 grabLeft = new Vector3(-0.140f, -0.135f, 0.455f);
+            Vector3 pullRight = new Vector3(0.120f, -0.165f, 0.330f);
+            Vector3 pullLeft = new Vector3(-0.120f, -0.165f, 0.330f);
+            Vector3 grabEulerRight = new Vector3(-8f, -10f, -32f);
+            Vector3 grabEulerLeft = new Vector3(-8f, 10f, 32f);
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01 - agrippe et frappe",
+                    Rest(0.00f),
+                    Key(0.22f, grabRight, grabEulerRight, 1f,
+                        new Vector3(-12f, 0f, 0f), new Vector3(0f, 0.040f, -0.070f), new Vector3(-9f, 0f, 0f),
+                        grabLeft, grabEulerLeft),
+                    Key(0.46f, pullRight, grabEulerRight, 1f,
+                        new Vector3(20f, 0f, 0f), new Vector3(0f, -0.070f, 0.400f), new Vector3(17f, 0f, 1.5f),
+                        pullLeft, grabEulerLeft),
+                    Key(0.58f, pullRight, grabEulerRight, 1f,
+                        new Vector3(17f, 0f, 0f), new Vector3(0f, -0.060f, 0.360f), new Vector3(14f, 0f, 1f),
+                        pullLeft, grabEulerLeft),
+                    Key(0.80f, new Vector3(0.150f, -0.160f, 0.300f), GuardRightEuler, 0.9f,
+                        new Vector3(4f, 0f, 0f), new Vector3(0f, -0.010f, 0.060f), new Vector3(3f, 0f, 0f),
+                        GuardLeft, GuardLeftEuler),
+                    Rest(1.00f))
+            };
+        }
+
+        /// <summary>
+        /// Bousculade à deux mains.
+        ///
+        /// Presque aucun dégât, et un recul énorme. Ce n'est pas un coup pour gagner, c'est un
+        /// coup pour PLACER : envoyer quelqu'un dans une pile de sacs poubelle, se dégager quand
+        /// deux adversaires vous coincent, ou casser la distance avant qu'il ne charge. C'est le
+        /// coup qui rend le décor physique utile.
+        ///
+        /// Les paumes sont ouvertes (prise quasi nulle) : une bousculade poings fermés se lit
+        /// comme deux directs simultanés.
+        /// </summary>
+        private static void ConfigureShove(AttackData a)
+        {
+            a.displayName = "Bousculade";
+            a.limb = AttackLimb.Hand;
+            a.hand = AttackHand.Rear;
+            a.isHeavy = false;
+            a.chargeable = false;
+            a.knockdownChance = 0.18f;
+            a.duration = 0.36f;
+            a.cooldown = 0.22f;
+            a.hitWindowStart = 0.32f;
+            a.hitWindowEnd = 0.62f;
+            a.comboCancelAt = 0.72f;
+            a.hitRadius = 0.27f;
+            a.damage = 3f;
+            a.impactForce = 15f;
+            a.staminaCost = 12f;
+            a.shakeIntensity = 0.06f;
+            a.shakeDuration = 0.12f;
+            a.hitStopDuration = 0.018f;
+            a.weightCurve = PunchWeightCurve();
+
+            Vector3 palmEulerRight = new Vector3(-72f, -8f, 0f);
+            Vector3 palmEulerLeft = new Vector3(-72f, 8f, 0f);
+
+            a.variants = new List<AttackVariant>
+            {
+                Variant("01 - deux paumes",
+                    Rest(0.00f),
+                    Key(0.20f, new Vector3(0.130f, -0.150f, 0.240f), palmEulerRight, 0.08f,
+                        new Vector3(-6f, 0f, 0f), new Vector3(0f, 0f, -0.040f), new Vector3(-3f, 0f, 0f),
+                        new Vector3(-0.130f, -0.150f, 0.240f), palmEulerLeft),
+                    Key(0.42f, new Vector3(0.150f, -0.120f, 0.540f), palmEulerRight, 0.05f,
+                        new Vector3(14f, 0f, 0f), new Vector3(0f, -0.020f, 0.180f), new Vector3(5f, 0f, 0f),
+                        new Vector3(-0.150f, -0.120f, 0.540f), palmEulerLeft),
+                    Key(0.60f, new Vector3(0.150f, -0.125f, 0.520f), palmEulerRight, 0.05f,
+                        new Vector3(11f, 0f, 0f), new Vector3(0f, -0.015f, 0.150f), new Vector3(4f, 0f, 0f),
+                        new Vector3(-0.150f, -0.125f, 0.520f), palmEulerLeft),
+                    Key(0.84f, new Vector3(0.150f, -0.160f, 0.320f), GuardRightEuler, 0.7f,
+                        new Vector3(2f, 0f, 0f), Vector3.zero, Vector3.zero,
+                        GuardLeft, GuardLeftEuler),
+                    Rest(1.00f))
+            };
+        }
+
         private static AnimationCurve PunchWeightCurve()
         {
             return new AnimationCurve(

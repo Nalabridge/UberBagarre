@@ -238,7 +238,7 @@ namespace UberBagarre.Combat
             body.AddForceAtPosition(direction * impulse, point, ForceMode.Impulse);
 
             PhysicsProp prop = body.GetComponent<PhysicsProp>();
-            if (prop != null) prop.NotifyStruck(point, direction * impulse);
+            if (prop != null) prop.NotifyStruck(point, direction * impulse, _owner, _ownerFaction);
         }
 
         private void OnDrawGizmos()

@@ -46,6 +46,9 @@ namespace UberBagarre.EditorTools
             public Hitbox LeftFootHitbox;
             public Hitbox RightFootHitbox;
 
+            /// <summary>Hitbox du front. Null sur le joueur : la sienne vit sous la caméra.</summary>
+            public Hitbox HeadHitbox;
+
             /// <summary>La nuque. Les hurtbox de tête et les marques de coup s'y accrochent.</summary>
             public Transform Neck;
 
@@ -112,7 +115,11 @@ namespace UberBagarre.EditorTools
             Bone("NeckVisual", neck.transform, Quaternion.Euler(-90f, 0f, 0f), 0.07f, 0.052f, skin.Flesh);
 
             // Le joueur ne voit jamais sa propre tete : elle n'existe que sur l'adversaire.
-            if (withHead) BuildHead(neck.transform, skin);
+            if (withHead)
+            {
+                BuildHead(neck.transform, skin);
+                result.HeadHitbox = AddHeadHitbox(neck.transform, new Vector3(0f, 0.16f, 0.12f), faction, owner);
+            }
 
             IkLimb leftArm = BuildArm(chest.transform, result.Body.transform, HandSide.Left, skin, faction, owner);
             IkLimb rightArm = BuildArm(chest.transform, result.Body.transform, HandSide.Right, skin, faction, owner);
@@ -378,6 +385,23 @@ namespace UberBagarre.EditorTools
         /// Sommet du crâne vers 1,72 m pour un corps de 1,80 m, et yeux à 1,62 m — exactement la
         /// hauteur de caméra du joueur. Les deux combattants se regardent donc vraiment.
         /// </summary>
+        /// <summary>
+        /// Hitbox du front, pour le coup de tête. Son origine est un point au-dessus des sourcils :
+        /// c'est l'os frontal qui frappe, pas le nez — et un coup porté du nez se voit tout de
+        /// suite comme une erreur d'animation.
+        /// </summary>
+        public static Hitbox AddHeadHitbox(Transform parent, Vector3 localPosition, Faction faction, GameObject owner)
+        {
+            GameObject forehead = EditorBuildUtility.CreateEmpty("Front", parent, localPosition);
+
+            Hitbox hitbox = forehead.AddComponent<Hitbox>();
+            SerializedWiring.SetObject(hitbox, "_origin", forehead.transform);
+            SerializedWiring.SetEnum(hitbox, "_ownerFaction", (int)faction);
+            SerializedWiring.SetObject(hitbox, "_owner", owner);
+
+            return hitbox;
+        }
+
         private static void BuildHead(Transform neck, Skin skin)
         {
             // Le crane : un seul maillage, legerement avance par rapport a la nuque.

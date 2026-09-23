@@ -41,6 +41,12 @@ namespace UberBagarre.Combat
         [SerializeField] private Hitbox _rightFootHitbox;
 
         [SerializeField]
+        [Tooltip("Hitbox du front, pour le coup de tete. Sur le joueur elle vit sous la camera : " +
+                 "c'est l'elan de la camera qui porte le coup, puisque le corps n'a pas de tete " +
+                 "en vue premiere personne.")]
+        private Hitbox _headHitbox;
+
+        [SerializeField]
         [Tooltip("Optionnel. Fournit la riposte : le coup qui suit une parade reussie est renforce.")]
         private GuardSystem _guard;
 
@@ -160,6 +166,7 @@ namespace UberBagarre.Combat
             Subscribe(_rightHitbox, true);
             Subscribe(_leftFootHitbox, true);
             Subscribe(_rightFootHitbox, true);
+            Subscribe(_headHitbox, true);
         }
 
         private void OnDisable()
@@ -168,6 +175,7 @@ namespace UberBagarre.Combat
             Subscribe(_rightHitbox, false);
             Subscribe(_leftFootHitbox, false);
             Subscribe(_rightFootHitbox, false);
+            Subscribe(_headHitbox, false);
         }
 
         private void Subscribe(Hitbox hitbox, bool add)
@@ -599,6 +607,11 @@ namespace UberBagarre.Combat
             if (_attack != null && _attack.limb == AttackLimb.Foot)
             {
                 return isLeft ? _leftFootHitbox : _rightFootHitbox;
+            }
+
+            if (_attack != null && _attack.limb == AttackLimb.Head && _headHitbox != null)
+            {
+                return _headHitbox;
             }
 
             return isLeft ? _leftHitbox : _rightHitbox;
