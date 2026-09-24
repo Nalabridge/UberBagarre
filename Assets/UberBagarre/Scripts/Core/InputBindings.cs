@@ -39,7 +39,6 @@ namespace UberBagarre.Core
         [Tooltip("Coup de pied bas : peu de degats, mais c'est lui qui fait tomber.")]
         public InputBinding attackLowKick = InputBinding.FromKey(KeyCode.V);
 
-        [Tooltip("Garde / blocage (maintenu). Les premieres fractions de seconde sont une PARADE.")]
         [Tooltip("Coup de tete : tres court, tres lourd. Il faut etre colle a l'adversaire.")]
         public InputBinding attackHeadbutt = InputBinding.FromKey(KeyCode.G);
 
@@ -47,6 +46,7 @@ namespace UberBagarre.Core
                  "envoyer quelqu'un dans les poubelles, ou se degager quand on est coince.")]
         public InputBinding attackShove = InputBinding.FromKey(KeyCode.X);
 
+        [Tooltip("Garde / blocage (maintenu). Les premieres fractions de seconde sont une PARADE.")]
         public InputBinding guard = InputBinding.FromKey(KeyCode.LeftControl);
 
         [Header("Esquive")]
