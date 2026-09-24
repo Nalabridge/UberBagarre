@@ -29,19 +29,36 @@ namespace UberBagarre.Core
         public bool GetHeld(InputBinding binding)
         {
             ButtonControl control = ResolveControl(binding);
-            return control != null && control.isPressed;
+            ButtonControl alternate = ResolveAlternate(binding);
+            return (control != null && control.isPressed) || (alternate != null && alternate.isPressed);
         }
 
         public bool GetPressedThisFrame(InputBinding binding)
         {
             ButtonControl control = ResolveControl(binding);
-            return control != null && control.wasPressedThisFrame;
+            ButtonControl alternate = ResolveAlternate(binding);
+            return (control != null && control.wasPressedThisFrame) ||
+                   (alternate != null && alternate.wasPressedThisFrame);
         }
 
         public bool GetReleasedThisFrame(InputBinding binding)
         {
             ButtonControl control = ResolveControl(binding);
-            return control != null && control.wasReleasedThisFrame;
+            ButtonControl alternate = ResolveAlternate(binding);
+            return (control != null && control.wasReleasedThisFrame) ||
+                   (alternate != null && alternate.wasReleasedThisFrame);
+        }
+
+        /// <summary>La touche de secours, clavier uniquement.</summary>
+        private static ButtonControl ResolveAlternate(InputBinding binding)
+        {
+            if (binding.source != InputSource.Key || binding.alternateKey == KeyCode.None) return null;
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard == null) return null;
+
+            Key key = ToKey(binding.alternateKey);
+            return key == Key.None ? null : keyboard[key];
         }
 
         public Vector2 GetLookDelta()

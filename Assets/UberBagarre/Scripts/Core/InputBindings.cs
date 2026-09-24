@@ -11,9 +11,9 @@ namespace UberBagarre.Core
     public class InputBindings : ScriptableObject
     {
         [Header("Deplacement")]
-        public InputBinding moveForward = InputBinding.FromKey(KeyCode.W);
+        public InputBinding moveForward = InputBinding.FromKeys(KeyCode.W, KeyCode.Z);
         public InputBinding moveBackward = InputBinding.FromKey(KeyCode.S);
-        public InputBinding moveLeft = InputBinding.FromKey(KeyCode.A);
+        public InputBinding moveLeft = InputBinding.FromKeys(KeyCode.A, KeyCode.Q);
         public InputBinding moveRight = InputBinding.FromKey(KeyCode.D);
         public InputBinding jump = InputBinding.FromKey(KeyCode.Space);
 

@@ -411,7 +411,6 @@ namespace UberBagarre.EditorTools
 
             CursorLockController cursor = playerGo.AddComponent<CursorLockController>();
             SerializedWiring.SetObject(cursor, "_input", input);
-            SerializedWiring.SetObject(cursor, "_look", look);
 
             HeadBob bob = cameraBob.AddComponent<HeadBob>();
             SerializedWiring.SetObject(bob, "_motor", motor);
@@ -993,9 +992,32 @@ namespace UberBagarre.EditorTools
             {
                 bindings = ScriptableObject.CreateInstance<InputBindings>();
                 AssetDatabase.CreateAsset(bindings, path);
+                return bindings;
+            }
+
+            // Un asset cree avant l'ajout des touches de secours n'a pas ZQSD : on complete les
+            // deplacements encore sur leurs valeurs d'origine, sans toucher a ce qui a ete
+            // personnalise.
+            bool migrated = false;
+            migrated |= AddAlternate(ref bindings.moveForward, KeyCode.W, KeyCode.Z);
+            migrated |= AddAlternate(ref bindings.moveLeft, KeyCode.A, KeyCode.Q);
+
+            if (migrated)
+            {
+                EditorUtility.SetDirty(bindings);
+                Debug.Log("[UberBagarre] InputBindings : ZQSD ajoute en secours de WASD (claviers AZERTY).", bindings);
             }
 
             return bindings;
+        }
+
+        private static bool AddAlternate(ref InputBinding binding, KeyCode original, KeyCode alternate)
+        {
+            if (binding.source != InputSource.Key || binding.key != original) return false;
+            if (binding.alternateKey != KeyCode.None) return false;
+
+            binding.alternateKey = alternate;
+            return true;
         }
 
         // ------------------------------------------------------------------ spawn

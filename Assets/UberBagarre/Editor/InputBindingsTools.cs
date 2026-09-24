@@ -18,7 +18,7 @@ namespace UberBagarre.EditorTools
         private const string DefaultFolder = "Assets/UberBagarre/Settings";
         private const string DefaultAssetPath = DefaultFolder + "/InputBindings.asset";
 
-        [MenuItem("Uber Bagarre/3 - Reinitialiser les touches par defaut", false, 30)]
+        [MenuItem("Uber Bagarre/6 - Reinitialiser les touches par defaut", false, 60)]
         public static void ResetToDefaults()
         {
             InputBindings asset = FindOrCreateAsset();

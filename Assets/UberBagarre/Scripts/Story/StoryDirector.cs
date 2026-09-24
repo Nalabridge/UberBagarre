@@ -96,6 +96,12 @@ namespace UberBagarre.Story
             return false;
         }
 
+        private void OnDisable()
+        {
+            // Une histoire eteinte ne doit pas laisser le joueur fige derriere elle.
+            if (_input != null) _input.SetGameplayLock(this, false);
+        }
+
         private void Update()
         {
             if (!_running || _index < 0 || _index >= _beats.Count) return;
@@ -172,7 +178,7 @@ namespace UberBagarre.Story
         {
             if (_input == null) return;
 
-            _input.GameplayInputEnabled = enabled;
+            _input.SetGameplayLock(this, !enabled);
         }
     }
 }

@@ -95,11 +95,41 @@ namespace UberBagarre.Player
             get { return _provider; }
         }
 
+        /// <summary>
+        /// Vrai si les entrées de jeu passent : l'interrupteur de debug est levé ET personne ne
+        /// les bloque. Écrire dans cette propriété ne touche que l'interrupteur de debug.
+        /// </summary>
         public bool GameplayInputEnabled
         {
-            get { return _gameplayInputEnabled; }
+            get { return _gameplayInputEnabled && _gameplayLocks.Count == 0; }
             set { _gameplayInputEnabled = value; }
         }
+
+        /// <summary>
+        /// Pose ou retire un verrou de jeu au nom d'un propriétaire.
+        ///
+        /// Deux systèmes coupent le jeu pour des raisons sans rapport : le curseur (libéré avec
+        /// Échap, ou pas encore capturé) et l'histoire (une étape figée). Avec un booléen partagé,
+        /// le dernier à écrire gagnait : recapturer la souris dégelait une cinématique, et une
+        /// étape qui rendait la main relançait le jeu curseur libéré. Même remède que pour les
+        /// coups : le jeu reprend quand PLUS PERSONNE ne le bloque.
+        /// </summary>
+        public void SetGameplayLock(object owner, bool locked)
+        {
+            if (owner == null) return;
+
+            if (locked)
+            {
+                if (!_gameplayLocks.Contains(owner)) _gameplayLocks.Add(owner);
+            }
+            else
+            {
+                _gameplayLocks.Remove(owner);
+            }
+        }
+
+        private readonly System.Collections.Generic.List<object> _gameplayLocks =
+            new System.Collections.Generic.List<object>(2);
 
         /// <summary>
         /// Coupe les COUPS sans couper le deplacement ni la visee.
@@ -166,7 +196,7 @@ namespace UberBagarre.Player
             InteractHeld = _provider.GetHeld(_bindings.interact);
             PhonePressed = _provider.GetPressedThisFrame(_bindings.phone);
 
-            if (!_gameplayInputEnabled)
+            if (!GameplayInputEnabled)
             {
                 ClearGameplayInput();
                 return;

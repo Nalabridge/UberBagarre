@@ -60,7 +60,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 
 1. Récupère le code (`Fetch origin` → `Pull origin` dans GitHub Desktop), puis reviens dans Unity :
    il recompile tout seul dès que la fenêtre reprend le focus.
-2. Menu **Uber Bagarre → 3 - Reinitialiser les touches par defaut** — *uniquement si j'ai changé
+2. Menu **Uber Bagarre → 6 - Reinitialiser les touches par defaut** — *uniquement si j'ai changé
    des touches.* Un asset garde les valeurs du jour de sa création : une nouvelle touche par défaut
    dans le code ne met **pas** à jour un asset existant.
 3. Menu **Uber Bagarre → 2 - Construire la scene Combat Sandbox** — pour appliquer les nouveaux
@@ -75,13 +75,31 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 > ⚠️ Ces deux commandes **écrasent** l'asset de touches et la scène. Si tu as personnalisé des
 > valeurs que tu veux garder, note-les avant.
 
+### 5. Si « ça ne fait pas comme un jeu » (on ne bouge pas, la souris sort de la fenêtre)
+
+Dans l'ordre :
+
+1. **Une scène du jeu est-elle ouverte ?** Les scènes ne sont pas dans le dépôt, elles sont
+   générées. Sur une nouvelle machine, lance **Uber Bagarre → 3 - Construire la scene Prologue**
+   (ou **2 - … Combat Sandbox**). Play dans la scène vide par défaut n'affiche qu'un ciel.
+2. **L'onglet Game est-il devant ?** Si c'est l'onglet *Scene* qui s'affiche pendant Play, tu
+   regardes l'éditeur, pas le jeu. Dans l'onglet Game, menu déroulant en haut : choisis
+   **Play Focused** (ou *Play Maximized*).
+3. **Clique une fois dans l'image.** Tant que le jeu n'a pas la main, il affiche
+   « CLIQUE DANS LA FENÊTRE POUR JOUER ». Échap rend la souris.
+4. **Linux : ouvre une session X11 (Xorg), pas Wayland.** L'éditeur Unity sous Linux est prévu
+   pour X11 ; sous Wayland la capture de la souris peut échouer et le curseur sort de la fenêtre.
+   Sur l'écran de connexion (roue dentée), choisis par exemple « Ubuntu sur Xorg ». Le jeu
+   redemande la capture tout seul si le système la rend, et les déplacements marchent même sans
+   capture — mais la visée, elle, a besoin de la souris dans la fenêtre.
+
 ---
 
 ## Commandes
 
 | Touche | Action |
 |---|---|
-| **W A S D** (ou Z Q S D en AZERTY, selon ton clavier) | Déplacement |
+| **Z Q S D** ou **W A S D** (les deux marchent) | Déplacement |
 | **Souris** | Regarder |
 | **Maj gauche** (maintenu) | Sprint (uniquement vers l'avant) |
 | **C** (maintenu) | S'accroupir |

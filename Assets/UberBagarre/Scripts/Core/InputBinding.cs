@@ -27,9 +27,24 @@ namespace UberBagarre.Core
         [Tooltip("Bouton utilisé quand la source est 'MouseButton' : 0 = gauche, 1 = droit, 2 = molette.")]
         public int mouseButton;
 
+        /// <summary>
+        /// Seconde touche qui fait la même chose. Elle existe pour les claviers AZERTY : l'ancien
+        /// Input Manager lit la LETTRE produite par la touche, pas sa position, donc W / A ne
+        /// tombent pas sous les doigts en AZERTY. Z et Q en secours rendent ZQSD jouable sans
+        /// casser WASD.
+        /// </summary>
+        [Tooltip("Touche de secours (ex. Z pour avancer en AZERTY). None = aucune.")]
+        public KeyCode alternateKey;
+
         public static InputBinding FromKey(KeyCode keyCode)
         {
             return new InputBinding { source = InputSource.Key, key = keyCode, mouseButton = 0 };
+        }
+
+        /// <summary>Une touche et sa touche de secours.</summary>
+        public static InputBinding FromKeys(KeyCode keyCode, KeyCode alternate)
+        {
+            return new InputBinding { source = InputSource.Key, key = keyCode, mouseButton = 0, alternateKey = alternate };
         }
 
         public static InputBinding FromMouse(int button)
@@ -40,7 +55,7 @@ namespace UberBagarre.Core
         /// <summary>Une touche laissée sur None est considérée comme "non assignée" et ne déclenche rien.</summary>
         public bool IsAssigned
         {
-            get { return source == InputSource.MouseButton || key != KeyCode.None; }
+            get { return source == InputSource.MouseButton || key != KeyCode.None || alternateKey != KeyCode.None; }
         }
 
         public override string ToString()
@@ -56,7 +71,11 @@ namespace UberBagarre.Core
                 }
             }
 
-            return key == KeyCode.None ? "(non assigne)" : key.ToString();
+            if (key == KeyCode.None && alternateKey == KeyCode.None) return "(non assigne)";
+            if (alternateKey == KeyCode.None || alternateKey == key) return key.ToString();
+            if (key == KeyCode.None) return alternateKey.ToString();
+
+            return key + " / " + alternateKey;
         }
     }
 }

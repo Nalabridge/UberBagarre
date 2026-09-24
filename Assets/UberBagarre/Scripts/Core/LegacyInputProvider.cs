@@ -20,25 +20,40 @@ namespace UberBagarre.Core
         public bool GetHeld(InputBinding binding)
         {
             if (!binding.IsAssigned) return false;
-            return binding.source == InputSource.MouseButton
-                ? Input.GetMouseButton(binding.mouseButton)
-                : Input.GetKey(binding.key);
+            if (binding.source == InputSource.MouseButton) return Input.GetMouseButton(binding.mouseButton);
+
+            return Held(binding.key) || Held(binding.alternateKey);
         }
 
         public bool GetPressedThisFrame(InputBinding binding)
         {
             if (!binding.IsAssigned) return false;
-            return binding.source == InputSource.MouseButton
-                ? Input.GetMouseButtonDown(binding.mouseButton)
-                : Input.GetKeyDown(binding.key);
+            if (binding.source == InputSource.MouseButton) return Input.GetMouseButtonDown(binding.mouseButton);
+
+            return Pressed(binding.key) || Pressed(binding.alternateKey);
         }
 
         public bool GetReleasedThisFrame(InputBinding binding)
         {
             if (!binding.IsAssigned) return false;
-            return binding.source == InputSource.MouseButton
-                ? Input.GetMouseButtonUp(binding.mouseButton)
-                : Input.GetKeyUp(binding.key);
+            if (binding.source == InputSource.MouseButton) return Input.GetMouseButtonUp(binding.mouseButton);
+
+            return Released(binding.key) || Released(binding.alternateKey);
+        }
+
+        private static bool Held(KeyCode key)
+        {
+            return key != KeyCode.None && Input.GetKey(key);
+        }
+
+        private static bool Pressed(KeyCode key)
+        {
+            return key != KeyCode.None && Input.GetKeyDown(key);
+        }
+
+        private static bool Released(KeyCode key)
+        {
+            return key != KeyCode.None && Input.GetKeyUp(key);
         }
 
         public Vector2 GetLookDelta()
