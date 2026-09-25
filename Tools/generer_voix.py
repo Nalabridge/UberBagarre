@@ -35,6 +35,7 @@ CAST = {
     "DRAGAN":     ("gilles", 0.88, 0.95, None),
     "MILAN":      ("gilles", 0.97, 1.10, None),
     "LE TAUREAU": ("gilles", 0.80, 0.90, None),
+    "BRUNO MORETTI": ("gilles", 0.91, 0.97, None),
 }
 
 # Valeurs des variables du scenario, par chapitre (celles que construit le generateur de scene).

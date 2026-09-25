@@ -55,6 +55,8 @@ namespace UberBagarre.Story
         private float _previousFov = 60f;
         private bool _previousHold;
 
+        private float _letterbox;
+
         private AudioSource _audio;
         private AudioClip _whoosh;
         private AudioClip _boom;
@@ -66,6 +68,12 @@ namespace UberBagarre.Story
         {
             get { return _playing; }
         }
+
+        /// <summary>
+        /// Bandes noires hors cinématique : un face-à-face dialogué se joue déjà « au cinéma »,
+        /// et la présentation qui suit reprend les bandes là où elles sont, sans à-coup.
+        /// </summary>
+        public bool Bars { get; set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
@@ -133,6 +141,11 @@ namespace UberBagarre.Story
 
         private void Update()
         {
+            // Les bandes descendent et remontent en 0,35 s ; pendant la cinematique elles
+            // remontent juste avant la fin, sur le « BAGARRE ! ».
+            float bars = _playing ? (_time < End - 0.35f ? 1f : 0f) : (Bars ? 1f : 0f);
+            _letterbox = Mathf.MoveTowards(_letterbox, bars, Time.unscaledDeltaTime / 0.35f);
+
             if (!_playing) return;
 
             _time += Time.unscaledDeltaTime;
@@ -283,19 +296,27 @@ namespace UberBagarre.Story
 
         private void OnGUI()
         {
-            if (!_playing) return;
+            if (!_playing && _letterbox <= 0.001f) return;
 
             float sw = UnityEngine.Screen.width;
             float sh = UnityEngine.Screen.height;
             float unit = sh / 1080f;
 
             // Bandes noires : elles descendent au debut, remontent a la fin.
-            float bars = Mathf.Clamp01(_time / 0.35f) * Mathf.Clamp01((End - _time) / 0.35f);
-            float height = sh * 0.11f * Mathf.SmoothStep(0f, 1f, bars);
+            float height = sh * 0.11f * Mathf.SmoothStep(0f, 1f, _letterbox);
             GuiKit.Fill(new Rect(0f, 0f, sw, height), Color.black);
             GuiKit.Fill(new Rect(0f, sh - height, sw, height), Color.black);
 
             Color outline = new Color(0f, 0f, 0f, 0.9f);
+
+            if (!_playing)
+            {
+                // Face-a-face dialogue : on rappelle discretement qu'on peut avancer.
+                GUIStyle skip = GuiKit.Style(Mathf.Max(10, Mathf.RoundToInt(18f * unit)), FontStyle.Normal, TextAnchor.MiddleRight);
+                GuiKit.OutlinedLabel(new Rect(sw - 420f * unit, sh - height * 0.5f - 15f * unit, 390f * unit, 30f * unit),
+                    "E : réplique suivante", skip, new Color(1f, 1f, 1f, 0.5f * _letterbox), new Color(0f, 0f, 0f, 0.9f * _letterbox), 1f);
+                return;
+            }
 
             // Carte de l'adversaire pendant le gros plan.
             if (_time >= ShotA && _time < ShotB)

@@ -68,6 +68,20 @@ namespace UberBagarre.Story
         public Action OnExit;
 
         /// <summary>
+        /// Appelé à chaque image tant que l'étape dure. Sert aux mises en scène qui se
+        /// poursuivent pendant un dialogue : deux hommes qui se font face ne se figent pas, ils
+        /// se suivent du regard.
+        /// </summary>
+        public Action OnUpdate;
+
+        /// <summary>
+        /// Si elle renvoie vrai au moment d'entrer, l'étape est sautée sans rien jouer : ni
+        /// répliques, ni entrée, ni sortie. Un face-à-face n'a plus de sens quand le joueur a
+        /// déjà cogné le premier.
+        /// </summary>
+        public Func<bool> SkipIf;
+
+        /// <summary>
         /// Condition de passage à l'étape suivante. Null = l'étape se termine dès que les
         /// répliques sont finies et que la durée minimale est écoulée.
         /// </summary>
@@ -132,6 +146,18 @@ namespace UberBagarre.Story
         public StoryBeat Exit(Action action)
         {
             OnExit = action;
+            return this;
+        }
+
+        public StoryBeat During(Action action)
+        {
+            OnUpdate = action;
+            return this;
+        }
+
+        public StoryBeat SkipWhen(Func<bool> condition)
+        {
+            SkipIf = condition;
             return this;
         }
     }

@@ -47,6 +47,12 @@ namespace UberBagarre.Player
         /// </summary>
         public float SensitivityScale { get; set; }
 
+        /// <summary>La tête (le point de vue) : sert aux mises en scène qui orientent le regard.</summary>
+        public Transform Head
+        {
+            get { return _pitchTransform != null ? _pitchTransform : transform; }
+        }
+
         public float Yaw { get; private set; }
         public float Pitch { get; private set; }
 

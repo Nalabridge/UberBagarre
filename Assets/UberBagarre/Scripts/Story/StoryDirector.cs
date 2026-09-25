@@ -62,7 +62,7 @@ namespace UberBagarre.Story
             _finished = false;
             _running = _beats.Count > 0;
 
-            if (_running) EnterBeat(0);
+            if (_running) EnterPlayable(0);
         }
 
         /// <summary>Interrompt la séquence et rend la main au joueur.</summary>
@@ -110,6 +110,8 @@ namespace UberBagarre.Story
 
             StoryBeat beat = _beats[_index];
 
+            if (beat.OnUpdate != null) beat.OnUpdate();
+
             // Passer une réplique : autorisé UNIQUEMENT sur les étapes qui n'attendent rien
             // d'autre que la fin du dialogue. Ailleurs, la même touche sert à agir — répondre au
             // téléphone, monter en voiture — et l'autoriser ici la ferait compter deux fois.
@@ -144,8 +146,17 @@ namespace UberBagarre.Story
         private void Advance()
         {
             ExitBeat();
+            EnterPlayable(_index + 1);
+        }
 
-            int next = _index + 1;
+        /// <summary>Entre dans la première étape à partir de <paramref name="next"/> qui ne demande pas à être sautée.</summary>
+        private void EnterPlayable(int next)
+        {
+            while (next < _beats.Count && _beats[next].SkipIf != null && _beats[next].SkipIf())
+            {
+                if (_logBeats) Debug.Log("[UberBagarre] Etape sautee : " + _beats[next].Id, this);
+                next++;
+            }
 
             if (next >= _beats.Count)
             {

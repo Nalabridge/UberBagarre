@@ -47,6 +47,10 @@ namespace UberBagarre.Story
         [SerializeField] private PhoneDevice _phone;
         [SerializeField] private InteractionSystem _interaction;
 
+        [SerializeField]
+        [Tooltip("La visee du joueur : pendant un face-a-face, son regard se pose sur l'adversaire.")]
+        private PlayerLook _look;
+
         [Header("Monde")]
         [SerializeField] private LocationDirector _locations;
         [SerializeField] private TargetFinder _finder;
@@ -183,6 +187,8 @@ namespace UberBagarre.Story
         private int _headbuttHits;
         private int _throwHitsAtStart;
         private bool _brothersProvoked;
+        private bool _targetProvoked;
+        private bool _championProvoked;
         private bool _toughnessApplied;
         private bool _secondWindApplied;
         private bool _enteredClub;
@@ -239,6 +245,8 @@ namespace UberBagarre.Story
 
         private void Start()
         {
+            if (_look == null && _player != null) _look = _player.GetComponent<PlayerLook>();
+
             if (!_playOnStart) return;
 
             Begin();
@@ -315,6 +323,89 @@ namespace UberBagarre.Story
             if (_intro != null && opponent != null) _intro.Play(opponent, title, subtitle, null);
         }
 
+        private Combatant Brother(int index)
+        {
+            return index < _brothers.Length ? _brothers[index] : null;
+        }
+
+        /// <summary>
+        /// Un face-à-face dialogué avant la bagarre, comme les sous-titres de l'ouverture : le
+        /// jeu se fige, les bandes noires descendent, l'adversaire vient se planter devant le
+        /// joueur et le regard du joueur se pose sur lui. Les répliques se passent avec E.
+        ///
+        /// L'étape est sautée si le joueur a déjà frappé : on ne fait pas la conversation à
+        /// quelqu'un qu'on vient de cogner.
+        /// </summary>
+        private StoryBeat FaceOffBeat(string id, System.Func<bool> provoked, Combatant first, Combatant second)
+        {
+            StoryBeat beat = new StoryBeat(id)
+                .Freeze()
+                .SkipWhen(provoked)
+                .During(delegate { FaceOff(first, second); });
+
+            beat.OnExit = delegate
+            {
+                if (_intro != null) _intro.Bars = false;
+            };
+
+            System.Action entered = delegate
+            {
+                if (_intro != null) _intro.Bars = true;
+                if (_tutorial != null) _tutorial.Hide();
+                if (_phone != null) _phone.Lower();
+            };
+
+            return beat.Enter(entered);
+        }
+
+        /// <summary>
+        /// Chaque image du face-à-face : les adversaires s'avancent au pas jusqu'à distance de
+        /// conversation et se tournent vers le joueur ; la vue du joueur glisse vers eux.
+        /// </summary>
+        private void FaceOff(Combatant first, Combatant second)
+        {
+            if (_player == null) return;
+
+            Vector3 player = _player.transform.position;
+            Vector3 focus = Vector3.zero;
+            int count = Approach(first, player, 2.1f, ref focus) + Approach(second, player, 2.6f, ref focus);
+
+            if (count == 0 || _look == null) return;
+
+            focus /= count;
+
+            Vector3 direction = focus - _look.Head.position;
+            float flat = Mathf.Sqrt(direction.x * direction.x + direction.z * direction.z);
+            if (flat < 0.05f) return;
+
+            float yaw = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+            float pitch = -Mathf.Atan2(direction.y, flat) * Mathf.Rad2Deg;
+
+            // Glissement amorti, pas une coupe : le joueur voit son regard se poser.
+            float t = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 3f);
+            _look.SetLookAngles(Mathf.LerpAngle(_look.Yaw, yaw, t), Mathf.LerpAngle(_look.Pitch, pitch, t));
+        }
+
+        private static int Approach(Combatant opponent, Vector3 player, float stop, ref Vector3 focus)
+        {
+            if (opponent == null || !opponent.IsAlive || !opponent.isActiveAndEnabled) return 0;
+
+            EnemyMotor motor = opponent.GetComponent<EnemyMotor>();
+            if (motor != null)
+            {
+                Vector3 offset = player - opponent.transform.position;
+                offset.y = 0f;
+
+                // Au pas, pas a la charge : on vient voir qui c'est.
+                motor.FaceTowards(player);
+                if (offset.magnitude > stop) motor.SetMoveIntent(offset, 0.45f);
+            }
+
+            // Le regard vise un peu sous le point de visee : on regarde un visage, pas un front.
+            focus += opponent.AimPosition - Vector3.up * 0.05f;
+            return 1;
+        }
+
         private Combatant FirstBrother()
         {
             for (int i = 0; i < _brothers.Length; i++)
@@ -359,6 +450,9 @@ namespace UberBagarre.Story
             _headbuttHits = 0;
             _throwHitsAtStart = 0;
             _brothersProvoked = false;
+            _targetProvoked = false;
+            _championProvoked = false;
+            if (_intro != null) _intro.Bars = false;
             _toughnessApplied = false;
             _secondWindApplied = false;
             _enteredClub = false;
@@ -615,8 +709,26 @@ namespace UberBagarre.Story
 
             beats.Add(new StoryBeat("identifie")
                 .Say("MOI", "C'est lui.")
-                .Wait(0.8f)
-                .Exit(delegate
+                .Wait(0.8f));
+
+            // On ne cogne pas un inconnu en arrivant : on va le voir, on lui parle, et c'est la
+            // conversation qui tourne mal. Un joueur qui frappe sans prevenir saute le dialogue.
+            beats.Add(new StoryBeat("approche-cible")
+                .Goal("Va voir " + target)
+                .Until(delegate { return _targetProvoked || PlayerNear(_targetTransform, 3.4f); }));
+
+            beats.Add(FaceOffBeat("face-a-face", delegate { return _targetProvoked; }, _target, null)
+                .Say(target, "Qu'est-ce que tu me veux, toi ?")
+                .Say("MOI", "Bruno Moretti ?")
+                .Say(target, "Ça dépend. Qui demande ?")
+                .Say("MOI", "Personne. Quelqu'un a payé pour qu'on se parle.")
+                .Say(target, "Payé ? Pour me parler ?")
+                .Say("MOI", "Pas vraiment pour parler.")
+                .Say(target, "Ah. T'es un de ceux-là.")
+                .Say(target, "J'ai fini mon service. Mais pour toi, je fais une heure sup'. Viens."));
+
+            beats.Add(new StoryBeat("bagarre")
+                .Enter(delegate
                 {
                     // Le cerveau s'allume, mais la cinematique tient tout le monde tant qu'elle dure.
                     StartFight(_target, target, "1 ÉTOILE  ·  " + clothing, _streetCrowd);
@@ -888,11 +1000,18 @@ namespace UberBagarre.Story
                 .Goal("Approche-toi de la camionnette")
                 .Until(delegate { return _brothersProvoked || PlayerNear(_van, _ambushDistance); }));
 
+            beats.Add(FaceOffBeat("face-a-face-2", delegate { return _brothersProvoked; }, Brother(0), Brother(1))
+                .Say(elder, "Hé. T'es perdu, toi ?")
+                .Say(younger, "Le parking est payant, mon grand. Surtout pour toi.")
+                .Say("MOI", "Dragan et Milan Kovac ?")
+                .Say(elder, "Qui c'est qui demande ?")
+                .Say(younger, "Regarde-le. Il a une tête d'appli.")
+                .Say("MOI", "Deux étoiles. Rien de personnel.")
+                .Say(elder, "Deux étoiles...")
+                .Say(younger, "On va lui en faire voir trente-six."));
+
             beats.Add(new StoryBeat("embuscade")
                 .Goal("Mets les deux frères K.O.")
-                .Say(elder, "Hé. T'es perdu, toi ?")
-                .Say(younger, "Regarde-le. Il a une tête d'appli.")
-                .Say("MOI", "Rien de personnel.")
                 .Enter(delegate
                 {
                     StartFight(FirstBrother(), targets, "2 ÉTOILES  ·  " + elder + " ET " + younger, _parkingCrowd);
@@ -1247,16 +1366,26 @@ namespace UberBagarre.Story
                 .Goal("Entre dans la fosse")
                 .Until(delegate { return PlayerNear(_ring, 3.2f); }));
 
-            beats.Add(new StoryBeat("gong")
-                .Goal("Mets " + champion + " K.O.")
+            beats.Add(FaceOffBeat("face-a-face-3", delegate { return _championProvoked; }, _champion, null)
                 .Say(champion, "Le livreur. On m'a parlé de toi.")
+                .Say("MOI", "On m'a parlé de toi aussi. Onze combats, onze K.O.")
+                .Say(champion, "Douze, dans deux minutes.")
                 .Say(champion, "Ce soir, t'es pas le seul à avoir reçu une commande.")
                 .Say("MOI", "Alors on va être deux à être payés.")
+                .Say(champion, "Non. Un seul.")
                 .Enter(delegate
                 {
-                    // La barriere se referme derriere le joueur, et le champion avance.
-                    StartFight(_champion, champion, "3 ÉTOILES  ·  LA FOSSE DU VERTIGO", null);
+                    // La barriere se referme derriere le joueur : la salle sait ce qui vient.
                     if (_ringGate != null) _ringGate.SetActive(true);
+                    if (_crowd != null) _crowd.Roar(0.4f);
+                }));
+
+            beats.Add(new StoryBeat("gong")
+                .Goal("Mets " + champion + " K.O.")
+                .Enter(delegate
+                {
+                    if (_ringGate != null) _ringGate.SetActive(true);
+                    StartFight(_champion, champion, "3 ÉTOILES  ·  LA FOSSE DU VERTIGO", null);
                     if (_championBrain != null) _championBrain.enabled = true;
                     if (_crowd != null) _crowd.Roar(1f);
                     CheerRing(0.9f, 2.5f);
@@ -1613,11 +1742,14 @@ namespace UberBagarre.Story
             if (_player == null || victim == null) return;
             if (info.Attacker != _player.gameObject) return;
 
+            if (victim == _champion) _championProvoked = true;
+
             bool onBrother = IsBrother(victim);
             bool onTarget = _target == null ? !onBrother : victim == _target;
             if (!onTarget && !onBrother) return;
 
             if (onBrother) _brothersProvoked = true;
+            if (victim == _target) _targetProvoked = true;
 
             if (_shove != null && info.Attack == _shove) _shoveHits++;
             else if (_headbutt != null && info.Attack == _headbutt) _headbuttHits++;

@@ -215,6 +215,7 @@ namespace UberBagarre.Story
                 case "DRAGAN": pitch = 96f; break;
                 case "MILAN": pitch = 112f; break;
                 case "LE TAUREAU": pitch = 84f; break;
+                case "BRUNO MORETTI": pitch = 102f; break;
                 default: pitch = 118f; break;
             }
         }

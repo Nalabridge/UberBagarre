@@ -799,6 +799,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(prologue, "_playerGuard", player.GetComponent<GuardSystem>());
             SerializedWiring.SetObject(prologue, "_phone", phone);
             SerializedWiring.SetObject(prologue, "_interaction", interaction);
+            SerializedWiring.SetObject(prologue, "_look", player.GetComponent<PlayerLook>());
 
             SerializedWiring.SetObject(prologue, "_locations", locations);
             SerializedWiring.SetObject(prologue, "_finder", finder);
