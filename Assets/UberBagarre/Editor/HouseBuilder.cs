@@ -63,6 +63,9 @@ namespace UberBagarre.EditorTools
             public Material Paper;
             public Material Porcelain;
             public Material Laminate;
+            public Material Stain;
+            public Material Sofa;
+            public Material Hedge;
         }
 
         // ------------------------------------------------------------------ construction
@@ -148,8 +151,31 @@ namespace UberBagarre.EditorTools
             p.Render = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Crepi",
                 Color.white, 0.07f, 0f, render, new Vector2(6f, 3f));
 
+            // Des tuiles, pas une plaque grise : a contre-jour du lampadaire, c'est le relief
+            // des rangees qui fait lire un toit.
+            Texture2D tiles = EditorBuildUtility.CreateOrUpdateBrickTexture(textures, "T_Tuiles", 256, 9,
+                new Color(0.10f, 0.09f, 0.09f), new Color(0.34f, 0.20f, 0.16f));
+
             p.Roof = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Toiture",
-                new Color(0.20f, 0.19f, 0.19f), 0.12f, 0f);
+                new Color(0.72f, 0.66f, 0.64f), 0.14f, 0f, tiles, new Vector2(6f, 3f));
+
+            Texture2D stain = EditorBuildUtility.CreateOrUpdateGrainTexture(textures, "T_Humidite", 128,
+                new Color(0.27f, 0.24f, 0.17f), 0.35f, 0.08f, 0.04f, 0.25f, 4545);
+
+            p.Stain = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Humidite",
+                Color.white, 0.04f, 0f, stain, Vector2.one);
+
+            Texture2D sofa = EditorBuildUtility.CreateOrUpdateFabricTexture(textures, "T_Canape", 256,
+                new Color(0.31f, 0.26f, 0.19f), 4, 0.15f, 1818);
+
+            p.Sofa = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Canape",
+                Color.white, 0.05f, 0f, sofa, new Vector2(3f, 2f));
+
+            Texture2D hedge = EditorBuildUtility.CreateOrUpdateGrainTexture(textures, "T_Haie", 256,
+                new Color(0.08f, 0.13f, 0.06f), 0.35f, 0.22f, 0.12f, 0.18f, 9191);
+
+            p.Hedge = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Haie",
+                Color.white, 0.08f, 0f, hedge, new Vector2(3f, 2f));
 
             p.Mattress = EditorBuildUtility.CreateOrUpdateMaterial(materials, "M_Matelas",
                 Color.white, 0.07f, 0f, mattress, new Vector2(3f, 5f));
@@ -178,21 +204,192 @@ namespace UberBagarre.EditorTools
             Box(plot.transform, "Terrain", new Vector3(0f, -0.2f, 0f),
                 new Vector3(PlotWidth, 0.4f, PlotDepth), palette.Grass, true);
 
-            // L'allée de gravier : elle relie le portail à la porte, et c'est elle qui dit où
-            // aller au moment où le joueur sort de chez lui pour la première fois.
-            Slab(plot.transform, "Allee", new Vector3(2.6f, 0.012f, -2.5f),
-                new Vector3(3.2f, 0.03f, PlotDepth * 0.58f), palette.Gravel);
+            // Le chemin pieton : du portillon a la porte, un ruban de gravier et des dalles
+            // posees de travers. C'est lui qui dit ou aller en sortant de chez soi.
+            Slab(plot.transform, "Chemin", new Vector3(FootpathX, 0.012f, (-PlotDepth * 0.5f + HouseZ - RoomDepth * 0.5f - 0.9f) * 0.5f),
+                new Vector3(1.3f, 0.03f, PlotDepth * 0.5f + HouseZ - RoomDepth * 0.5f - 0.9f), palette.Gravel);
 
-            Slab(plot.transform, "Seuil", new Vector3(0f, 0.012f, HouseZ - RoomDepth * 0.5f - 0.9f),
+            for (int i = 0; i < 14; i++)
+            {
+                float z = -PlotDepth * 0.5f + 0.7f + i * 0.78f;
+                if (z > HouseZ - RoomDepth * 0.5f - 1.1f) break;
+
+                Slab(plot.transform, "Dalle", new Vector3(FootpathX + (i % 2 == 0 ? 0.06f : -0.07f), 0.03f, z),
+                    new Vector3(0.62f, 0.03f, 0.5f), night.Concrete)
+                    .transform.localRotation = Quaternion.Euler(0f, i * 13f % 17f - 8f, 0f);
+            }
+
+            Slab(plot.transform, "Seuil", new Vector3(FootpathX, 0.012f, HouseZ - RoomDepth * 0.5f - 0.9f),
                 new Vector3(2.6f, 0.03f, 1.8f), palette.Gravel);
 
-            Fence(plot.transform, night);
+            Driveway(plot.transform, night, palette);
+            Fence(plot.transform, night, palette);
+            Street(plot.transform, night, palette);
 
-            // Un seul lampadaire, au-delà de la clôture, côté route : c'est la seule source
-            // extérieure. Le reste du jardin est noir, et c'est ce noir qui rend l'ampoule de
-            // l'intérieur importante.
-            GameObject lamp = EditorBuildUtility.CreateEmpty("Lampadaire de rue", plot.transform,
-                new Vector3(-8.5f, 0f, -PlotDepth * 0.5f - 1.6f));
+            // Deux lampadaires, au-dela de la cloture, cote route : ce sont les seules sources
+            // exterieures avec la lampe du porche. Le reste du jardin est noir, et c'est ce
+            // noir qui rend l'ampoule de l'interieur importante.
+            StreetLamp(plot.transform, night, new Vector3(-8.5f, 0f, -PlotDepth * 0.5f - 1.6f));
+            StreetLamp(plot.transform, night, new Vector3(11.2f, 0f, -PlotDepth * 0.5f - 1.6f));
+        }
+
+        /// <summary>X du chemin pieton : dans l'axe de la porte.</summary>
+        private const float FootpathX = -0.6f;
+
+        /// <summary>L'allee carrossable, le long du flanc droit de la maison.</summary>
+        private const float DrivewayX = 7.8f;
+        private const float DrivewayWidth = 3.4f;
+
+        /// <summary>Où dort la voiture, sur l'allée : à hauteur de l'avant de la maison.</summary>
+        private const float CarZ = 0.6f;
+
+        /// <summary>
+        /// L'allee, comme devant n'importe quelle maison : une bande de beton qui part de la
+        /// rue, passe le portail et longe le flanc de la maison. La voiture y dort le nez vers
+        /// le fond du terrain — pas en travers de la porte d'entree.
+        /// </summary>
+        private static void Driveway(Transform parent, NightMaterialFactory.Palette night, Palette palette)
+        {
+            GameObject drive = EditorBuildUtility.CreateEmpty("Allee", parent, Vector3.zero);
+            Transform t = drive.transform;
+
+            float from = -PlotDepth * 0.5f - 0.1f;
+            float to = HouseZ + RoomDepth * 0.5f - 2.4f;
+            float length = to - from;
+
+            Box(t, "Beton", new Vector3(DrivewayX, 0.015f, (from + to) * 0.5f),
+                new Vector3(DrivewayWidth, 0.05f, length), night.Concrete, true);
+
+            // Les joints de dilatation, et deux fissures : un beton sans defaut est un sol de
+            // parking neuf.
+            for (float z = from + 2.5f; z < to - 0.5f; z += 2.5f)
+            {
+                Slab(t, "Joint", new Vector3(DrivewayX, 0.042f, z), new Vector3(DrivewayWidth, 0.004f, 0.03f),
+                    night.DarkConcrete);
+            }
+
+            Slab(t, "Fissure", new Vector3(DrivewayX - 0.5f, 0.042f, -6.2f), new Vector3(0.02f, 0.004f, 1.9f),
+                night.DarkConcrete).transform.localRotation = Quaternion.Euler(0f, 24f, 0f);
+
+            Slab(t, "Fissure", new Vector3(DrivewayX + 0.7f, 0.042f, -1.4f), new Vector3(0.02f, 0.004f, 1.2f),
+                night.DarkConcrete).transform.localRotation = Quaternion.Euler(0f, -31f, 0f);
+
+            // La tache d'huile, sous le moteur : la voiture dort toujours au meme endroit.
+            Cylinder(t, "Tache d'huile", new Vector3(DrivewayX + 0.1f, 0.041f, CarZ + 1.4f),
+                new Vector3(0.9f, 0.002f, 0.7f), night.DarkMetal, false);
+
+            Cylinder(t, "Tache d'huile", new Vector3(DrivewayX - 0.2f, 0.041f, CarZ + 1.1f),
+                new Vector3(0.45f, 0.002f, 0.38f), night.DarkMetal, false);
+
+            // Des herbes dans les joints, le long des bords.
+            for (int i = 0; i < 12; i++)
+            {
+                float z = from + 0.8f + i * length / 12f;
+                float x = DrivewayX + (i % 2 == 0 ? -1f : 1f) * (DrivewayWidth * 0.5f - 0.08f);
+
+                Slab(t, "Touffe", new Vector3(x, 0.14f, z), new Vector3(0.24f, 0.24f, 0.02f), palette.Grass)
+                    .transform.localRotation = Quaternion.Euler(0f, i * 53f, 0f);
+            }
+        }
+
+        /// <summary>
+        /// La rue devant le terrain : trottoir, bordure, chaussee mouillee, et deux maisons en
+        /// face. Sans elle, la cloture donnait sur le vide, et une allee qui ne mene nulle part
+        /// n'est pas une allee.
+        /// </summary>
+        private static void Street(Transform parent, NightMaterialFactory.Palette night, Palette palette)
+        {
+            GameObject street = EditorBuildUtility.CreateEmpty("Rue", parent, Vector3.zero);
+            Transform t = street.transform;
+
+            const float length = 64f;
+            float fence = -PlotDepth * 0.5f;
+            float near = fence - 2.1f;
+            float far = near - 7f;
+
+            Box(t, "Trottoir", new Vector3(0f, -0.18f, fence - 1.05f), new Vector3(length, 0.4f, 2.1f),
+                night.Sidewalk, true);
+
+            Box(t, "Bordure", new Vector3(0f, -0.14f, near - 0.07f), new Vector3(length, 0.36f, 0.14f),
+                night.Curb, true);
+
+            Box(t, "Chaussee", new Vector3(0f, -0.34f, (near + far) * 0.5f), new Vector3(length, 0.4f, 7f),
+                night.WetAsphalt, true);
+
+            for (float x = -length * 0.5f + 2f; x < length * 0.5f; x += 4.5f)
+            {
+                Slab(t, "Marquage", new Vector3(x, -0.138f, (near + far) * 0.5f), new Vector3(2.2f, 0.005f, 0.12f),
+                    night.RoadPaint);
+            }
+
+            Box(t, "Bordure en face", new Vector3(0f, -0.14f, far + 0.07f), new Vector3(length, 0.36f, 0.14f),
+                night.Curb, true);
+
+            Box(t, "Trottoir en face", new Vector3(0f, -0.18f, far - 1f), new Vector3(length, 0.4f, 2f),
+                night.Sidewalk, true);
+
+            Box(t, "Terrain en face", new Vector3(0f, -0.2f, far - 9f), new Vector3(length, 0.4f, 14f),
+                palette.Grass, true);
+
+            // Les voisins : des maisons pareilles a la sienne, une fenetre allumee chez l'un.
+            NeighbourHouse(t, night, palette, new Vector3(-9.5f, 0f, far - 8.5f), true);
+            NeighbourHouse(t, night, palette, new Vector3(8.5f, 0f, far - 9.5f), false);
+
+            // Limites invisibles : la rue se voit, elle ne se traverse pas. Le jeu est dans la
+            // maison et la voiture ; un joueur qui part a pied vers les voisins ne trouverait
+            // qu'un bord de monde.
+            Wall(t, "Limite (en face)", new Vector3(0f, 1f, far - 1.5f), new Vector3(length, 3f, 0.2f));
+
+            // Sur les cotes, la limite est dans l'alignement de la cloture : au-dela, le terrain
+            // s'arrete, et un joueur qui longerait le trottoir tomberait.
+            float side = PlotWidth * 0.5f + 0.2f;
+            Wall(t, "Limite (gauche)", new Vector3(-side, 1f, (fence + far - 1.5f) * 0.5f), new Vector3(0.2f, 3f, fence - far + 1.5f));
+            Wall(t, "Limite (droite)", new Vector3(side, 1f, (fence + far - 1.5f) * 0.5f), new Vector3(0.2f, 3f, fence - far + 1.5f));
+        }
+
+        private static void NeighbourHouse(Transform parent, NightMaterialFactory.Palette night, Palette palette,
+            Vector3 position, bool lit)
+        {
+            GameObject house = EditorBuildUtility.CreateEmpty(lit ? "Voisins (allume)" : "Voisins", parent, position);
+            Transform t = house.transform;
+
+            const float width = 9f;
+            const float depth = 7f;
+
+            Box(t, "Murs", new Vector3(0f, WallHeight * 0.5f, 0f), new Vector3(width, WallHeight, depth), palette.Render, true);
+            Roof(t, palette, width, depth, WallHeight, 28f, 0.4f);
+
+            // Facade cote rue (+Z) : une porte et deux fenetres.
+            Box(t, "Porte", new Vector3(-1.2f, 1f, depth * 0.5f + 0.02f), new Vector3(1f, 2f, 0.05f), night.Wood, false);
+
+            for (int i = 0; i < 2; i++)
+            {
+                float x = i == 0 ? 1.6f : -3.4f;
+                Material glass = lit && i == 0 ? night.GlowWarm : night.Glass;
+
+                Box(t, "Fenetre", new Vector3(x, 1.45f, depth * 0.5f + 0.02f), new Vector3(1.2f, 1f, 0.04f), glass, false);
+                Box(t, "Appui", new Vector3(x, 0.92f, depth * 0.5f + 0.08f), new Vector3(1.35f, 0.05f, 0.15f),
+                    palette.Porcelain, false);
+            }
+
+            if (lit)
+            {
+                // La fenetre allumee eclaire vraiment un peu la pelouse devant elle.
+                NightStreetBuilder.AddLight(t, "Lumiere de salon", new Vector3(1.6f, 1.5f, depth * 0.5f + 0.6f),
+                    new Color(1f, 0.76f, 0.46f), 0.9f, 4.5f, false, false);
+            }
+
+            // La cloture basse du jardin de devant.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Muret", new Vector3(side * (width * 0.5f + 1.2f), 0.35f, depth * 0.5f + 1.5f),
+                    new Vector3(0.18f, 0.7f, 3f), night.DarkConcrete, false);
+            }
+        }
+
+        private static void StreetLamp(Transform parent, NightMaterialFactory.Palette night, Vector3 position)
+        {
+            GameObject lamp = EditorBuildUtility.CreateEmpty("Lampadaire de rue", parent, position);
 
             Cylinder(lamp.transform, "Mat", new Vector3(0f, 2.9f, 0f), new Vector3(0.12f, 2.9f, 0.12f),
                 night.DarkMetal, true);
@@ -223,7 +420,15 @@ namespace UberBagarre.EditorTools
             AddFlicker(lamp, night, 5.5f);
         }
 
-        private static void Fence(Transform parent, NightMaterialFactory.Palette night)
+        /// <summary>Un mur invisible : un collider sans rendu.</summary>
+        private static void Wall(Transform parent, string name, Vector3 position, Vector3 size)
+        {
+            GameObject wall = EditorBuildUtility.CreateEmpty(name, parent, position);
+            BoxCollider collider = wall.AddComponent<BoxCollider>();
+            collider.size = size;
+        }
+
+        private static void Fence(Transform parent, NightMaterialFactory.Palette night, Palette palette)
         {
             GameObject fence = EditorBuildUtility.CreateEmpty("Cloture", parent, Vector3.zero);
 
@@ -234,10 +439,61 @@ namespace UberBagarre.EditorTools
             FenceRun(fence.transform, night, new Vector3(-halfX, 0f, -halfZ), new Vector3(-halfX, 0f, halfZ));
             FenceRun(fence.transform, night, new Vector3(halfX, 0f, -halfZ), new Vector3(halfX, 0f, halfZ));
 
-            // Le portail reste OUVERT : une clôture qu'on ne peut pas franchir transforme le
-            // jardin en couloir, et le joueur passe son temps à chercher la sortie.
-            FenceRun(fence.transform, night, new Vector3(-halfX, 0f, -halfZ), new Vector3(0.6f, 0f, -halfZ));
-            FenceRun(fence.transform, night, new Vector3(4.6f, 0f, -halfZ), new Vector3(halfX, 0f, -halfZ));
+            // Deux passages cote rue, grands ouverts : le portillon du chemin et le portail de
+            // l'allee. Une cloture qu'on ne peut pas franchir transforme le jardin en couloir,
+            // et le joueur passe son temps a chercher la sortie.
+            float gateLeft = FootpathX - 0.8f;
+            float gateRight = FootpathX + 0.8f;
+            float driveLeft = DrivewayX - DrivewayWidth * 0.5f - 0.2f;
+            float driveRight = DrivewayX + DrivewayWidth * 0.5f + 0.2f;
+
+            FenceRun(fence.transform, night, new Vector3(-halfX, 0f, -halfZ), new Vector3(gateLeft, 0f, -halfZ));
+            FenceRun(fence.transform, night, new Vector3(gateRight, 0f, -halfZ), new Vector3(driveLeft, 0f, -halfZ));
+            FenceRun(fence.transform, night, new Vector3(driveRight, 0f, -halfZ), new Vector3(halfX, 0f, -halfZ));
+
+            // Le portillon, ouvert vers l'interieur et reste la : il ne ferme plus depuis longtemps.
+            GameObject gate = EditorBuildUtility.CreateEmpty("Portillon", fence.transform, new Vector3(gateRight, 0f, -halfZ));
+            gate.transform.localRotation = Quaternion.Euler(0f, 112f, 0f);
+
+            for (int i = 0; i < 6; i++)
+            {
+                Box(gate.transform, "Barreau", new Vector3(-0.1f - i * 0.25f, 0.62f, 0f),
+                    new Vector3(0.03f, 1.15f, 0.03f), night.Metal, false);
+            }
+
+            Box(gate.transform, "Traverse", new Vector3(-0.72f, 1.12f, 0f), new Vector3(1.45f, 0.05f, 0.04f), night.Rust, false);
+            Box(gate.transform, "Traverse", new Vector3(-0.72f, 0.2f, 0f), new Vector3(1.45f, 0.05f, 0.04f), night.Rust, false);
+
+            // Les piliers du portail de l'allee.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float x = side < 0 ? driveLeft : driveRight;
+                Box(fence.transform, "Pilier", new Vector3(x, 0.8f, -halfZ), new Vector3(0.36f, 1.6f, 0.36f),
+                    night.DarkConcrete, true);
+                Box(fence.transform, "Chapeau", new Vector3(x, 1.63f, -halfZ), new Vector3(0.44f, 0.06f, 0.44f),
+                    night.Concrete, false);
+            }
+
+            Mailbox(fence.transform, night, palette, new Vector3(gateLeft - 0.35f, 0f, -halfZ - 0.12f));
+        }
+
+        /// <summary>La boîte aux lettres, qui déborde : le courrier ne s'arrête pas parce qu'on ne l'ouvre plus.</summary>
+        private static void Mailbox(Transform parent, NightMaterialFactory.Palette night, Palette palette, Vector3 position)
+        {
+            GameObject box = EditorBuildUtility.CreateEmpty("Boite aux lettres", parent, position);
+            Transform t = box.transform;
+
+            Box(t, "Poteau", new Vector3(0f, 0.55f, 0f), new Vector3(0.08f, 1.1f, 0.08f), night.Wood, true);
+            Box(t, "Boite", new Vector3(0f, 1.24f, 0f), new Vector3(0.38f, 0.3f, 0.26f), night.Rust, false);
+            Box(t, "Toit", new Vector3(0f, 1.41f, 0f), new Vector3(0.42f, 0.04f, 0.3f), night.DarkMetal, false);
+
+            // Des enveloppes qui depassent de la fente.
+            for (int i = 0; i < 3; i++)
+            {
+                Slab(t, "Enveloppe", new Vector3(-0.06f + i * 0.05f, 1.33f + i * 0.012f, -0.14f),
+                    new Vector3(0.2f, 0.1f, 0.004f), palette.Paper)
+                    .transform.localRotation = Quaternion.Euler(-20f + i * 6f, 0f, i * 9f - 8f);
+            }
         }
 
         private static void FenceRun(Transform parent, NightMaterialFactory.Palette night,
@@ -251,6 +507,12 @@ namespace UberBagarre.EditorTools
             run.transform.localRotation = Quaternion.LookRotation(delta.normalized, Vector3.up);
 
             const float height = 1.55f;
+
+            // Un seul collider pour tout le pan : les barreaux n'en ont pas, et entre deux
+            // poteaux on passait a travers le grillage.
+            BoxCollider solid = run.AddComponent<BoxCollider>();
+            solid.center = new Vector3(0f, height * 0.5f, 0f);
+            solid.size = new Vector3(0.12f, height, length);
 
             int posts = Mathf.Max(2, Mathf.RoundToInt(length / 2.1f));
 
@@ -316,8 +578,24 @@ namespace UberBagarre.EditorTools
             Slab(shell.transform, "Plafond", new Vector3(0f, WallHeight + 0.06f, 0f),
                 new Vector3(RoomWidth, 0.12f, RoomDepth), palette.Wallpaper);
 
-            Box(shell.transform, "Toiture", new Vector3(0f, WallHeight + 0.28f, 0f),
-                new Vector3(RoomWidth + 0.7f, 0.3f, RoomDepth + 0.7f), palette.Roof, false);
+            // Un vrai toit a deux pans, pas une dalle : c'est la silhouette qui fait lire
+            // « maison » depuis l'allee.
+            Roof(shell.transform, palette, RoomWidth + WallThickness, RoomDepth + WallThickness, WallHeight,
+                RoofPitch, 0.45f);
+            RoofDetails(shell.transform, night);
+
+            Door(shell.transform, night, palette);
+            Porch(shell.transform, night);
+
+            // Les fenetres : vitres, cadres, appuis. Volets et carton scotche devant, un drap en
+            // guise de rideau sur le cote.
+            Window(shell.transform, night, palette, new Vector3(0f, 0f, -halfZ), 0f, 2.9f, 1.3f, 0.95f, 2.05f,
+                WindowShutters | WindowCardboard);
+            Window(shell.transform, night, palette, new Vector3(0f, 0f, halfZ), 180f, -2.4f, 1.1f, 1.25f, 2.1f, 0);
+            Window(shell.transform, night, palette, new Vector3(-halfX, 0f, 0f), 90f, 1.6f, 1.0f, 1.1f, 2f,
+                WindowCurtain);
+
+            InteriorWalls(shell.transform, night, palette);
 
             Box(shell.transform, "Marche", new Vector3(-0.6f, 0.06f, -halfZ - 0.45f),
                 new Vector3(1.6f, 0.12f, 0.9f), night.DarkConcrete, true);
@@ -333,6 +611,345 @@ namespace UberBagarre.EditorTools
                 new Vector3(1.3f, WallHeight, 0.12f), palette.Wallpaper, true);
 
             BuildBathroom(bathroom.transform, night, palette, new Vector3(halfX - 0.65f, 0f, halfZ - 1.2f));
+        }
+
+        private const float RoofPitch = 30f;
+
+        private const int WindowShutters = 1;
+        private const int WindowCurtain = 2;
+        private const int WindowCardboard = 4;
+
+        /// <summary>
+        /// Toit à deux pans, faîtage le long de X, posé sur des murs de <paramref name="width"/>
+        /// sur <paramref name="depth"/> (faces extérieures) dont le haut est à <paramref name="baseY"/>.
+        /// Les pignons ferment les triangles aux deux bouts.
+        /// </summary>
+        private static void Roof(Transform parent, Palette palette, float width, float depth, float baseY,
+            float pitch, float overhang)
+        {
+            GameObject roof = EditorBuildUtility.CreateEmpty("Toit", parent, Vector3.zero);
+            Transform t = roof.transform;
+
+            float halfZ = depth * 0.5f;
+            float tan = Mathf.Tan(pitch * Mathf.Deg2Rad);
+            float rise = halfZ * tan;
+            float run = halfZ + overhang;
+            float slope = run / Mathf.Cos(pitch * Mathf.Deg2Rad);
+            const float thickness = 0.14f;
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                // La face inferieure du pan passe par le haut du mur et monte jusqu'au faitage.
+                Quaternion rotation = Quaternion.Euler(side * pitch, 0f, 0f);
+                Vector3 normal = rotation * Vector3.up;
+                Vector3 centre = new Vector3(0f, baseY + (rise - overhang * tan) * 0.5f, side * run * 0.5f) +
+                                 normal * thickness * 0.5f;
+
+                Box(t, "Pan", centre, new Vector3(width + overhang * 1.2f, thickness, slope), palette.Roof, false)
+                    .transform.localRotation = rotation;
+            }
+
+            Box(t, "Faitage", new Vector3(0f, baseY + rise + 0.1f, 0f), new Vector3(width + overhang * 1.2f + 0.05f, 0.2f, 0.2f),
+                palette.Roof, false).transform.localRotation = Quaternion.Euler(45f, 0f, 0f);
+
+            Mesh prism = NightMeshFactory.Load(NightMeshFactory.Gable);
+            if (prism == null)
+            {
+                NightMeshFactory.EnsureLibrary();
+                prism = NightMeshFactory.Load(NightMeshFactory.Gable);
+            }
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject gable = new GameObject("Pignon");
+                gable.transform.SetParent(t, false);
+                gable.transform.localPosition = new Vector3(side * (width * 0.5f - 0.12f), baseY - 0.02f, 0f);
+                gable.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+                gable.transform.localScale = new Vector3(depth, rise + 0.02f, 0.24f);
+
+                gable.AddComponent<MeshFilter>().sharedMesh = prism;
+                gable.AddComponent<MeshRenderer>().sharedMaterial = palette.Render;
+            }
+        }
+
+        /// <summary>Gouttières, descentes, cheminée, antenne : ce qui dépasse d'un toit habité.</summary>
+        private static void RoofDetails(Transform shell, NightMaterialFactory.Palette night)
+        {
+            GameObject details = EditorBuildUtility.CreateEmpty("Toit (details)", shell, Vector3.zero);
+            Transform t = details.transform;
+
+            float halfX = (RoomWidth + WallThickness) * 0.5f;
+            float halfZ = (RoomDepth + WallThickness) * 0.5f;
+            float tan = Mathf.Tan(RoofPitch * Mathf.Deg2Rad);
+            const float overhang = 0.45f;
+            float eaveY = WallHeight - overhang * tan - 0.05f;
+            float eaveZ = halfZ + overhang + 0.05f;
+            float length = RoomWidth + WallThickness + overhang * 1.2f;
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Cylinder(t, "Gouttiere", new Vector3(0f, eaveY, side * eaveZ), new Vector3(0.13f, length * 0.5f, 0.13f),
+                    night.DarkMetal, false).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+            }
+
+            // Deux descentes, en diagonale ; celle de l'avant est decrochee en bas.
+            Cylinder(t, "Descente", new Vector3(halfX + 0.12f, eaveY * 0.5f, -eaveZ), new Vector3(0.08f, eaveY * 0.5f, 0.08f),
+                night.DarkMetal, false);
+            Cylinder(t, "Descente", new Vector3(-halfX - 0.12f, eaveY * 0.5f + 0.2f, eaveZ), new Vector3(0.08f, eaveY * 0.5f - 0.2f, 0.08f),
+                night.DarkMetal, false).transform.localRotation = Quaternion.Euler(4f, 0f, -3f);
+
+            // La cheminee sort du pan arriere.
+            float z = 1.9f;
+            float roofY = WallHeight + (halfZ - z) * tan;
+            float ridgeY = WallHeight + halfZ * tan;
+            float top = ridgeY + 0.35f;
+
+            Box(t, "Cheminee", new Vector3(2.6f, (roofY - 0.2f + top) * 0.5f, z), new Vector3(0.62f, top - roofY + 0.2f, 0.62f),
+                night.DarkBrick, false);
+            Box(t, "Couronne", new Vector3(2.6f, top + 0.04f, z), new Vector3(0.72f, 0.08f, 0.72f), night.DarkConcrete, false);
+            Cylinder(t, "Conduit", new Vector3(2.6f, top + 0.18f, z), new Vector3(0.16f, 0.12f, 0.16f), night.Rust, false);
+
+            // L'antenne rateau, un peu de travers.
+            GameObject antenna = EditorBuildUtility.CreateEmpty("Antenne", t, new Vector3(-3.1f, ridgeY + 0.1f, 0f));
+            antenna.transform.localRotation = Quaternion.Euler(0f, 30f, 6f);
+
+            Cylinder(antenna.transform, "Mat", new Vector3(0f, 0.6f, 0f), new Vector3(0.035f, 0.6f, 0.035f), night.Metal, false);
+            Box(antenna.transform, "Bras", new Vector3(0f, 1.12f, 0f), new Vector3(0.03f, 0.03f, 1.1f), night.Metal, false);
+
+            for (int i = 0; i < 5; i++)
+            {
+                Box(antenna.transform, "Brin", new Vector3(0f, 1.12f, -0.45f + i * 0.22f), new Vector3(0.7f - i * 0.08f, 0.015f, 0.015f),
+                    night.Metal, false);
+            }
+        }
+
+        /// <summary>La porte d'entrée : encadrement, battant resté entrouvert, poignée.</summary>
+        private static void Door(Transform shell, NightMaterialFactory.Palette night, Palette palette)
+        {
+            float halfZ = RoomDepth * 0.5f;
+            float x = FootpathX;
+            GameObject door = EditorBuildUtility.CreateEmpty("Porte d'entree", shell, new Vector3(x, 0f, -halfZ));
+            Transform t = door.transform;
+
+            // Encadrement (des deux cotes du mur).
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Montant", new Vector3(side * (DoorWidth * 0.5f + 0.04f), DoorHeight * 0.5f, 0f),
+                    new Vector3(0.08f, DoorHeight + 0.04f, 0.3f), palette.Laminate, false);
+            }
+
+            Box(t, "Linteau", new Vector3(0f, DoorHeight + 0.04f, 0f), new Vector3(DoorWidth + 0.16f, 0.08f, 0.3f),
+                palette.Laminate, false);
+
+            Box(t, "Seuil", new Vector3(0f, 0.03f, 0f), new Vector3(DoorWidth, 0.03f, 0.26f), night.Metal, false);
+
+            // Le battant, ouvert vers l'interieur contre le mur : on le voit, il ne gene pas.
+            GameObject hinge = EditorBuildUtility.CreateEmpty("Gond", t, new Vector3(-DoorWidth * 0.5f + 0.02f, 0f, 0.12f));
+            hinge.transform.localRotation = Quaternion.Euler(0f, -76f, 0f);
+
+            Box(hinge.transform, "Battant", new Vector3(DoorWidth * 0.5f - 0.02f, DoorHeight * 0.5f, 0f),
+                new Vector3(DoorWidth - 0.04f, DoorHeight - 0.03f, 0.045f), night.Wood, false);
+
+            // Une vitre depolie en haut du battant, et la poignee.
+            Box(hinge.transform, "Imposte", new Vector3(DoorWidth * 0.5f - 0.02f, DoorHeight - 0.42f, 0f),
+                new Vector3(0.5f, 0.42f, 0.05f), night.Glass, false);
+
+            Cylinder(hinge.transform, "Poignee", new Vector3(DoorWidth - 0.14f, 1.02f, 0.05f), new Vector3(0.03f, 0.06f, 0.03f),
+                night.Chrome, false).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+
+        /// <summary>
+        /// Le porche : un auvent, une applique fatiguée au-dessus de la porte, un paillasson et le
+        /// numéro. La lampe du porche est la seule lumière de la façade : elle dit où est l'entrée.
+        /// </summary>
+        private static void Porch(Transform shell, NightMaterialFactory.Palette night)
+        {
+            float halfZ = RoomDepth * 0.5f + WallThickness * 0.5f;
+            GameObject porch = EditorBuildUtility.CreateEmpty("Porche", shell, new Vector3(FootpathX, 0f, -halfZ));
+            Transform t = porch.transform;
+
+            Box(t, "Auvent", new Vector3(0f, DoorHeight + 0.32f, -0.42f), new Vector3(1.7f, 0.06f, 0.9f), night.DarkMetal, false)
+                .transform.localRotation = Quaternion.Euler(-10f, 0f, 0f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Console", new Vector3(side * 0.72f, DoorHeight + 0.14f, -0.28f), new Vector3(0.05f, 0.3f, 0.55f),
+                    night.DarkMetal, false).transform.localRotation = Quaternion.Euler(-34f, 0f, 0f);
+            }
+
+            Box(t, "Applique", new Vector3(-0.85f, DoorHeight - 0.05f, -0.08f), new Vector3(0.16f, 0.24f, 0.12f),
+                night.NeonWarm, false);
+
+            Light light = NightStreetBuilder.AddLight(t, "Lampe du porche", new Vector3(-0.85f, DoorHeight - 0.1f, -0.45f),
+                new Color(1f, 0.72f, 0.42f), 1.3f, 6f, false, true);
+            light.shadowNormalBias = 0.3f;
+
+            AddFlicker(porch, night, 1.3f);
+
+            Slab(t, "Paillasson", new Vector3(0f, 0.125f, -0.55f), new Vector3(0.85f, 0.015f, 0.5f), night.Rubber);
+
+            Box(t, "Numero", new Vector3(0.8f, 1.6f, -0.02f), new Vector3(0.18f, 0.14f, 0.02f), night.Chrome, false);
+        }
+
+        /// <summary>
+        /// Une fenêtre dans un percement de mur : cadre, deux vitres, appuis dehors et dedans.
+        /// Le repère est celui du mur (<paramref name="wallPosition"/>, <paramref name="yaw"/>) :
+        /// dehors vers -Z local, comme pour <see cref="Panel"/>.
+        /// </summary>
+        private static void Window(Transform shell, NightMaterialFactory.Palette night, Palette palette,
+            Vector3 wallPosition, float yaw, float along, float width, float bottom, float top, int style)
+        {
+            Quaternion rotation = Quaternion.Euler(0f, yaw, 0f);
+            GameObject window = EditorBuildUtility.CreateEmpty("Fenetre", shell, wallPosition + rotation * new Vector3(along, 0f, 0f));
+            window.transform.localRotation = rotation;
+            Transform t = window.transform;
+
+            float height = top - bottom;
+            float middle = (bottom + top) * 0.5f;
+
+            // Cadre en PVC jauni.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Montant", new Vector3(side * (width * 0.5f - 0.03f), middle, 0f), new Vector3(0.06f, height, 0.08f),
+                    palette.Porcelain, false);
+            }
+
+            Box(t, "Traverse haute", new Vector3(0f, top - 0.03f, 0f), new Vector3(width, 0.06f, 0.08f), palette.Porcelain, false);
+            Box(t, "Traverse basse", new Vector3(0f, bottom + 0.03f, 0f), new Vector3(width, 0.06f, 0.08f), palette.Porcelain, false);
+            Box(t, "Meneau", new Vector3(0f, middle, 0f), new Vector3(0.05f, height, 0.07f), palette.Porcelain, false);
+
+            // Les vitres, et un seul collider pour tout le percement.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Vitre", new Vector3(side * width * 0.25f, middle, 0f), new Vector3(width * 0.5f - 0.08f, height - 0.12f, 0.012f),
+                    night.Glass, false);
+            }
+
+            BoxCollider solid = window.AddComponent<BoxCollider>();
+            solid.center = new Vector3(0f, middle, 0f);
+            solid.size = new Vector3(width, height, 0.1f);
+
+            Box(t, "Appui", new Vector3(0f, bottom - 0.025f, -0.17f), new Vector3(width + 0.14f, 0.05f, 0.2f),
+                night.Concrete, false);
+            Box(t, "Tablette", new Vector3(0f, bottom - 0.015f, 0.17f), new Vector3(width + 0.06f, 0.03f, 0.14f),
+                palette.Laminate, false);
+
+            if ((style & WindowShutters) != 0)
+            {
+                // Deux volets rabattus contre la facade ; celui de droite ne tient plus qu'a un gond.
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    GameObject leaf = EditorBuildUtility.CreateEmpty("Volet", t,
+                        new Vector3(side * (width * 0.75f + 0.03f), middle, -0.16f));
+
+                    if (side > 0) leaf.transform.localRotation = Quaternion.Euler(0f, -14f, -8f);
+
+                    Box(leaf.transform, "Battant", Vector3.zero, new Vector3(width * 0.5f, height + 0.04f, 0.03f), night.Wood, false);
+
+                    for (int i = 0; i < 6; i++)
+                    {
+                        Box(leaf.transform, "Lame", new Vector3(0f, -height * 0.4f + i * height * 0.16f, -0.02f),
+                            new Vector3(width * 0.46f, 0.03f, 0.015f), night.Wood, false)
+                            .transform.localRotation = Quaternion.Euler(-30f, 0f, 0f);
+                    }
+                }
+            }
+
+            if ((style & WindowCardboard) != 0)
+            {
+                // Une vitre fendue, bouchee au carton et au scotch.
+                Slab(t, "Carton", new Vector3(width * 0.25f, bottom + height * 0.62f, 0.02f),
+                    new Vector3(width * 0.5f - 0.1f, height * 0.5f, 0.01f), palette.Paper);
+
+                for (int i = -1; i <= 1; i += 2)
+                {
+                    Slab(t, "Scotch", new Vector3(width * 0.25f, bottom + height * 0.62f + i * height * 0.2f, 0.028f),
+                        new Vector3(width * 0.5f - 0.02f, 0.045f, 0.004f), night.Plastic)
+                        .transform.localRotation = Quaternion.Euler(0f, 0f, i * 6f);
+                }
+            }
+
+            if ((style & WindowCurtain) != 0)
+            {
+                Cylinder(t, "Tringle", new Vector3(0f, top + 0.1f, 0.2f), new Vector3(0.025f, width * 0.5f + 0.2f, 0.025f),
+                    night.DarkMetal, false).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+                // Un drap en guise de rideau, tire d'un cote seulement.
+                Slab(t, "Drap", new Vector3(-width * 0.2f, middle - 0.05f, 0.24f), new Vector3(width * 0.62f, height + 0.3f, 0.012f),
+                    palette.Blanket).transform.localRotation = Quaternion.Euler(0f, 0f, 1.5f);
+                Box(t, "Drap (plis)", new Vector3(width * 0.5f + 0.1f, middle - 0.05f, 0.24f), new Vector3(0.16f, height + 0.25f, 0.07f),
+                    palette.Blanket, false);
+            }
+        }
+
+        /// <summary>
+        /// Les murs de l'intérieur : plinthes, taches d'humidité, papier peint qui se décolle,
+        /// interrupteur. Personne ne regarde une plinthe ; tout le monde remarque qu'il n'y en a pas.
+        /// </summary>
+        private static void InteriorWalls(Transform shell, NightMaterialFactory.Palette night, Palette palette)
+        {
+            GameObject walls = EditorBuildUtility.CreateEmpty("Murs (details)", shell, Vector3.zero);
+            Transform t = walls.transform;
+
+            float inX = RoomWidth * 0.5f - 0.12f;
+            float inZ = RoomDepth * 0.5f - 0.12f;
+
+            // Plinthes. Celle du mur avant s'interrompt a la porte.
+            Box(t, "Plinthe", new Vector3(-inX, 0.05f, 0f), new Vector3(0.02f, 0.08f, RoomDepth - 0.24f), palette.Laminate, false);
+            Box(t, "Plinthe", new Vector3(inX, 0.05f, 0f), new Vector3(0.02f, 0.08f, RoomDepth - 0.24f), palette.Laminate, false);
+            Box(t, "Plinthe", new Vector3(0f, 0.05f, inZ), new Vector3(RoomWidth - 0.24f, 0.08f, 0.02f), palette.Laminate, false);
+
+            float doorLeft = FootpathX - DoorWidth * 0.5f - 0.1f;
+            float doorRight = FootpathX + DoorWidth * 0.5f + 0.1f;
+            Box(t, "Plinthe", new Vector3((-inX + doorLeft) * 0.5f, 0.05f, -inZ), new Vector3(doorLeft + inX, 0.08f, 0.02f),
+                palette.Laminate, false);
+            Box(t, "Plinthe", new Vector3((inX + doorRight) * 0.5f, 0.05f, -inZ), new Vector3(inX - doorRight, 0.08f, 0.02f),
+                palette.Laminate, false);
+
+            // Humidite : des taches qui se chevauchent dans les angles, la ou l'air ne circule pas.
+            Stain(t, palette, new Vector3(-inX + 0.005f, 2.2f, 2.6f), 90f, 1.4f, 0.8f, 11);
+            Stain(t, palette, new Vector3(-inX + 0.005f, 0.45f, 3.2f), 90f, 0.9f, 0.6f, 12);
+            Stain(t, palette, new Vector3(1.6f, 2.25f, inZ - 0.005f), 180f, 1.2f, 0.7f, 13);
+            Stain(t, palette, new Vector3(3.2f, 2.3f, -inZ + 0.005f), 0f, 0.9f, 0.55f, 14);
+
+            // Au plafond, au-dessus du matelas.
+            for (int i = 0; i < 4; i++)
+            {
+                Cylinder(t, "Tache (plafond)", new Vector3(-3.3f + i * 0.28f, WallHeight - 0.004f, 2.2f + (i % 2) * 0.3f),
+                    new Vector3(0.9f - i * 0.12f, 0.002f, 0.7f - i * 0.1f), palette.Stain, false);
+            }
+
+            // Le papier peint qui se decolle en lambeaux, en haut du mur de gauche.
+            for (int i = 0; i < 2; i++)
+            {
+                GameObject strip = EditorBuildUtility.CreateEmpty("Lambeau", t, new Vector3(-inX + 0.01f, 2.4f, 0.4f + i * 0.55f));
+                strip.transform.localRotation = Quaternion.Euler(0f, 90f, 0f) * Quaternion.Euler(-14f - i * 10f, 0f, i * 4f);
+                Slab(strip.transform, "Papier", new Vector3(0f, -0.32f, 0.01f), new Vector3(0.42f - i * 0.1f, 0.64f, 0.004f),
+                    palette.Wallpaper);
+            }
+
+            Box(t, "Interrupteur", new Vector3(FootpathX + 0.85f, 1.1f, -inZ + 0.01f), new Vector3(0.08f, 0.12f, 0.02f),
+                palette.Porcelain, false);
+        }
+
+        /// <summary>Une tache organique : quelques disques aplatis qui se chevauchent, plaqués au mur.</summary>
+        private static void Stain(Transform parent, Palette palette, Vector3 position, float yaw, float width, float height, int seed)
+        {
+            GameObject stain = EditorBuildUtility.CreateEmpty("Tache d'humidite", parent, position);
+            stain.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
+
+            System.Random random = new System.Random(seed);
+
+            for (int i = 0; i < 5; i++)
+            {
+                float x = ((float)random.NextDouble() - 0.5f) * width * 0.6f;
+                float y = ((float)random.NextDouble() - 0.5f) * height * 0.6f;
+                float w = width * (0.35f + (float)random.NextDouble() * 0.45f);
+                float h = height * (0.35f + (float)random.NextDouble() * 0.45f);
+
+                Cylinder(stain.transform, "Aureole", new Vector3(x, y, 0.001f * i), new Vector3(w, 0.002f, h), palette.Stain, false)
+                    .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
         }
 
         /// <summary>
@@ -531,7 +1148,7 @@ namespace UberBagarre.EditorTools
 
             // L'horloge de la cuisine : on l'entend avant de la voir.
             GameObject clock = EditorBuildUtility.CreateEmpty("Horloge", t,
-                new Vector3(2.4f, 1.85f, RoomDepth * 0.5f - 0.13f));
+                new Vector3(0.45f, 2.1f, RoomDepth * 0.5f - 0.13f));
 
             Cylinder(clock.transform, "Cadran", Vector3.zero, new Vector3(0.3f, 0.012f, 0.3f),
                 palette.Porcelain, false).transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
@@ -573,6 +1190,31 @@ namespace UberBagarre.EditorTools
 
             bag.transform.localRotation = Quaternion.Euler(9f, 24f, 4f);
             NightStreetBuilder.MakePhysical(bag, 3f, PhysicsProp.Matter.Mou, 1.2f);
+
+            // La vaisselle de trois jours dans l'evier, une casserole sur le feu, un micro-ondes.
+            for (int i = 0; i < 4; i++)
+            {
+                Cylinder(t, "Assiette", new Vector3(-2.32f + i * 0.015f, 0.82f + i * 0.018f, wallZ - 0.02f),
+                    new Vector3(0.24f, 0.008f, 0.24f), palette.Porcelain, false)
+                    .transform.localRotation = Quaternion.Euler(i * 5f - 6f, 0f, 8f - i * 3f);
+            }
+
+            Cylinder(t, "Tasse", new Vector3(-2.1f, 0.86f, wallZ + 0.1f), new Vector3(0.08f, 0.05f, 0.08f),
+                palette.Porcelain, false);
+
+            Cylinder(t, "Casserole", new Vector3(-0.5f, 1.04f, wallZ), new Vector3(0.22f, 0.07f, 0.22f), night.Metal, false);
+            Box(t, "Queue", new Vector3(-0.28f, 1.08f, wallZ - 0.12f), new Vector3(0.24f, 0.025f, 0.035f), night.DarkMetal, false)
+                .transform.localRotation = Quaternion.Euler(0f, 28f, 0f);
+
+            Box(t, "Micro-ondes", new Vector3(-1.55f, 1.11f, wallZ + 0.06f), new Vector3(0.5f, 0.3f, 0.36f), night.DarkMetal, false);
+            Box(t, "Hublot", new Vector3(-1.62f, 1.11f, wallZ - 0.125f), new Vector3(0.3f, 0.2f, 0.01f), night.Glass, false);
+
+            Cylinder(t, "Bouilloire", new Vector3(0.05f, 1.06f, wallZ + 0.08f), new Vector3(0.16f, 0.1f, 0.16f), night.Plastic, false);
+
+            // Le calendrier de la poste, jamais tourne depuis janvier.
+            GameObject calendar = EditorBuildUtility.CreateEmpty("Calendrier", t, new Vector3(3.3f, 1.45f, RoomDepth * 0.5f - 0.125f));
+            Slab(calendar.transform, "Feuilles", Vector3.zero, new Vector3(0.3f, 0.42f, 0.006f), palette.Paper);
+            Slab(calendar.transform, "Image", new Vector3(0f, 0.11f, -0.004f), new Vector3(0.28f, 0.17f, 0.004f), night.Carpet);
         }
 
         private static void LivingRoom(Transform parent, NightMaterialFactory.Palette night, Palette palette,
@@ -672,11 +1314,21 @@ namespace UberBagarre.EditorTools
 
             NightStreetBuilder.MakePhysical(chair, 4f, PhysicsProp.Matter.Bois, 0.1f);
 
-            // --- téléviseur posé sur une caisse
-            NightStreetBuilder.Crate(t, night, new Vector3(2.1f, 0f, -1.5f), 0.6f, -6f);
+            // --- le coin tele : un canape defonce contre le mur de droite, la tele en face,
+            // posee sur une caisse. (Positions relatives au salon, qui est decale de -2,3 / -1,5.)
+            Sofa(t, night, palette, new Vector3(6.72f, 0f, 0.3f));
 
-            GameObject tv = EditorBuildUtility.CreateEmpty("Televiseur", t, new Vector3(2.1f, 0.6f, -1.5f));
-            tv.transform.localRotation = Quaternion.Euler(0f, -32f, 0f);
+            NightStreetBuilder.Crate(t, night, new Vector3(4.2f, 0f, 0.3f), 0.6f, -6f);
+
+            GameObject tv = EditorBuildUtility.CreateEmpty("Televiseur", t, new Vector3(4.2f, 0.6f, 0.3f));
+            tv.transform.localRotation = Quaternion.Euler(0f, -84f, 0f);
+
+            // La rallonge, du mur a la tele, en travers du passage.
+            Cylinder(t, "Rallonge", new Vector3(5.84f, 0.02f, 1.45f), new Vector3(0.014f, 1.34f, 0.014f), night.Rubber, false)
+                .transform.localRotation = Quaternion.Euler(0f, 4f, 90f);
+
+            Radiator(t, night, palette, new Vector3(-2.5f, 0f, -0.1f));
+            Entry(t, night, palette, new Vector3(3.25f, 0f, -2.38f));
 
             Box(tv.transform, "Caisson", new Vector3(0f, 0.22f, 0f),
                 new Vector3(0.58f, 0.44f, 0.5f), palette.Laminate, true);
@@ -685,6 +1337,93 @@ namespace UberBagarre.EditorTools
                 new Vector3(0.44f, 0.33f, 0.03f), night.Glass, false);
 
             NightStreetBuilder.MakePhysical(tv, 11f, PhysicsProp.Matter.Plastique, 0.1f);
+        }
+
+        /// <summary>
+        /// Le canapé, récupéré sur le trottoir : assise creusée, un coussin de travers, une
+        /// couverture jetée dessus. Son dos est contre le mur, il regarde la télé.
+        /// </summary>
+        private static void Sofa(Transform parent, NightMaterialFactory.Palette night, Palette palette, Vector3 position)
+        {
+            GameObject sofa = EditorBuildUtility.CreateEmpty("Canape", parent, position);
+            sofa.transform.localRotation = Quaternion.Euler(0f, -90f, 0f);
+            Transform t = sofa.transform;
+
+            Box(t, "Socle", new Vector3(0f, 0.2f, 0f), new Vector3(1.9f, 0.34f, 0.85f), palette.Sofa, true);
+            Box(t, "Dossier", new Vector3(0f, 0.62f, -0.34f), new Vector3(1.9f, 0.52f, 0.2f), palette.Sofa, true);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Box(t, "Accoudoir", new Vector3(side * 0.86f, 0.5f, 0f), new Vector3(0.18f, 0.3f, 0.85f), palette.Sofa, false);
+            }
+
+            // Deux coussins d'assise, dont un affaisse.
+            Box(t, "Coussin", new Vector3(-0.39f, 0.43f, 0.06f), new Vector3(0.74f, 0.13f, 0.64f), palette.Sofa, false);
+            Box(t, "Coussin", new Vector3(0.39f, 0.41f, 0.06f), new Vector3(0.74f, 0.1f, 0.64f), palette.Sofa, false)
+                .transform.localRotation = Quaternion.Euler(-4f, 0f, 3f);
+
+            Box(t, "Coussin de dos", new Vector3(0.45f, 0.72f, -0.18f), new Vector3(0.5f, 0.42f, 0.14f), palette.Sofa, false)
+                .transform.localRotation = Quaternion.Euler(-16f, 12f, 9f);
+
+            Box(t, "Couverture", new Vector3(-0.55f, 0.52f, 0.02f), new Vector3(0.7f, 0.05f, 0.8f), palette.Blanket, false)
+                .transform.localRotation = Quaternion.Euler(0f, 14f, -4f);
+            Box(t, "Couverture (pan)", new Vector3(-0.62f, 0.36f, 0.45f), new Vector3(0.6f, 0.34f, 0.04f), palette.Blanket, false)
+                .transform.localRotation = Quaternion.Euler(8f, 14f, 0f);
+
+            // Les pieds.
+            for (int x = -1; x <= 1; x += 2)
+            {
+                for (int z = -1; z <= 1; z += 2)
+                {
+                    Box(t, "Pied", new Vector3(x * 0.85f, 0.02f, z * 0.36f), new Vector3(0.06f, 0.05f, 0.06f), night.Wood, false);
+                }
+            }
+
+            // La telecommande, et une canette par terre au pied du canape.
+            Box(t, "Telecommande", new Vector3(0.62f, 0.5f, 0.18f), new Vector3(0.05f, 0.02f, 0.17f), night.Plastic, false)
+                .transform.localRotation = Quaternion.Euler(0f, 22f, 0f);
+            Cylinder(t, "Canette", new Vector3(0.2f, 0.06f, 0.62f), new Vector3(0.066f, 0.06f, 0.066f), night.Chrome, false);
+        }
+
+        /// <summary>Le radiateur en fonte sous la fenêtre. Froid : l'électricité coûte trop cher.</summary>
+        private static void Radiator(Transform parent, NightMaterialFactory.Palette night, Palette palette, Vector3 position)
+        {
+            GameObject radiator = EditorBuildUtility.CreateEmpty("Radiateur", parent, position);
+            Transform t = radiator.transform;
+
+            for (int i = 0; i < 9; i++)
+            {
+                Box(t, "Element", new Vector3(0f, 0.5f, -0.4f + i * 0.1f), new Vector3(0.09f, 0.56f, 0.07f), palette.Porcelain, false);
+            }
+
+            Cylinder(t, "Tuyau", new Vector3(0f, 0.08f, 0.52f), new Vector3(0.03f, 0.08f, 0.03f), night.Rust, false);
+            Box(t, "Chaussettes", new Vector3(0.02f, 0.8f, 0.1f), new Vector3(0.12f, 0.03f, 0.32f), palette.Blanket, false);
+        }
+
+        /// <summary>L'entrée : un porte-manteau avec le blouson, des chaussures jetées en dessous.</summary>
+        private static void Entry(Transform parent, NightMaterialFactory.Palette night, Palette palette, Vector3 position)
+        {
+            GameObject entry = EditorBuildUtility.CreateEmpty("Entree", parent, position);
+            Transform t = entry.transform;
+
+            Box(t, "Patere", new Vector3(0f, 1.75f, 0.03f), new Vector3(0.62f, 0.06f, 0.03f), night.Wood, false);
+
+            for (int i = 0; i < 3; i++)
+            {
+                Cylinder(t, "Crochet", new Vector3(-0.22f + i * 0.22f, 1.74f, 0.08f), new Vector3(0.02f, 0.05f, 0.02f),
+                    night.Chrome, false).transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
+            }
+
+            Box(t, "Blouson", new Vector3(-0.2f, 1.36f, 0.11f), new Vector3(0.46f, 0.72f, 0.12f), night.Rubber, false)
+                .transform.localRotation = Quaternion.Euler(4f, 0f, 3f);
+            Box(t, "Sweat", new Vector3(0.12f, 1.42f, 0.12f), new Vector3(0.38f, 0.6f, 0.1f), palette.Blanket, false)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, -5f);
+
+            for (int i = 0; i < 2; i++)
+            {
+                Box(t, "Chaussure", new Vector3(-0.3f + i * 0.2f, 0.05f, 0.35f + i * 0.08f), new Vector3(0.11f, 0.1f, 0.29f),
+                    night.Rubber, false).transform.localRotation = Quaternion.Euler(0f, i * 38f - 12f, i * 70f);
+            }
         }
 
         /// <summary>
@@ -710,7 +1449,7 @@ namespace UberBagarre.EditorTools
                 flyer.transform.localRotation = Quaternion.Euler(0f, i * 23f - 40f, 0f);
             }
 
-            GameObject carton = Box(clutter.transform, "Carton", new Vector3(4.0f, 0.18f, -2.3f),
+            GameObject carton = Box(clutter.transform, "Carton", new Vector3(3.9f, 0.18f, -3.25f),
                 new Vector3(0.52f, 0.36f, 0.42f), palette.Paper, true);
 
             carton.transform.localRotation = Quaternion.Euler(0f, 17f, 0f);
@@ -752,13 +1491,16 @@ namespace UberBagarre.EditorTools
 
             // La voiture du dossier : « sale, délabrée, rouillée, vieille bref nulle ».
             // C'est LA MÊME que celle garée devant le club — même méthode, même palette.
-            NightStreetBuilder.Car(t, night, new Vector3(2.6f, 0f, -5.4f), 4f, true, false);
+            // Elle dort sur l'allee, le nez vers le fond du terrain, comme devant n'importe
+            // quelle maison — pas plantee devant la porte d'entree.
+            NightStreetBuilder.Car(t, night, new Vector3(DrivewayX, 0.04f, CarZ), -90f, true, false);
 
+            // Le conducteur monte cote gauche, donc cote maison.
             GameObject door = EditorBuildUtility.CreateEmpty("Portiere conducteur", t,
-                new Vector3(2.6f, 1f, -6.4f));
+                new Vector3(DrivewayX - 1.15f, 1f, CarZ + 0.2f));
 
             BoxCollider collider = door.AddComponent<BoxCollider>();
-            collider.size = new Vector3(2.4f, 1.8f, 2.4f);
+            collider.size = new Vector3(1.4f, 1.8f, 2.2f);
             collider.isTrigger = true;
 
             Interactable car = door.AddComponent<Interactable>();
@@ -775,6 +1517,14 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.Pallet(t, night, new Vector3(-6.2f, 0f, 1.8f), -18f);
             NightStreetBuilder.Crate(t, night, new Vector3(-5.4f, 0f, 2.6f), 0.7f, 33f);
 
+            SideOfHouse(t, night);
+            Bins(t, night, new Vector3(DrivewayX + DrivewayWidth * 0.5f + 0.9f, 0f, -PlotDepth * 0.5f + 1.1f));
+            Clothesline(t, night, palette, new Vector3(-7.5f, 0f, 9.4f), new Vector3(-1.5f, 0f, 10.2f));
+            Tyres(t, night, new Vector3(-10.4f, 0f, -1.8f));
+            GardenChair(t, night, new Vector3(-8.6f, 0f, 3.2f));
+            Hedge(t, palette, new Vector3(-PlotWidth * 0.5f + 0.55f, 0f, -PlotDepth * 0.5f + 1f),
+                new Vector3(-PlotWidth * 0.5f + 0.55f, 0f, PlotDepth * 0.5f - 1f));
+
             // Herbes hautes : des lames plates orientées au hasard. Rien ne dit mieux
             // « personne ne tond ici » et ça coûte quelques boîtes.
             GameObject weeds = EditorBuildUtility.CreateEmpty("Herbes folles", t, Vector3.zero);
@@ -787,6 +1537,10 @@ namespace UberBagarre.EditorTools
                 Vector3 position = new Vector3(Mathf.Cos(angle) * radius, 0.22f,
                     Mathf.Sin(angle) * radius * 0.8f - 3.2f);
 
+                // Pas d'herbes hautes sur l'allee ni sur le chemin.
+                if (Mathf.Abs(position.x - DrivewayX) < DrivewayWidth * 0.5f + 0.2f) continue;
+                if (Mathf.Abs(position.x - FootpathX) < 0.8f && position.z < HouseZ - RoomDepth * 0.5f) continue;
+
                 GameObject blade = Slab(weeds.transform, "Touffe", position,
                     new Vector3(0.34f, 0.45f, 0.02f), palette.Grass);
 
@@ -794,6 +1548,158 @@ namespace UberBagarre.EditorTools
             }
 
             NightStreetBuilder.Bottles(t, night, new Vector3(-1.8f, 0f, -4.2f), 4);
+        }
+
+        /// <summary>
+        /// Le flanc de la maison côté allée : le compteur électrique et une applique à
+        /// détecteur, qui éclaire la voiture. Sans elle, la voiture qu'on doit rejoindre
+        /// serait la seule chose invisible du jardin.
+        /// </summary>
+        private static void SideOfHouse(Transform parent, NightMaterialFactory.Palette night)
+        {
+            float x = RoomWidth * 0.5f + WallThickness * 0.5f;
+            GameObject side = EditorBuildUtility.CreateEmpty("Flanc (allee)", parent, new Vector3(x, 0f, HouseZ));
+            Transform t = side.transform;
+
+            Box(t, "Coffret electrique", new Vector3(0.1f, 1.15f, -2.6f), new Vector3(0.18f, 0.62f, 0.42f), night.Plastic, false);
+            Box(t, "Gaine", new Vector3(0.06f, 0.42f, -2.6f), new Vector3(0.06f, 0.84f, 0.06f), night.DarkMetal, false);
+
+            Box(t, "Applique", new Vector3(0.1f, 2.25f, -3.2f), new Vector3(0.16f, 0.14f, 0.22f), night.NeonWhite, false);
+
+            GameObject lightGo = EditorBuildUtility.CreateEmpty("Lumiere de l'allee", t, new Vector3(0.3f, 2.2f, -3.2f));
+            lightGo.transform.localRotation = Quaternion.LookRotation(new Vector3(0.8f, -1f, 0.1f).normalized, Vector3.up);
+
+            Light light = lightGo.AddComponent<Light>();
+            light.type = LightType.Spot;
+            light.spotAngle = 110f;
+            light.color = new Color(0.86f, 0.9f, 1f);
+            light.intensity = 1.8f;
+            light.range = 9f;
+            light.renderMode = LightRenderMode.ForcePixel;
+            light.shadows = LightShadows.Soft;
+            light.shadowNormalBias = 0.3f;
+
+            NightStreetBuilder.MakeVolumetric(light, 0.4f);
+        }
+
+        /// <summary>Deux poubelles à roulettes à l'entrée de l'allée, un sac posé à côté.</summary>
+        private static void Bins(Transform parent, NightMaterialFactory.Palette night, Vector3 position)
+        {
+            GameObject bins = EditorBuildUtility.CreateEmpty("Poubelles", parent, position);
+            Transform t = bins.transform;
+
+            for (int i = 0; i < 2; i++)
+            {
+                GameObject bin = EditorBuildUtility.CreateEmpty("Poubelle", t, new Vector3(i * 0.72f, 0f, i * 0.1f));
+                bin.transform.localRotation = Quaternion.Euler(0f, i * 9f - 4f, 0f);
+
+                Material body = i == 0 ? night.Plastic : night.DarkMetal;
+                Box(bin.transform, "Cuve", new Vector3(0f, 0.5f, 0f), new Vector3(0.58f, 0.9f, 0.7f), body, true);
+
+                // Le couvercle de la premiere ne ferme plus : elle deborde.
+                Box(bin.transform, "Couvercle", new Vector3(0f, i == 0 ? 1.0f : 0.97f, i == 0 ? 0.05f : 0f),
+                    new Vector3(0.62f, 0.05f, 0.74f), body, false)
+                    .transform.localRotation = Quaternion.Euler(i == 0 ? -18f : 0f, 0f, 0f);
+
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    Cylinder(bin.transform, "Roue", new Vector3(side * 0.24f, 0.09f, -0.34f), new Vector3(0.18f, 0.03f, 0.18f),
+                        night.Rubber, false).transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                }
+            }
+
+            GameObject bag = EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Sac", t,
+                new Vector3(1.35f, 0.26f, 0.2f), new Vector3(0.5f, 0.5f, 0.46f), night.DarkMetal, true);
+            NightStreetBuilder.MakePhysical(bag, 2f, PhysicsProp.Matter.Mou, 1.2f);
+        }
+
+        /// <summary>L'étendoir derrière la maison : un tee-shirt et une serviette oubliés sous la bruine.</summary>
+        private static void Clothesline(Transform parent, NightMaterialFactory.Palette night, Palette palette, Vector3 from, Vector3 to)
+        {
+            GameObject line = EditorBuildUtility.CreateEmpty("Etendoir", parent, (from + to) * 0.5f);
+            Transform t = line.transform;
+
+            Vector3 delta = to - from;
+            float length = delta.magnitude;
+            line.transform.localRotation = Quaternion.LookRotation(delta / length, Vector3.up);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Cylinder(t, "Poteau", new Vector3(0f, 0.95f, side * length * 0.5f), new Vector3(0.06f, 0.95f, 0.06f), night.Metal, true);
+                Box(t, "Traverse", new Vector3(0f, 1.86f, side * length * 0.5f), new Vector3(0.5f, 0.04f, 0.04f), night.Metal, false);
+            }
+
+            for (int wire = -1; wire <= 1; wire += 2)
+            {
+                Cylinder(t, "Fil", new Vector3(wire * 0.2f, 1.84f, 0f), new Vector3(0.01f, length * 0.5f, 0.01f), night.DarkMetal, false)
+                    .transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            }
+
+            Box(t, "Tee-shirt", new Vector3(-0.2f, 1.52f, -0.8f), new Vector3(0.04f, 0.62f, 0.52f), palette.Paper, false)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, 4f);
+            Box(t, "Serviette", new Vector3(0.2f, 1.46f, 1.1f), new Vector3(0.03f, 0.72f, 0.7f), palette.Blanket, false)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, -3f);
+        }
+
+        /// <summary>Une pile de vieux pneus contre la clôture.</summary>
+        private static void Tyres(Transform parent, NightMaterialFactory.Palette night, Vector3 position)
+        {
+            GameObject tyres = EditorBuildUtility.CreateEmpty("Pneus", parent, position);
+            Transform t = tyres.transform;
+
+            for (int i = 0; i < 3; i++)
+            {
+                Cylinder(t, "Pneu", new Vector3(i * 0.04f, 0.1f + i * 0.2f, -i * 0.03f), new Vector3(0.66f, 0.1f, 0.66f), night.Rubber, i == 0)
+                    .transform.localRotation = Quaternion.Euler(i * 3f, 0f, -i * 2f);
+                Cylinder(t, "Creux", new Vector3(i * 0.04f, 0.2f + i * 0.2f, -i * 0.03f), new Vector3(0.36f, 0.005f, 0.36f), night.DarkMetal, false);
+            }
+
+            // Un quatrieme, couche contre la pile.
+            Cylinder(t, "Pneu", new Vector3(0.55f, 0.33f, 0.2f), new Vector3(0.66f, 0.1f, 0.66f), night.Rubber, false)
+                .transform.localRotation = Quaternion.Euler(0f, 30f, 72f);
+        }
+
+        /// <summary>Une chaise de jardin en plastique, renversée depuis la dernière tempête.</summary>
+        private static void GardenChair(Transform parent, NightMaterialFactory.Palette night, Vector3 position)
+        {
+            GameObject chair = EditorBuildUtility.CreateEmpty("Chaise de jardin", parent, position);
+            chair.transform.localRotation = Quaternion.Euler(0f, 37f, 0f) * Quaternion.Euler(0f, 0f, 84f);
+            Transform t = chair.transform;
+
+            Box(t, "Assise", new Vector3(0f, 0.44f, 0f), new Vector3(0.46f, 0.04f, 0.44f), night.Plastic, false);
+            Box(t, "Dossier", new Vector3(0f, 0.72f, -0.21f), new Vector3(0.46f, 0.52f, 0.04f), night.Plastic, false)
+                .transform.localRotation = Quaternion.Euler(-8f, 0f, 0f);
+
+            for (int x = -1; x <= 1; x += 2)
+            {
+                for (int z = -1; z <= 1; z += 2)
+                {
+                    Box(t, "Pied", new Vector3(x * 0.2f, 0.22f, z * 0.19f), new Vector3(0.04f, 0.44f, 0.04f), night.Plastic, false);
+                }
+            }
+
+            chair.transform.localPosition += new Vector3(0f, 0.24f, 0f);
+        }
+
+        /// <summary>Une haie mal taillée le long d'une clôture : des blocs de hauteurs inégales.</summary>
+        private static void Hedge(Transform parent, Palette palette, Vector3 from, Vector3 to)
+        {
+            GameObject hedge = EditorBuildUtility.CreateEmpty("Haie", parent, Vector3.zero);
+            Vector3 delta = to - from;
+            float length = delta.magnitude;
+            int blocks = Mathf.Max(1, Mathf.RoundToInt(length / 1.6f));
+            System.Random random = new System.Random(77);
+
+            for (int i = 0; i < blocks; i++)
+            {
+                Vector3 position = from + delta * ((i + 0.5f) / blocks);
+                float height = 1.2f + (float)random.NextDouble() * 0.7f;
+                float width = 0.8f + (float)random.NextDouble() * 0.35f;
+
+                Box(hedge.transform, "Bloc", position + new Vector3(0f, height * 0.5f, 0f),
+                    new Vector3(width, height, length / blocks + 0.35f), palette.Hedge, i % 3 == 0)
+                    .transform.localRotation = Quaternion.Euler(0f, (float)random.NextDouble() * 8f - 4f, 0f);
+            }
         }
 
         // ------------------------------------------------------------------ utilitaires

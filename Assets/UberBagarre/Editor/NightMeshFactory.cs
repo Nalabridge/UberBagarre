@@ -27,12 +27,16 @@ namespace UberBagarre.EditorTools
         public const string LightCone = "M_ConeLumiere";
         public const string WideCone = "M_ConeLarge";
 
+        /// <summary>Prisme triangulaire : le pignon d'une maison, sous un toit à deux pans.</summary>
+        public const string Gable = "M_Pignon";
+
         public static void EnsureLibrary()
         {
             EditorBuildUtility.EnsureFolder(MeshesFolder);
 
             Store(LightCone, BuildCone(0.10f, 0.5f, 28));
             Store(WideCone, BuildCone(0.28f, 0.5f, 32));
+            Store(Gable, BuildPrism());
         }
 
         public static Mesh Load(string meshName)
@@ -128,6 +132,76 @@ namespace UberBagarre.EditorTools
             mesh.RecalculateBounds();
 
             return mesh;
+        }
+
+        /// <summary>
+        /// Prisme triangulaire plein : base de 1 sur l'axe X (de -0,5 à +0,5) posée en y = 0,
+        /// sommet en (0, 1), épaisseur de 1 sur Z. Mis à l'échelle, il ferme le triangle entre
+        /// le haut d'un mur et un toit à deux pentes — ce qu'aucune primitive d'Unity ne sait
+        /// faire, et qu'une pile de boîtes ne ferait qu'en escalier.
+        ///
+        /// Chaque face a ses propres sommets : les normales restent franches, sans lissage
+        /// entre le pignon et les pentes.
+        /// </summary>
+        private static Mesh BuildPrism()
+        {
+            Vector3 a = new Vector3(-0.5f, 0f, -0.5f);
+            Vector3 b = new Vector3(0.5f, 0f, -0.5f);
+            Vector3 c = new Vector3(0f, 1f, -0.5f);
+            Vector3 a2 = new Vector3(-0.5f, 0f, 0.5f);
+            Vector3 b2 = new Vector3(0.5f, 0f, 0.5f);
+            Vector3 c2 = new Vector3(0f, 1f, 0.5f);
+
+            System.Collections.Generic.List<Vector3> vertices = new System.Collections.Generic.List<Vector3>(18);
+            System.Collections.Generic.List<Vector3> normals = new System.Collections.Generic.List<Vector3>(18);
+            System.Collections.Generic.List<Vector2> uv = new System.Collections.Generic.List<Vector2>(18);
+            System.Collections.Generic.List<int> triangles = new System.Collections.Generic.List<int>(24);
+
+            // Les deux triangles (sens horaire vu de l'exterieur, comme le veut Unity).
+            Face(vertices, normals, uv, triangles, new[] { a, c, b },
+                new[] { new Vector2(0f, 0f), new Vector2(0.5f, 1f), new Vector2(1f, 0f) });
+            Face(vertices, normals, uv, triangles, new[] { a2, b2, c2 },
+                new[] { new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(0.5f, 1f) });
+
+            // Le dessous et les deux pentes.
+            Face(vertices, normals, uv, triangles, new[] { a, b, b2, a2 },
+                new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) });
+            Face(vertices, normals, uv, triangles, new[] { a, a2, c2, c },
+                new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) });
+            Face(vertices, normals, uv, triangles, new[] { b, c, c2, b2 },
+                new[] { new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(1f, 0f) });
+
+            Mesh mesh = new Mesh();
+            mesh.name = "Pignon";
+            mesh.SetVertices(vertices);
+            mesh.SetNormals(normals);
+            mesh.SetUVs(0, uv);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>Ajoute une face plane (triangle ou quadrilatère en éventail), normale calculée.</summary>
+        private static void Face(System.Collections.Generic.List<Vector3> vertices,
+            System.Collections.Generic.List<Vector3> normals, System.Collections.Generic.List<Vector2> uv,
+            System.Collections.Generic.List<int> triangles, Vector3[] corners, Vector2[] coords)
+        {
+            int start = vertices.Count;
+            Vector3 normal = Vector3.Cross(corners[1] - corners[0], corners[2] - corners[0]).normalized;
+
+            for (int i = 0; i < corners.Length; i++)
+            {
+                vertices.Add(corners[i]);
+                normals.Add(normal);
+                uv.Add(coords[i]);
+            }
+
+            for (int i = 1; i < corners.Length - 1; i++)
+            {
+                triangles.Add(start);
+                triangles.Add(start + i);
+                triangles.Add(start + i + 1);
+            }
         }
 
         private static void Store(string name, Mesh generated)
