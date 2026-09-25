@@ -35,7 +35,7 @@ TOP_CUT = {
     #            manche (m le long du bras), ourlet (/ bassin), col avant, col arrière, décollement, drapé
     "TShirt":    dict(sleeve=0.13, hem=-0.085, front=-0.050, back=-0.012, offset=0.007, drape=0.6, thick=0.0035),
     "Veste":     dict(sleeve=None, hem=-0.08, front=-0.012, back=0.018, offset=0.014, drape=0.95, thick=0.006),
-    "Debardeur": dict(sleeve=-1.0, hem=-0.02, front=-0.105, back=-0.045, offset=0.004, drape=0.55, thick=0.0025),
+    "Debardeur": dict(sleeve=-1.0, hem=-0.02, front=-0.105, back=-0.045, offset=0.0065, drape=0.55, thick=0.0025),
 }
 
 
@@ -108,6 +108,12 @@ class Anatomy:
             return p[1] > self.pelvis[1] + cut["hem"] + m
         if p[1] < self.pelvis[1] + cut["hem"] + m:
             return False
+        if cat == ARM and name == "Debardeur":
+            # Sur un gros gabarit, le haut de l'épaule près du cou est pondéré au bras (le
+            # trapèze gonflé) : c'est pourtant là que passe la bretelle.
+            sh_x = abs(self.J[self.side(p) + "UpperArm"][0])
+            if abs(p[0]) < sh_x * 0.62 and p[1] > self.shoulder_y - 0.12:
+                cat = TORSO
         if cat == ARM:
             s, l1, l2 = self.arm_s(p)
             limit = cut["sleeve"] if cut["sleeve"] is not None else l1 + l2 * 0.955
@@ -224,7 +230,11 @@ class Surface:
         # Seulement au contact : un point loin de cette surface (une manche au-dessus de la
         # ceinture du jean) n'a rien à en craindre, et la normale du voisin le plus proche
         # n'a alors plus de sens.
-        push[d[:, 0] > max_distance] = 0.0
+        # Mais un point franchement DEDANS (le collant sous des pectoraux gonflés par les
+        # cibles de muscle) doit ressortir, même à 8 cm de la peau.
+        far = d[:, 0] > max_distance
+        deep_inside = (signed < 0.0) & (d[:, 0] < 0.15)
+        push[far & ~deep_inside] = 0.0
         return points + nrm * push[:, None], signed
 
 
@@ -294,8 +304,15 @@ def make_garment(body, anatomy, skin, name, faces_mh, offset, smooth, thick, sha
 
     P = snap_edges(P, sorted({v for e in bedges for v in e}), g.cats, anatomy, name)
 
+    # Les bords ne sont pas lissés : ils sont déjà recalés sur leur ligne de coupe, et un
+    # lissage le long du bord rétrécit les bandes étroites (les bretelles disparaissaient).
+    edge = np.zeros(len(P), dtype=bool)
+    for a, b in bedges:
+        edge[a] = True
+        edge[b] = True
+
     for it in range(3):
-        P = laplacian(P, nb, None, smooth, 0.5, bnb)
+        P = laplacian(P, nb, edge, smooth, 0.5, None)
         if shape is not None:
             P = shape(P, g)
         P, _ = skin.push_out(P, offset)
