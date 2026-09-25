@@ -217,7 +217,13 @@ namespace UberBagarre.View
             destination.aspect = source.aspect;
             destination.allowHDR = source.allowHDR;
             destination.cullingMask = _reflectLayers.value;
-            destination.renderingPath = source.renderingPath;
+
+            // Toujours en rendu AVANT, quel que soit celui de la camera de jeu : le reflet
+            // utilise une matrice de projection oblique (le plan de coupe suit le sol), que le
+            // rendu differe ne gere pas. Le rendu avant autorise en plus le MSAA sur la texture
+            // de reflet — sans lui, chaque arete du reflet scintille des que l'on bouge.
+            destination.renderingPath = RenderingPath.Forward;
+            destination.allowMSAA = true;
         }
 
         // ------------------------------------------------------------------ ressources
@@ -240,7 +246,7 @@ namespace UberBagarre.View
             _texture.hideFlags = HideFlags.DontSave;
             _texture.filterMode = FilterMode.Bilinear;
             _texture.wrapMode = TextureWrapMode.Clamp;
-            _texture.antiAliasing = 1;
+            _texture.antiAliasing = 4;
 
             _textureWidth = width;
             _textureHeight = height;

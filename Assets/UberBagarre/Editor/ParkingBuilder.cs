@@ -80,6 +80,9 @@ namespace UberBagarre.EditorTools
 
             BuildProps(t, night);
 
+            EditorBuildUtility.AddReflectionProbe(t, "Sonde de reflexion (parking)",
+                new Vector3(0f, 3f, 0f), new Vector3(Width, 16f, Depth), false, 1f);
+
             result.FirstBrother = t.TransformPoint(new Vector3(3.6f, 0f, 0.4f));
             result.SecondBrother = t.TransformPoint(new Vector3(7.4f, 0f, 1.1f));
 
@@ -298,11 +301,12 @@ namespace UberBagarre.EditorTools
                 NightStreetBuilder.Box(mast.transform, "Panneau", new Vector3(0f, 7.95f, 0f),
                     new Vector3(1f, 0.04f, 0.42f), night.NeonWhite, false);
 
-                NightStreetBuilder.AddLight(mast.transform, "Lumiere", new Vector3(0f, 7.8f, 0f),
-                    new Color(0.82f, 0.9f, 1f), 4.2f, 24f, true, i == 0);
+                // Projecteur vers le sol, ombres sur les deux mats qui encadrent la camionnette :
+                // c'est la que se bat. Le faisceau froid dans l'air vient de cette lampe.
+                Light light = NightStreetBuilder.AddSpot(mast.transform, "Lumiere", new Vector3(0f, 7.85f, 0f),
+                    Vector3.down, new Color(0.82f, 0.9f, 1f), 5.2f, 19f, 128f, i == 1 || i == 3);
 
-                NightMeshFactory.CreateVisual(NightMeshFactory.WideCone, "Cone", mast.transform,
-                    new Vector3(0f, 4.1f, 0f), Quaternion.identity, new Vector3(9f, 7.4f, 9f), night.GlowWhite);
+                NightStreetBuilder.MakeVolumetric(light, 1.1f);
 
                 // Un mât sur quatre est en fin de vie : dans un parking, c'est toujours le cas.
                 NeonFlicker.Pattern pattern = i == 2 ? NeonFlicker.Pattern.Fatigue : NeonFlicker.Pattern.Bourdonnement;

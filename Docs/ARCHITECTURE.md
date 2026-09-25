@@ -1563,3 +1563,114 @@ partir de l'argent **réel** : une somme écrite en dur aurait menti au premier 
 Il manquait la **réponse** : un coup qui arrive quelque part doit changer quelque chose à cet
 endroit-là — une tête qui tourne, un ventre qui se plie, une bouteille qui roule. Ce n'est pas ce
 que le joueur fait qui rend un combat vivant, c'est ce que le monde lui renvoie.
+
+---
+
+## 19. « Les lumières c'est des cônes » : lumière réelle, PBR, et une salle pleine
+
+Demande : *« pourquoi il y a du bruit dans les graphismes, les lampadaires c'est juste des cônes
+lumineux, pas de la vraie lumière — fais un intérieur du club avec des spectateurs, et que le combat
+commence une fois qu'on a reçu la commande sur le téléphone. »*
+
+Les trois reproches étaient fondés, et ils avaient des causes précises.
+
+### 19.1 Le bruit venait de six endroits
+
+| Source | Pourquoi ça grouillait | Correction |
+|---|---|---|
+| Grain de pellicule | Animé à chaque image, par défaut à 0,055 | Désactivé par défaut |
+| Aberration chromatique | Dédouble chaque point lumineux au bord de l'image | Désactivée par défaut |
+| Ondulations des flaques | Au loin, plus fines qu'un pixel : un moiré qui bouge | Éteintes progressivement avec la distance |
+| Reflet planaire | Demi-résolution, sans anticrénelage : chaque arête reflétée scintille | Pleine résolution, MSAA ×4 sur la texture de reflet |
+| Pluie | 420 traits/s plus fins qu'un pixel, très contrastés | 170/s, plus pâles |
+| Arêtes fines | Rendu sans anticrénelage (et le différé n'a pas de MSAA) | FXAA sur l'image tonemappée |
+
+Les réglages sauvegardés changent de clé (`UberBagarre.Gfx2.`) : sinon les anciennes valeurs,
+grain compris, seraient revenues au premier lancement.
+
+### 19.2 Pourquoi les lampes « n'éclairaient pas »
+
+Le rendu **avant** d'Unity ne calcule qu'une poignée de lampes par objet ; les autres passent en
+approximation par sommet. Un mur est un cube : quatre sommets par face. Une lampe calculée à ces
+quatre coins ne dessine rien — au mieux une teinte uniforme. La rue en comptait une trentaine : la
+plupart n'existaient pratiquement pas à l'écran.
+
+Le passage en **rendu différé** règle la question d'un coup : chaque lampe est calculée par pixel,
+sans plafond, avec ses ombres. Le prix est le MSAA (impossible en différé), d'où le FXAA. Le reflet
+planaire, lui, reste en rendu avant : il utilise une projection oblique que le différé ne gère pas.
+
+Les lampadaires étaient des lampes **ponctuelles** : elles éclairaient le haut de leur propre mât et
+les façades à six mètres. Ce sont maintenant des **projecteurs** tournés vers le sol, avec ombres —
+un disque de lumière sur la chaussée, et une ombre nette sous tout ce qui passe dessous.
+
+### 19.3 Le faisceau est calculé à partir de la lampe, pas posé à côté
+
+Les cônes en maillage additif avaient trois défauts impossibles à corriger : un bord (on voit la
+forme), aucune occlusion (le cône traverse le combattant qui passe dessous), et aucun lien avec la
+lampe (elle clignote, lui non ; on l'éteint au lever du jour, lui reste).
+
+La passe volumétrique du post-traitement lit les lampes marquées `VolumetricLight` et intègre, pour
+chaque pixel, la lumière reçue le long du rayon de vue jusqu'à la première surface (tampon de
+profondeur) :
+
+- l'intégrale de `1/r²` le long d'une droite a une **forme exacte** en arc tangente ;
+- les échantillons sont placés à **pas d'angle constant vu depuis la lampe** (échantillonnage
+  équi-angulaire) : denses près de l'ampoule, espacés au loin ;
+- douze échantillons **fixes**, aucun tirage aléatoire : un lancer de rayons classique avec du bruit
+  de tramage aurait justement produit le grouillement qu'on venait de supprimer.
+
+Le cône du projecteur, la portée, et une brume plus dense près du sol modulent chaque échantillon.
+Calcul à demi-résolution : le résultat est lisse par construction, un filtrage bilinéaire suffit.
+Douze lampes au plus par image, les plus proches (au bord de leur portée, pas à leur centre).
+
+Chaque lampe a son propre coefficient de diffusion : un lampadaire sous la bruine à 1, une lyre dans
+la fumée du club à 3,2. C'est ainsi que la même passe donne une rue humide et une salle enfumée.
+
+### 19.4 Le PBR a besoin de relief et de quelque chose à refléter
+
+Le shader Standard est physique, mais il ne peut rien sur une surface plate qui reflète un ciel noir.
+Deux ajouts :
+
+- **cartes de relief** générées à partir des textures existantes (luminance → hauteur → Sobel), avec
+  un flou avant dérivation pour les textures bruitées par pixel — sinon le relief scintille à la
+  moindre distance. Enregistrées en espace **linéaire** : une normale n'est pas une couleur ;
+- **sondes de réflexion** temps réel, rendues une fois à l'activation de chaque lieu. Dans les
+  intérieurs, à projection en boîte : le reflet du béton ciré est à la bonne place.
+
+### 19.5 La commande déclenche le combat — partout
+
+C'était déjà vrai dans l'histoire, pas dans le bac à sable : l'adversaire attaquait au chargement.
+`EnemyBrain.HoldAll` tient tous les adversaires en attente (garde baissée, immobiles) ; `SandboxOrder`
+fait tomber la commande sur le téléphone après deux secondes, et la lâche quand on l'accepte. R
+relance ensuite directement : on ne redemande pas la course à chaque réglage.
+
+Au chapitre 2, la règle est poussée au bout : le joueur arrive au club **sans contrat**. Il attend,
+la salle danse, le champion patiente dans la fosse — et rien ne commence avant que la commande tombe
+et soit acceptée.
+
+### 19.6 Un public, pas des figurants
+
+Les spectateurs ont le corps des combattants (même squelette, mêmes jambes procédurales) et aucun
+système de combat — leurs zones de frappe sont même retirées à la construction, pour qu'aucune
+erreur de câblage ne puisse jamais faire frapper le public.
+
+Ce qui en fait une foule tient en trois décisions :
+
+- ils regardent **l'échange** (la moyenne des combattants proches), pas un point fixe ;
+- chacun réagit avec **son propre retard** (80 à 400 ms) et son tempérament — trente personnes qui
+  lèvent les bras à la même image se lisent comme une animation ;
+- ils ont un **collider** : la foule fait mur autour de la fosse, et renvoie les combattants au
+  centre.
+
+La musique est **synthétisée** (grosse caisse, charleston, clap, basse, nappe), comme tout l'audio du
+projet, et c'est elle qui donne le tempo : dalles de la piste, écrans, lyres et têtes des danseurs
+lisent la position de lecture réelle du son. Rien ne dérive. La foule a sa voix — brouhaha permanent,
+clameurs filtrées sur les formants d'une voyelle — qui répond aux coups.
+
+### 19.7 Ce que je retiens
+
+« Pas de la vraie lumière » ne voulait pas dire « pas assez de lumière ». Il y en avait trop, et elle
+était fausse de deux façons : des lampes qui n'éclairaient pas (par sommet), et des faisceaux qui
+n'étaient pas de la lumière (des cônes). Dans la rue, la correction n'a presque rien ajouté : elle a
+rendu les lampes existantes réelles, et fait dériver tout le reste — faisceaux, reflets, ambiance —
+de ces lampes-là.

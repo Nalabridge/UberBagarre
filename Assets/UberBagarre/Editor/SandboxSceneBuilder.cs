@@ -3,8 +3,10 @@ using UberBagarre.Combat;
 using UberBagarre.Core;
 using UberBagarre.Enemy;
 using UberBagarre.Feedback;
+using UberBagarre.Phone;
 using UberBagarre.Player;
 using UberBagarre.Sandbox;
+using UberBagarre.Story;
 using UberBagarre.UI;
 using UberBagarre.View;
 using UberBagarre.World;
@@ -37,7 +39,7 @@ namespace UberBagarre.EditorTools
         private const float PlayerRadius = 0.28f;
         private const float SpawnDistance = 5f;
 
-        [MenuItem("Uber Bagarre/2 - Construire la scene Combat Sandbox", false, 20)]
+        [MenuItem("Uber Bagarre/2 - Construire le bac a sable (test du combat)", false, 20)]
         public static void BuildFromMenu()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -73,7 +75,10 @@ namespace UberBagarre.EditorTools
             Light moon;
             BuildLighting(out sun, out moon);
 
-            NightStreetBuilder.Result street = NightStreetBuilder.Build();
+            NightMaterialFactory.Palette night = NightMaterialFactory.Create(
+                NightStreetBuilder.GroundLength, NightStreetBuilder.GroundDepth);
+
+            NightStreetBuilder.Result street = NightStreetBuilder.Build(night);
             BuildPunchingBag(materials);
 
             Camera gameCamera;
@@ -85,6 +90,7 @@ namespace UberBagarre.EditorTools
             GraphicsDirector graphics = BuildRendering(sun, moon, street, gameCamera, observerCamera);
             WireHudAndDebug(player, enemy, attacks.Straight);
             BuildSpawnSystem(player, enemy, graphics);
+            BuildOrder(night, player, gameCamera);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -100,6 +106,7 @@ namespace UberBagarre.EditorTools
             Debug.Log("[UberBagarre] Scene Combat Sandbox generee : rue de nuit devant la boite.\n" +
                       "  Render pipeline : " + EditorBuildUtility.ActivePipelineName() + "\n" +
                       "  Espace colorim. : " + PlayerSettings.colorSpace + "\n" +
+                      "  Commande     : l'adversaire ATTEND que tu acceptes la course : T = telephone, E = accepter\n" +
                       "  Deplacement  : WASD/ZQSD, souris = visee, Maj = sprint, C = accroupi / glissade\n" +
                       "  Poings       : clic gauche = direct, clic DROIT = crochet, clic MOLETTE = uppercut\n" +
                       "  Pieds        : F = coup de pied de face, V = coup de pied bas (fait tomber)\n" +
@@ -152,6 +159,39 @@ namespace UberBagarre.EditorTools
             PlayerSettings.colorSpace = ColorSpace.Linear;
             Debug.Log("[UberBagarre] Espace colorimetrique passe en LINEAIRE. " +
                       "Laisse Unity terminer le reimport avant de relancer la scene.");
+        }
+
+        // ------------------------------------------------------------------ commande
+
+        /// <summary>
+        /// Le téléphone et la commande : même dans le bac à sable, le combat ne commence
+        /// qu'une fois la course reçue et acceptée. L'adversaire attend dans la rue jusque-là.
+        /// </summary>
+        private static void BuildOrder(NightMaterialFactory.Palette night, GameObject player, Camera gameCamera)
+        {
+            GameObject go = new GameObject("=== Commande ===");
+
+            MissionBriefing briefing = go.AddComponent<MissionBriefing>();
+            SerializedWiring.SetString(briefing, "_targetName", "L'ADVERSAIRE");
+            SerializedWiring.SetString(briefing, "_targetAge", "Age inconnu");
+            SerializedWiring.SetString(briefing, "_targetClothing", "Il t'attend au milieu de la rue");
+            SerializedWiring.SetString(briefing, "_targetLocation", "Devant le Vertigo");
+            SerializedWiring.SetString(briefing, "_meetingTime", "MAINTENANT");
+            SerializedWiring.SetString(briefing, "_targetRecord",
+                "Bac a sable : sujet d'entrainement.\nIl ne bouge pas tant que la course n'est pas acceptee.");
+            SerializedWiring.SetString(briefing, "_clientName", "BAC A SABLE");
+            SerializedWiring.SetInt(briefing, "_stars", 2);
+            SerializedWiring.SetInt(briefing, "_reward", 200);
+
+            PhoneDevice phone = PrologueSceneBuilder.BuildPhone(night, gameCamera, player, briefing);
+
+            PropHandler props = player.GetComponent<PropHandler>();
+            if (props != null) SerializedWiring.SetObject(props, "_phone", phone);
+
+            SandboxOrder order = go.AddComponent<SandboxOrder>();
+            SerializedWiring.SetObject(order, "_phone", phone);
+            SerializedWiring.SetObject(order, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.Verify(order, "_phone");
         }
 
         // ------------------------------------------------------------------ décor
@@ -213,7 +253,7 @@ namespace UberBagarre.EditorTools
             GameObject root = new GameObject("=== Rendu ===");
 
             VisualQuality quality = root.AddComponent<VisualQuality>();
-            SerializedWiring.SetInt(quality, "_antiAliasing", 8);
+            SerializedWiring.SetInt(quality, "_antiAliasing", 0);
             SerializedWiring.SetFloat(quality, "_shadowDistance", 60f);
             SerializedWiring.SetInt(quality, "_pixelLightCount", 10);
 
@@ -262,7 +302,14 @@ namespace UberBagarre.EditorTools
             // bloom ne distingue alors plus une enseigne d'un mur blanc. C'est le réglage
             // dont tout le reste dépend.
             camera.allowHDR = true;
-            camera.allowMSAA = true;
+
+            // Rendu DIFFERE : chaque lampe est calculee par pixel, sans plafond, avec ses
+            // ombres. En rendu avant, Unity n'en calcule qu'une poignee par objet et bascule
+            // les autres en approximation par sommet — sur un mur de quatre sommets, elles
+            // n'eclairaient donc presque rien. Le MSAA n'existe pas en differe : c'est le FXAA
+            // du post-traitement qui le remplace.
+            camera.renderingPath = RenderingPath.DeferredShading;
+            camera.allowMSAA = false;
 
             UberPostProcess post = camera.gameObject.AddComponent<UberPostProcess>();
 

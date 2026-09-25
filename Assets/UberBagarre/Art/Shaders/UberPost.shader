@@ -6,15 +6,18 @@
 // pour cette raison qu'une scene de nuit parait "cheap" : ce n'est pas la
 // geometrie, c'est qu'aucune source lumineuse ne se comporte comme une source.
 //
-// Quatre passes :
+// Six passes :
 //   0 - Prefiltre  : isole ce qui depasse le seuil, avec genou doux et moyenne
 //                    de Karis (sinon un seul pixel tres brillant devient une
 //                    etoile clignotante des que la camera bouge).
 //   1 - Reduction  : filtre 13 taps (Jimenez, Siggraph 2014). Un simple bilineaire
 //                    fait "pulser" le bloom pendant les deplacements.
 //   2 - Agrandiss. : filtre en tente 9 taps, additionne au niveau superieur.
-//   3 - Composite  : bloom + exposition + tonemap ACES + etalonnage + vignette +
-//                    aberration chromatique + grain.
+//   3 - Composite  : bloom + lumiere volumetrique + exposition + tonemap ACES +
+//                    etalonnage + vignette + aberration chromatique + grain.
+//   4 - Volumetrique : la lumiere diffusee par l'air humide, calculee a partir des
+//                    VRAIES lampes de la scene (position, cone, couleur, portee).
+//   5 - FXAA       : anticrenelage sur l'image finale.
 Shader "UberBagarre/Post"
 {
     Properties
@@ -49,6 +52,9 @@ Shader "UberBagarre/Post"
     // x = intensite, y = douceur, z = rondeur
     float4 _Vignette;
     float4 _VignetteColor;
+
+    sampler2D _VolumetricTex;
+    float _VolumetricOn;
 
     float _Aberration;
     float _GrainIntensity;
@@ -281,6 +287,10 @@ Shader "UberBagarre/Post"
 
                 color += bloom * _BloomIntensity * _BloomTint.rgb;
 
+                // Lumiere diffusee par l'air : deja lineaire, calculee a demi-resolution.
+                // Elle est lisse par construction, donc un filtrage bilineaire suffit.
+                if (_VolumetricOn > 0.5) color += tex2D(_VolumetricTex, uv).rgb;
+
                 color *= _Exposure;
 
                 // Etalonnage AVANT le tonemap : appliquer un contraste apres la
@@ -329,6 +339,210 @@ Shader "UberBagarre/Post"
                 if (_LinearMode < 0.5) color = LinearToGammaSpace(color);
 
                 return float4(color, 1.0);
+            }
+            ENDCG
+        }
+
+        // ------------------------------------------- 4 : lumiere volumetrique
+        //
+        // Ce que les cones en maillage additif imitaient mal : l'air humide qui renvoie
+        // une partie de la lumiere vers l'oeil. Un cone peint se voit comme un objet — il
+        // a des bords, il traverse les murs, il ne reagit a rien. Ici, pour chaque pixel,
+        // on INTEGRE la lumiere recue le long du rayon de vue, depuis la camera jusqu'a
+        // la premiere surface, pour chaque lampe proche.
+        //
+        // L'integrale de 1/r^2 le long d'une droite a une forme exacte en arc tangente.
+        // Les echantillons sont donc places a pas d'ANGLE constant vu depuis la lampe
+        // (echantillonnage equi-angulaire) : dense pres de la lampe, la ou la lumiere
+        // varie vite, espace au loin. Douze echantillons fixes, sans aucun tirage
+        // aleatoire : le resultat est lisse et stable d'une image a l'autre. Un lancer de
+        // rayons classique avec du bruit de tramage aurait justement produit le
+        // grouillement qu'on cherche a supprimer.
+        //
+        // Le faisceau s'arrete sur la premiere surface (tampon de profondeur) : un
+        // combattant devant un lampadaire coupe le faisceau derriere lui.
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex VertPost
+            #pragma fragment FragVolumetric
+            #pragma target 3.0
+
+            #define VOL_MAX_LIGHTS 12
+            #define VOL_STEPS 12
+
+            sampler2D_float _CameraDepthTexture;
+
+            float4 _FrustumBL;
+            float4 _FrustumTL;
+            float4 _FrustumTR;
+            float4 _FrustumBR;
+
+            // xyz = position, w = portee
+            float4 _VolPos[VOL_MAX_LIGHTS];
+
+            // xyz = axe du projecteur, w = cosinus du demi-angle exterieur (-2 = lampe ponctuelle)
+            float4 _VolDir[VOL_MAX_LIGHTS];
+
+            // rgb = couleur lineaire * intensite, w = 1 / (cos interieur - cos exterieur)
+            float4 _VolColor[VOL_MAX_LIGHTS];
+
+            float _VolCount;
+
+            // x = densite, y = distance maximale, z = decroissance avec la hauteur, w = niveau du sol
+            float4 _VolParams;
+
+            float4 FragVolumetric(v2f_post i) : SV_Target
+            {
+                float2 uv = i.uv;
+
+                #if UNITY_UV_STARTS_AT_TOP
+                if (_MainTex_TexelSize.y < 0.0) uv.y = 1.0 - uv.y;
+                #endif
+
+                float rawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
+                float eyeDepth = LinearEyeDepth(rawDepth);
+
+                // Rayon de vue reconstruit a partir des coins du frustum : composante
+                // « profondeur » egale a 1, donc rayon * profondeur = point de la surface.
+                float3 ray = lerp(lerp(_FrustumBL.xyz, _FrustumBR.xyz, uv.x),
+                                  lerp(_FrustumTL.xyz, _FrustumTR.xyz, uv.x), uv.y);
+
+                float rayLength = max(length(ray), 1e-5);
+                float3 dir = ray / rayLength;
+                float tMax = min(eyeDepth * rayLength, _VolParams.y);
+                float3 origin = _WorldSpaceCameraPos;
+
+                float3 total = float3(0.0, 0.0, 0.0);
+                int count = (int)_VolCount;
+
+                [loop]
+                for (int k = 0; k < VOL_MAX_LIGHTS; k++)
+                {
+                    if (k >= count) break;
+
+                    float3 lightPos = _VolPos[k].xyz;
+                    float range = _VolPos[k].w;
+
+                    // Point du rayon le plus proche de la lampe, et distance a ce point.
+                    float t0 = dot(lightPos - origin, dir);
+                    float h = length(origin + dir * t0 - lightPos);
+                    if (h >= range) continue;
+
+                    // Plancher : sans lui, un rayon qui frole l'ampoule recoit une valeur
+                    // infinie, et le bloom en fait un soleil.
+                    h = max(h, 0.35);
+
+                    // Seule la partie du rayon situee dans la portee de la lampe compte.
+                    float chord = sqrt(max(range * range - h * h, 0.0));
+                    float ta = max(0.0, t0 - chord);
+                    float tb = min(tMax, t0 + chord);
+                    if (tb <= ta) continue;
+
+                    float thetaA = atan((ta - t0) / h);
+                    float thetaB = atan((tb - t0) / h);
+
+                    float weight = 0.0;
+
+                    [unroll]
+                    for (int s = 0; s < VOL_STEPS; s++)
+                    {
+                        float theta = lerp(thetaA, thetaB, (s + 0.5) / VOL_STEPS);
+                        float t = t0 + h * tan(theta);
+                        float3 p = origin + dir * t;
+
+                        float3 toPoint = p - lightPos;
+                        float d = length(toPoint);
+                        float3 l = toPoint / max(d, 1e-3);
+
+                        // Cone du projecteur, bord adouci.
+                        float cone = 1.0;
+                        if (_VolDir[k].w > -1.5)
+                        {
+                            cone = saturate((dot(l, _VolDir[k].xyz) - _VolDir[k].w) * _VolColor[k].w);
+                            cone *= cone;
+                        }
+
+                        // Extinction douce a la portee, comme la lampe elle-meme.
+                        float fade = saturate(1.0 - (d * d) / (range * range));
+
+                        // La brume est plus dense pres du sol : l'humidite y stagne.
+                        float height = exp(-max(p.y - _VolParams.w, 0.0) * _VolParams.z);
+
+                        weight += cone * fade * fade * height;
+                    }
+
+                    // Integrale exacte de 1/r^2 sur le segment, ponderee par la moyenne
+                    // du cone, de la portee et de la hauteur le long du segment.
+                    float integral = (thetaB - thetaA) / h * (weight / VOL_STEPS);
+                    total += _VolColor[k].rgb * integral;
+                }
+
+                return float4(total * _VolParams.x, 1.0);
+            }
+            ENDCG
+        }
+
+        // ------------------------------------------------------------ 5 : FXAA
+        //
+        // Le rendu differe ne sait pas faire de MSAA. Sans anticrenelage, chaque arete
+        // fine — rambarde, cable, bord d'enseigne — scintille des que la camera bouge,
+        // et l'oeil le lit comme du bruit. FXAA repere les contrastes locaux sur l'image
+        // finale et lisse le long des aretes, pas en travers.
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex VertPost
+            #pragma fragment FragFxaa
+            #pragma target 3.0
+
+            float FxaaLuma(float3 c)
+            {
+                // Luminance PERCUE : l'algorithme doit comparer des contrastes visibles.
+                return sqrt(dot(saturate(c), float3(0.299, 0.587, 0.114)));
+            }
+
+            float4 FragFxaa(v2f_post i) : SV_Target
+            {
+                float2 t = _MainTex_TexelSize.xy;
+                float2 uv = i.uv;
+
+                float4 center = tex2D(_MainTex, uv);
+                float3 rgbNW = tex2D(_MainTex, uv + float2(-1.0, -1.0) * t).rgb;
+                float3 rgbNE = tex2D(_MainTex, uv + float2( 1.0, -1.0) * t).rgb;
+                float3 rgbSW = tex2D(_MainTex, uv + float2(-1.0,  1.0) * t).rgb;
+                float3 rgbSE = tex2D(_MainTex, uv + float2( 1.0,  1.0) * t).rgb;
+
+                float lumaNW = FxaaLuma(rgbNW);
+                float lumaNE = FxaaLuma(rgbNE);
+                float lumaSW = FxaaLuma(rgbSW);
+                float lumaSE = FxaaLuma(rgbSE);
+                float lumaM = FxaaLuma(center.rgb);
+
+                float lumaMin = min(lumaM, min(min(lumaNW, lumaNE), min(lumaSW, lumaSE)));
+                float lumaMax = max(lumaM, max(max(lumaNW, lumaNE), max(lumaSW, lumaSE)));
+
+                // Contraste local trop faible : rien a lisser.
+                if (lumaMax - lumaMin < max(0.0312, lumaMax * 0.125)) return center;
+
+                float2 dir;
+                dir.x = -((lumaNW + lumaNE) - (lumaSW + lumaSE));
+                dir.y =  ((lumaNW + lumaSW) - (lumaNE + lumaSE));
+
+                float dirReduce = max((lumaNW + lumaNE + lumaSW + lumaSE) * (0.25 * 0.125), 1.0 / 128.0);
+                float rcpDirMin = 1.0 / (min(abs(dir.x), abs(dir.y)) + dirReduce);
+                dir = clamp(dir * rcpDirMin, -8.0, 8.0) * t;
+
+                float3 rgbA = 0.5 * (tex2D(_MainTex, uv + dir * (1.0 / 3.0 - 0.5)).rgb +
+                                     tex2D(_MainTex, uv + dir * (2.0 / 3.0 - 0.5)).rgb);
+
+                float3 rgbB = rgbA * 0.5 + 0.25 * (tex2D(_MainTex, uv - dir * 0.5).rgb +
+                                                    tex2D(_MainTex, uv + dir * 0.5).rgb);
+
+                float lumaB = FxaaLuma(rgbB);
+                float3 result = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
+
+                return float4(result, center.a);
             }
             ENDCG
         }

@@ -486,6 +486,180 @@ namespace UberBagarre.EditorTools
             return texture;
         }
 
+        // ------------------------------------------------------------------ PBR
+
+        /// <summary>
+        /// Carte de relief (normal map) tirée d'une texture de couleur existante.
+        ///
+        /// Le rendu physique (PBR) ne fait rien d'une surface parfaitement plate : une lampe
+        /// rasante sur un mur de briques sans relief donne un dégradé uniforme, comme sur du
+        /// papier peint. Avec une carte de relief, chaque joint de mortier accroche la lumière
+        /// d'un côté et reste dans l'ombre de l'autre — c'est ce qui fait qu'une lampe
+        /// ÉCLAIRE une matière au lieu de la colorier.
+        ///
+        /// La hauteur est déduite de la luminosité : le mortier (sombre) est en creux, la
+        /// brique (claire) en relief ; les gravillons clairs du bitume dépassent. Un flou léger
+        /// avant la dérivée évite de transformer le bruit par pixel en relief par pixel — ce
+        /// qui ferait scintiller les reflets à la moindre distance.
+        ///
+        /// Texture enregistrée en espace LINÉAIRE : une carte de relief n'est pas une couleur,
+        /// et la lire comme du sRGB fausserait toutes les pentes.
+        /// </summary>
+        public static Texture2D CreateOrUpdateNormalMap(string folder, string textureName, Texture2D source,
+            float strength, int blurRadius)
+        {
+            if (source == null) return null;
+
+            Color[] colors;
+            try
+            {
+                colors = source.GetPixels();
+            }
+            catch (UnityException)
+            {
+                Debug.LogWarning("[UberBagarre] Texture illisible, pas de carte de relief : " + source.name);
+                return null;
+            }
+
+            int width = source.width;
+            int height = source.height;
+
+            float[] heights = new float[width * height];
+            for (int i = 0; i < heights.Length; i++) heights[i] = colors[i].grayscale;
+
+            if (blurRadius > 0) heights = BoxBlur(heights, width, height, blurRadius);
+
+            Color[] pixels = new Color[width * height];
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    // Sobel avec repli sur les bords : la texture se repete, le relief aussi.
+                    float tl = Sample(heights, width, height, x - 1, y + 1);
+                    float t = Sample(heights, width, height, x, y + 1);
+                    float tr = Sample(heights, width, height, x + 1, y + 1);
+                    float l = Sample(heights, width, height, x - 1, y);
+                    float r = Sample(heights, width, height, x + 1, y);
+                    float bl = Sample(heights, width, height, x - 1, y - 1);
+                    float b = Sample(heights, width, height, x, y - 1);
+                    float br = Sample(heights, width, height, x + 1, y - 1);
+
+                    float dx = (tr + 2f * r + br) - (tl + 2f * l + bl);
+                    float dy = (tl + 2f * t + tr) - (bl + 2f * b + br);
+
+                    Vector3 normal = new Vector3(-dx * strength, -dy * strength, 1f).normalized;
+                    pixels[y * width + x] = new Color(normal.x * 0.5f + 0.5f, normal.y * 0.5f + 0.5f,
+                        normal.z * 0.5f + 0.5f, 1f);
+                }
+            }
+
+            EnsureFolder(folder);
+            string path = folder + "/" + textureName + ".asset";
+
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            bool isNew = texture == null || texture.width != width || texture.height != height;
+
+            if (isNew)
+            {
+                if (texture != null) AssetDatabase.DeleteAsset(path);
+                texture = new Texture2D(width, height, TextureFormat.RGBA32, true, true);
+            }
+
+            texture.SetPixels(pixels);
+            texture.wrapMode = TextureWrapMode.Repeat;
+            texture.filterMode = FilterMode.Trilinear;
+            texture.anisoLevel = 8;
+            texture.Apply(true);
+
+            if (isNew) AssetDatabase.CreateAsset(texture, path);
+            else EditorUtility.SetDirty(texture);
+
+            return texture;
+        }
+
+        /// <summary>Branche une carte de relief sur un matériau Standard (ou compatible).</summary>
+        public static void ApplyNormalMap(Material material, Texture2D normalMap, float scale)
+        {
+            if (material == null || normalMap == null || !material.HasProperty("_BumpMap")) return;
+
+            material.SetTexture("_BumpMap", normalMap);
+            if (material.HasProperty("_BumpScale")) material.SetFloat("_BumpScale", scale);
+            material.EnableKeyword("_NORMALMAP");
+
+            EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>
+        /// Sonde de réflexion temps réel, rendue une fois à l'activation du lieu.
+        ///
+        /// Sans elle, tout ce qui est lisse ou métallique reflète… le ciel de nuit, c'est-à-dire
+        /// du noir : le chrome d'une voiture paraît mat, une vitrine paraît peinte. La sonde
+        /// capture les néons, les lampadaires et les façades éclairées autour d'elle, et le
+        /// rendu physique s'en sert pour TOUTES les surfaces : c'est la moitié du PBR.
+        ///
+        /// Rendue une seule fois (à l'activation) : le décor ne bouge pas, et la recalculer à
+        /// chaque image coûterait six rendus de scène.
+        /// </summary>
+        public static ReflectionProbe AddReflectionProbe(Transform parent, string name, Vector3 localPosition,
+            Vector3 size, bool boxProjection, float intensity)
+        {
+            GameObject go = CreateEmpty(name, parent, localPosition);
+
+            ReflectionProbe probe = go.AddComponent<ReflectionProbe>();
+            probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Realtime;
+            probe.refreshMode = UnityEngine.Rendering.ReflectionProbeRefreshMode.OnAwake;
+            probe.timeSlicingMode = UnityEngine.Rendering.ReflectionProbeTimeSlicingMode.AllFacesAtOnce;
+            probe.resolution = 256;
+            probe.hdr = true;
+            probe.size = size;
+            probe.boxProjection = boxProjection;
+            probe.intensity = intensity;
+            probe.importance = boxProjection ? 2 : 1;
+            probe.nearClipPlane = 0.3f;
+            probe.farClipPlane = 150f;
+            probe.shadowDistance = 40f;
+            probe.clearFlags = UnityEngine.Rendering.ReflectionProbeClearFlags.Skybox;
+
+            return probe;
+        }
+
+        private static float Sample(float[] values, int width, int height, int x, int y)
+        {
+            x = ((x % width) + width) % width;
+            y = ((y % height) + height) % height;
+            return values[y * width + x];
+        }
+
+        private static float[] BoxBlur(float[] values, int width, int height, int radius)
+        {
+            float[] horizontal = new float[values.Length];
+            float[] result = new float[values.Length];
+            float norm = 1f / (radius * 2 + 1);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float sum = 0f;
+                    for (int k = -radius; k <= radius; k++) sum += Sample(values, width, height, x + k, y);
+                    horizontal[y * width + x] = sum * norm;
+                }
+            }
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    float sum = 0f;
+                    for (int k = -radius; k <= radius; k++) sum += Sample(horizontal, width, height, x, y + k);
+                    result[y * width + x] = sum * norm;
+                }
+            }
+
+            return result;
+        }
+
         /// <summary>Crée une primitive. 'withCollider = false' détruit le collider auto (objets purement visuels).</summary>
         public static GameObject CreatePrimitive(PrimitiveType type, string name, Transform parent,
             Vector3 localPosition, Vector3 localScale, Material material, bool withCollider)

@@ -189,9 +189,34 @@ namespace UberBagarre.Enemy
             _motor.SpeedMultiplier = Mathf.Max(0.1f, _self.Stats.Get(StatType.MoveSpeed));
         }
 
+        /// <summary>
+        /// Tient TOUS les adversaires en attente : ils se tiennent là, garde baissée, sans
+        /// avancer ni frapper.
+        ///
+        /// C'est la commande reçue sur le téléphone qui lance un combat, pas le chargement de
+        /// la scène : dans le bac à sable, l'adversaire attend qu'on ait accepté la course.
+        /// Statique parce que la règle vaut pour tout le monde à la fois — y compris les
+        /// adversaires qu'une vague fera apparaître pendant l'attente.
+        /// </summary>
+        public static bool HoldAll { get; set; }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            // Sans rechargement de domaine entre deux Play, un statique survit : une attente
+            // interrompue figerait les adversaires de la partie suivante.
+            HoldAll = false;
+        }
+
         private void Update()
         {
             ApplyMoveSpeed();
+
+            if (HoldAll)
+            {
+                if (_guard != null) _guard.SetGuard(false);
+                return;
+            }
 
             if (_self == null || !_self.IsAlive)
             {

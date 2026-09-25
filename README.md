@@ -2,18 +2,18 @@
 
 Prototype de combat aux poings en vue première personne, qui servira plus tard de base au jeu
 « Über Bagarre » (commander un bagarreur comme on commande un Uber).
-Le dépôt contient maintenant **deux scènes** :
+Le dépôt contient **deux scènes**, générées par le menu **Uber Bagarre** :
 
-- **`Prologue.unity`** — le début du jeu tel que le dossier le décrit : la planque insalubre, l'appel
-  de Sami, l'application illégale qu'on installe quand même, la course à une étoile, le trajet, le
-  groupe devant le club, la première bagarre, la photo pour valider, le retour.
-- **`CombatSandbox.unity`** — l'établi de combat : pas de narration, tous les réglages sous la main.
+- **LE JEU** (`Prologue.unity`, menu **3 - Construire le JEU (histoire complete)**) — toute l'histoire :
+  le prologue (la planque, l'appel de Sami, l'appli illégale, la course à une étoile, le groupe devant
+  le club, la photo), le chapitre 1 (les frères Kovac au parking) et le chapitre 2 (l'intérieur du
+  Vertigo, la fosse et son public). **C'est cette scène qu'il faut lancer pour jouer.**
+- **Le bac à sable** (`CombatSandbox.unity`, menu **2**) — l'établi de combat, sans histoire, tous les
+  réglages sous la main. Même là, l'adversaire attend qu'on ait **accepté la course au téléphone**.
 
-Pas encore d'économie, pas de progression, pas de ville ouverte.
-
-Le décor de test est en revanche celui du premier combat décrit dans le dossier : **la rue devant
-la boîte de nuit, la nuit, sous la bruine**. Néons, bitume mouillé qui reflète réellement la scène,
-cône de lumière des lampadaires, et la vieille voiture rouillée garée devant l'entrée.
+Le rendu est en **différé** (toutes les lampes calculées par pixel, avec leurs ombres), avec une
+lumière **volumétrique** calculée à partir des vraies lampes, des matériaux **PBR** (cartes de relief,
+sondes de réflexion) et un anticrénelage FXAA.
 
 ---
 
@@ -47,10 +47,11 @@ l'état du système d'input. Si aucun backend d'input n'est actif, l'outil te le
 
 ### 3. Construire la scène de test
 
-Menu **Uber Bagarre → 2 - Construire la scene Combat Sandbox**.
+Pour **jouer** : menu **Uber Bagarre → 3 - Construire le JEU (histoire complete)**, puis **Play**.
 
-Ça génère `Assets/UberBagarre/Scenes/CombatSandbox.unity` : arène, murs, lumières, rig joueur complet,
-points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
+Pour **tester le combat** sans histoire : menu **Uber Bagarre → 2 - Construire le bac a sable (test du
+combat)**. Ça génère `Assets/UberBagarre/Scenes/CombatSandbox.unity`. Au bout de deux secondes, la
+commande tombe sur le téléphone : **E** pour l'accepter, et l'adversaire attaque.
 
 > Cet outil est **re-jouable** : relance-le après chaque phase pour récupérer les nouveautés.
 > Il demande confirmation, car il **remplace** la scène (tes assets — matériaux, réglages, données
@@ -63,7 +64,7 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 2. Menu **Uber Bagarre → 6 - Reinitialiser les touches par defaut** — *uniquement si j'ai changé
    des touches.* Un asset garde les valeurs du jour de sa création : une nouvelle touche par défaut
    dans le code ne met **pas** à jour un asset existant.
-3. Menu **Uber Bagarre → 2 - Construire la scene Combat Sandbox** — pour appliquer les nouveaux
+3. Menu **Uber Bagarre → 3 - Construire le JEU** (et/ou **2 - … bac a sable**) — pour appliquer les nouveaux
    réglages par défaut des composants (vitesses, head bob…) et récupérer les nouveaux objets.
    Cette commande crée aussi les **nouveaux coups** manquants et affine les maillages déjà
    présents, sans toucher aux coups que tu as modifiés.
@@ -80,8 +81,8 @@ points de spawn. La scène s'ouvre automatiquement. Appuie sur **Play**.
 Dans l'ordre :
 
 1. **Une scène du jeu est-elle ouverte ?** Les scènes ne sont pas dans le dépôt, elles sont
-   générées. Sur une nouvelle machine, lance **Uber Bagarre → 3 - Construire la scene Prologue**
-   (ou **2 - … Combat Sandbox**). Play dans la scène vide par défaut n'affiche qu'un ciel.
+   générées. Sur une nouvelle machine, lance **Uber Bagarre → 3 - Construire le JEU (histoire complete)**
+   (ou **2 - … bac a sable**). Play dans la scène vide par défaut n'affiche qu'un ciel.
 2. **L'onglet Game est-il devant ?** Si c'est l'onglet *Scene* qui s'affiche pendant Play, tu
    regardes l'éditeur, pas le jeu. Dans l'onglet Game, menu déroulant en haut : choisis
    **Play Focused** (ou *Play Maximized*).
@@ -165,7 +166,9 @@ Tu peux les changer sans toucher à une ligne de code.
 | 19 | Prologue jouable : maison, téléphone en main, application, identification, tutoriel, photo | ✅ |
 | 20 | Physique des coups par os, décor qui bouge, coup de tête, bousculade, objets à lancer | ✅ |
 | 21 | Progression (argent, XP, niveaux, avis), chapitre 1 : les frères Kovac au parking | ✅ |
-| 22 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 22 | Rendu différé, lumière volumétrique réelle, PBR (relief, sondes), FXAA, bruit d'image supprimé | ✅ |
+| 23 | Chapitre 2 : intérieur du Vertigo, public animé, musique générée, la commande déclenche le combat | ✅ |
+| 24 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -177,7 +180,8 @@ Assets/UberBagarre/
     Core/        input (backend-agnostique), interfaces partagées
     Player/      déplacement, visée, curseur, head bob, pilotage des mains
     View/        squelette, IK deux os, cycle de marche, mains articulées, marques de coup,
-                 physique des coups par os (BodyImpactPhysics)
+                 physique des coups par os (BodyImpactPhysics), lumiere volumetrique,
+                 lumieres au tempo (BeatLight), lyres (SweepingLight)
     Combat/      combattant, états, attaques, hitbox/hurtbox par zone, vie, stamina, stats,
                  esquive, garde et parade, chute et relevé
     Enemy/       moteur, IA, répertoire de coups, garde réactive, séquence de test
@@ -189,7 +193,8 @@ Assets/UberBagarre/
                  et du chapitre 1, progression (argent, XP, niveaux, avis)
     Phone/       le téléphone tenu en main, ses écrans, son appareil photo
     World/       interaction (E), lieux, groupe devant le club, identification de la cible,
-                 objets physiques (frapper, pousser, ramasser, lancer)
+                 objets physiques (frapper, pousser, ramasser, lancer), public anime
+                 (Spectator), musique et foule generees (ClubMusic, CrowdAudio)
   Editor/        outils de génération (scène, décor, matériaux, coups)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
@@ -293,7 +298,7 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 
 ## Le prologue
 
-`Uber Bagarre → 3 - Construire la scene Prologue`, puis Play.
+`Uber Bagarre → 3 - Construire le JEU (histoire complete)`, puis Play.
 
 ### Ce qui se passe
 
@@ -374,6 +379,42 @@ course du prologue est alors encaissée d'office, niveau 2 compris.
 | **Deux preuves** | Une photo **par frère**, au sol. Le téléphone compte (« 1 / 2 »), refuse un doublon et refuse un sujet encore debout. |
 | **Niveau 3** | 260 XP de plus : capacité **Encaisseur** (+15 PV max). Nouvel avis : 4 étoiles, « Efficace. Un peu brutal pour le prix. » |
 | **La planque, 01:05** | Le compte est fait avec **ton** argent réel contre le loyer de 640 €. Sami rappelle : un garage vers le port, trois étoiles. *À suivre.* |
+
+---
+
+## Le chapitre 2 — trois étoiles, dans la fosse
+
+Pour y aller directement : coche **`Start At Chapter Two`** sur `PrologueDirector`.
+
+| | |
+|---|---|
+| **Vendredi** | Pas de commande, pas de fiche : juste une adresse. Sami a dit « la salle du fond ». |
+| **Le Vertigo** | Retour devant le club, et cette fois on entre (**E** sur la porte). |
+| **La salle** | Bar ambré, scène du DJ avec mur d'écrans, piste de dalles lumineuses, lyres qui balaient la fumée, danseurs. La musique est générée, et **tout bat sur son tempo** : dalles, lyres, écrans, têtes des danseurs. |
+| **La fosse** | Au fond à droite : un cercle de barrières, quatre projecteurs blancs à la verticale, et une vingtaine de spectateurs qui font mur. Le champion, **LE TAUREAU**, attend. |
+| **La commande** | Rien ne se passe tant qu'elle n'est pas tombée : la bagarre commence **quand la commande est reçue sur le téléphone et acceptée** (E). La barrière s'ouvre, la salle rugit. |
+| **Le combat** | La barrière se referme derrière toi. Le public regarde l'échange, lève les bras sur les beaux coups, grimace sur les coups durs, exulte au K.O. — chacun avec son propre temps de réaction. |
+| **Après** | Photo, 600 €, **niveau 4** (*second souffle* : +30 % d'endurance), avis 5 étoiles. À la planque, le loyer est enfin payé… et quelqu'un avait commandé ce combat contre toi. *À suivre.* |
+
+---
+
+## La lumière
+
+- **Rendu différé** : chaque lampe est calculée par pixel, avec ses ombres. Avant, Unity n'en
+  calculait qu'une poignée par objet et bascule les autres « par sommet » — sur un mur de quatre
+  sommets, elles n'éclairaient presque rien.
+- **Lampadaires = projecteurs** tournés vers le sol, avec ombres, au lieu de lampes ponctuelles.
+- **Plus aucun cône en maillage.** Le faisceau dans l'air humide est calculé par le post-traitement
+  à partir des **vraies lampes** (position, cône, couleur, portée, intensité, clignotement) :
+  intégration exacte le long du rayon de vue, sans tirage aléatoire, donc **sans bruit**. Il
+  s'arrête sur la première surface — un combattant devant un lampadaire coupe le faisceau.
+- **PBR** : cartes de relief générées pour la brique, le béton, les dalles, le bitume, la rouille, le
+  métal ; **sondes de réflexion** dans chaque lieu (le chrome et le béton ciré reflètent les néons au
+  lieu du ciel noir).
+- **Bruit supprimé** : plus de grain animé ni d'aberration par défaut, reflet du sol en pleine
+  résolution avec MSAA, ondulations des flaques éteintes au loin, pluie plus discrète, **FXAA**.
+- Réglages : **TAB → Graphismes** (*Lumière dans l'air*, *Anticrénelage*). Les anciens réglages
+  sauvegardés sont ignorés : on repart des nouvelles valeurs.
 
 ---
 

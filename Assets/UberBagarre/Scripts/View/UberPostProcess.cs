@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace UberBagarre.View
 {
@@ -32,6 +33,11 @@ namespace UberBagarre.View
         private const int PassDownsample = 1;
         private const int PassUpsample = 2;
         private const int PassComposite = 3;
+        private const int PassVolumetric = 4;
+        private const int PassFxaa = 5;
+
+        /// <summary>Nombre maximal de lampes volumétriques prises en compte par image (les plus proches).</summary>
+        public const int MaxVolumetricLights = 12;
 
         private const int MaxLevels = 10;
 
@@ -96,15 +102,67 @@ namespace UberBagarre.View
         [SerializeField] private Color _vignetteColor = Color.black;
 
         [SerializeField, Range(0f, 4f)]
-        [Tooltip("Aberration chromatique, en pixels au bord de l'image.")]
-        private float _aberration = 0.55f;
+        [Tooltip("Aberration chromatique, en pixels au bord de l'image. Desactivee par defaut : " +
+                 "sur une image de nuit pleine de points lumineux, elle se lit comme du flou sale.")]
+        private float _aberration;
 
-        [SerializeField, Range(0f, 0.5f)] private float _grain = 0.055f;
+        [SerializeField, Range(0f, 0.5f)]
+        [Tooltip("Grain de pellicule. Desactive par defaut : anime a chaque image, il se lit " +
+                 "comme du bruit numerique, pas comme une texture de film.")]
+        private float _grain;
+
         [SerializeField, Range(1f, 4f)] private float _grainSize = 1.4f;
+
+        [Header("Lumiere volumetrique")]
+        [SerializeField]
+        [Tooltip("La lumiere des lampes marquees VolumetricLight se voit dans l'air humide.")]
+        private bool _volumetric = true;
+
+        [SerializeField, Range(0f, 3f)]
+        [Tooltip("Multiplicateur global de la lumiere diffusee.")]
+        private float _volumetricIntensity = 1f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Densite de l'air. 0,03 = nuit humide ; 0,1 = fumee de club.")]
+        private float _volumetricDensity = 0.032f;
+
+        [SerializeField, Min(5f)] private float _volumetricDistance = 90f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Decroissance de la brume avec la hauteur. 0 = brume uniforme.")]
+        private float _volumetricHeightFalloff = 0.07f;
+
+        [SerializeField, Range(1, 4)]
+        [Tooltip("Resolution du calcul : 2 = demi-resolution. Le resultat est lisse, la perte ne se voit pas.")]
+        private int _volumetricDownsample = 2;
+
+        [Header("Anticrenelage")]
+        [SerializeField]
+        [Tooltip("FXAA sur l'image finale. Indispensable en rendu differe, qui ne fait pas de MSAA.")]
+        private bool _fxaa = true;
 
         private Camera _camera;
         private Material _runtimeMaterial;
         private readonly RenderTexture[] _chain = new RenderTexture[MaxLevels];
+
+        private readonly Vector4[] _volPositions = new Vector4[MaxVolumetricLights];
+        private readonly Vector4[] _volDirections = new Vector4[MaxVolumetricLights];
+        private readonly Vector4[] _volColors = new Vector4[MaxVolumetricLights];
+        private readonly VolumetricLight[] _volPicked = new VolumetricLight[MaxVolumetricLights];
+        private readonly float[] _volScores = new float[MaxVolumetricLights];
+        private readonly Vector3[] _frustum = new Vector3[4];
+
+        private static readonly int VolumetricTexId = Shader.PropertyToID("_VolumetricTex");
+        private static readonly int VolumetricOnId = Shader.PropertyToID("_VolumetricOn");
+        private static readonly int VolPosId = Shader.PropertyToID("_VolPos");
+        private static readonly int VolDirId = Shader.PropertyToID("_VolDir");
+        private static readonly int VolColorId = Shader.PropertyToID("_VolColor");
+        private static readonly int VolCountId = Shader.PropertyToID("_VolCount");
+        private static readonly int VolParamsId = Shader.PropertyToID("_VolParams");
+        private static readonly int FrustumBLId = Shader.PropertyToID("_FrustumBL");
+        private static readonly int FrustumTLId = Shader.PropertyToID("_FrustumTL");
+        private static readonly int FrustumTRId = Shader.PropertyToID("_FrustumTR");
+        private static readonly int FrustumBRId = Shader.PropertyToID("_FrustumBR");
 
         private static readonly int FilterId = Shader.PropertyToID("_Filter");
         private static readonly int SampleScaleId = Shader.PropertyToID("_SampleScale");
@@ -169,6 +227,24 @@ namespace UberBagarre.View
             set { _vignette = Mathf.Clamp01(value); }
         }
 
+        public bool Volumetric
+        {
+            get { return _volumetric; }
+            set { _volumetric = value; }
+        }
+
+        public float VolumetricIntensity
+        {
+            get { return _volumetricIntensity; }
+            set { _volumetricIntensity = Mathf.Clamp(value, 0f, 3f); }
+        }
+
+        public bool Fxaa
+        {
+            get { return _fxaa; }
+            set { _fxaa = value; }
+        }
+
         public float Grain
         {
             get { return _grain; }
@@ -220,7 +296,14 @@ namespace UberBagarre.View
             // bloom ne peut alors plus distinguer une source lumineuse d'un mur blanc, et
             // tout l'effet s'effondre en un halo uniforme. C'est le reglage le plus
             // important de toute la chaine.
-            if (_camera != null) _camera.allowHDR = true;
+            if (_camera != null)
+            {
+                _camera.allowHDR = true;
+
+                // La lumiere volumetrique s'arrete sur la premiere surface : il lui faut la
+                // profondeur. Gratuit en rendu differe, une passe de plus en rendu avant.
+                _camera.depthTextureMode |= DepthTextureMode.Depth;
+            }
         }
 
         private void OnDisable()
@@ -255,6 +338,10 @@ namespace UberBagarre.View
 
             PushUniforms(material);
 
+            RenderTexture volumetric = RenderVolumetric(material, source);
+            material.SetTexture(VolumetricTexId, volumetric != null ? (Texture)volumetric : Texture2D.blackTexture);
+            material.SetFloat(VolumetricOnId, volumetric != null ? 1f : 0f);
+
             int levels = BuildBloomPyramid(material, source);
 
             if (levels <= 0)
@@ -263,14 +350,188 @@ namespace UberBagarre.View
                 // fenetre reduite) : on compose quand meme, sans bloom.
                 material.SetTexture(BloomTexId, Texture2D.blackTexture);
                 material.SetFloat(BloomIntensityId, 0f);
+            }
+            else
+            {
+                material.SetTexture(BloomTexId, _chain[0]);
+            }
+
+            Compose(material, source, destination);
+
+            ReleaseChain();
+            if (volumetric != null) RenderTexture.ReleaseTemporary(volumetric);
+        }
+
+        /// <summary>Composition finale, suivie du FXAA s'il est actif.</summary>
+        private void Compose(Material material, RenderTexture source, RenderTexture destination)
+        {
+            if (!_fxaa || source.width < 8 || source.height < 8)
+            {
                 Graphics.Blit(source, destination, material, PassComposite);
                 return;
             }
 
-            material.SetTexture(BloomTexId, _chain[0]);
-            Graphics.Blit(source, destination, material, PassComposite);
+            // Le FXAA travaille sur l'image TONEMAPPEE : c'est la que les contrastes sont ceux
+            // que l'oeil verra. Sur l'image HDR, un neon a 40 rendrait chaque arete voisine
+            // « contrastee » et tout serait lisse.
+            RenderTexture composed = RenderTexture.GetTemporary(source.width, source.height, 0,
+                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+            composed.filterMode = FilterMode.Bilinear;
 
-            ReleaseChain();
+            Graphics.Blit(source, composed, material, PassComposite);
+            Graphics.Blit(composed, destination, material, PassFxaa);
+
+            RenderTexture.ReleaseTemporary(composed);
+        }
+
+        // ------------------------------------------------------------------ lumiere volumetrique
+
+        /// <summary>
+        /// Calcule la lumière diffusée dans une texture à basse résolution, ou renvoie null s'il
+        /// n'y a rien à calculer (effet coupé, aucune lampe proche).
+        /// </summary>
+        private RenderTexture RenderVolumetric(Material material, RenderTexture source)
+        {
+            if (!_volumetric || _volumetricIntensity <= 0.001f || _volumetricDensity <= 0f) return null;
+            if (_camera == null || source.width < 16 || source.height < 16) return null;
+
+            int count = CollectVolumetricLights();
+            if (count == 0) return null;
+
+            material.SetVectorArray(VolPosId, _volPositions);
+            material.SetVectorArray(VolDirId, _volDirections);
+            material.SetVectorArray(VolColorId, _volColors);
+            material.SetFloat(VolCountId, count);
+            material.SetVector(VolParamsId, new Vector4(_volumetricDensity * _volumetricIntensity,
+                _volumetricDistance, _volumetricHeightFalloff, 0f));
+
+            // Coins du frustum a une profondeur de 1 : le shader multiplie par la profondeur
+            // lue pour retrouver le point de la surface, sans inverser de matrice.
+            _camera.CalculateFrustumCorners(new Rect(0f, 0f, 1f, 1f), 1f,
+                Camera.MonoOrStereoscopicEye.Mono, _frustum);
+
+            Transform view = _camera.transform;
+            material.SetVector(FrustumBLId, view.TransformVector(_frustum[0]));
+            material.SetVector(FrustumTLId, view.TransformVector(_frustum[1]));
+            material.SetVector(FrustumTRId, view.TransformVector(_frustum[2]));
+            material.SetVector(FrustumBRId, view.TransformVector(_frustum[3]));
+
+            int divisor = Mathf.Clamp(_volumetricDownsample, 1, 4);
+            RenderTextureFormat format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBHalf)
+                ? RenderTextureFormat.ARGBHalf
+                : RenderTextureFormat.DefaultHDR;
+
+            RenderTexture target = RenderTexture.GetTemporary(Mathf.Max(8, source.width / divisor),
+                Mathf.Max(8, source.height / divisor), 0, format, RenderTextureReadWrite.Linear);
+
+            target.filterMode = FilterMode.Bilinear;
+            target.wrapMode = TextureWrapMode.Clamp;
+
+            Graphics.Blit(source, target, material, PassVolumetric);
+            return target;
+        }
+
+        /// <summary>
+        /// Choisit les lampes volumétriques qui comptent pour cette image : allumées, pas trop
+        /// loin, et les plus proches d'abord. Remplit les tableaux envoyés au shader.
+        /// </summary>
+        private int CollectVolumetricLights()
+        {
+            int count = 0;
+            Vector3 eye = _camera.transform.position;
+            float maxDistance = _volumetricDistance;
+
+            System.Collections.Generic.IReadOnlyList<VolumetricLight> all = VolumetricLight.All;
+
+            for (int i = 0; i < all.Count; i++)
+            {
+                VolumetricLight candidate = all[i];
+                if (candidate == null) continue;
+
+                Light light = candidate.Light;
+                if (light == null || !light.isActiveAndEnabled || light.intensity <= 0.01f) continue;
+                if (light.type != LightType.Spot && light.type != LightType.Point) continue;
+
+                // Score : distance jusqu'au BORD de la portee. Une grande lampe lointaine peut
+                // passer devant une petite lampe proche, puisque son faisceau arrive jusqu'ici.
+                float score = Vector3.Distance(eye, light.transform.position) - light.range;
+                if (score > maxDistance) continue;
+
+                // Insertion triee dans un tableau fixe : aucune allocation par image.
+                int slot = count;
+                if (count == MaxVolumetricLights)
+                {
+                    if (score >= _volScores[count - 1]) continue;
+                    slot = count - 1;
+                }
+                else
+                {
+                    count++;
+                }
+
+                while (slot > 0 && _volScores[slot - 1] > score)
+                {
+                    _volScores[slot] = _volScores[slot - 1];
+                    _volPicked[slot] = _volPicked[slot - 1];
+                    slot--;
+                }
+
+                _volScores[slot] = score;
+                _volPicked[slot] = candidate;
+            }
+
+            for (int i = 0; i < MaxVolumetricLights; i++)
+            {
+                if (i >= count)
+                {
+                    _volPositions[i] = Vector4.zero;
+                    _volDirections[i] = new Vector4(0f, -1f, 0f, -2f);
+                    _volColors[i] = Vector4.zero;
+                    continue;
+                }
+
+                VolumetricLight picked = _volPicked[i];
+                Light light = picked.Light;
+                Transform t = light.transform;
+
+                _volPositions[i] = new Vector4(t.position.x, t.position.y, t.position.z, Mathf.Max(0.5f, light.range));
+
+                if (light.type == LightType.Spot)
+                {
+                    float outer = Mathf.Cos(light.spotAngle * 0.5f * Mathf.Deg2Rad);
+                    float inner = Mathf.Cos(light.spotAngle * 0.5f * 0.55f * Mathf.Deg2Rad);
+                    Vector3 axis = t.forward;
+
+                    _volDirections[i] = new Vector4(axis.x, axis.y, axis.z, outer);
+                    _volColors[i] = LinearColor(light, picked.Scattering, 1f / Mathf.Max(1e-3f, inner - outer));
+                }
+                else
+                {
+                    _volDirections[i] = new Vector4(0f, -1f, 0f, -2f);
+                    _volColors[i] = LinearColor(light, picked.Scattering, 0f);
+                }
+
+                _volPicked[i] = null;
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// La couleur que la lampe envoie réellement, en espace linéaire.
+        ///
+        /// Le rendu intégré multiplie par défaut l'intensité en GAMMA avant de linéariser : une
+        /// lampe à 3,6 éclaire donc environ 3,6^2,2 fois sa couleur. Refaire le même calcul ici
+        /// garde le faisceau proportionnel à ce qu'il éclaire — sinon un faisceau très vif sous
+        /// une lampe faible, ou l'inverse.
+        /// </summary>
+        private static Vector4 LinearColor(Light light, float scattering, float softness)
+        {
+            Color color = GraphicsSettings.lightsUseLinearIntensity
+                ? light.color.linear * light.intensity
+                : (light.color * light.intensity).linear;
+
+            return new Vector4(color.r * scattering, color.g * scattering, color.b * scattering, softness);
         }
 
         private void PushUniforms(Material material)

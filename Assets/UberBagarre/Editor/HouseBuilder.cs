@@ -82,6 +82,11 @@ namespace UberBagarre.EditorTools
             BuildInterior(root.transform, night, palette, result);
             BuildYard(root.transform, night, palette, result);
 
+            // Sonde a projection en boite, calee sur la piece : les reflets du lino, de la
+            // vitre et de la bouteille viennent de la piece elle-meme, pas du ciel.
+            EditorBuildUtility.AddReflectionProbe(root.transform, "Sonde de reflexion (piece)",
+                new Vector3(0f, WallHeight * 0.5f, HouseZ), new Vector3(RoomWidth, WallHeight, RoomDepth), true, 1f);
+
             GameObject arrival = EditorBuildUtility.CreateEmpty("Arrivee", root.transform,
                 new Vector3(-2.4f, 0f, HouseZ + RoomDepth * 0.5f - 1.6f));
 
@@ -196,17 +201,19 @@ namespace UberBagarre.EditorTools
             GameObject lightGo = EditorBuildUtility.CreateEmpty("Lumiere", lamp.transform,
                 new Vector3(0f, 5.35f, 1.55f));
 
+            lightGo.transform.localRotation = Quaternion.LookRotation(Vector3.down, Vector3.forward);
+
             Light light = lightGo.AddComponent<Light>();
-            light.type = LightType.Point;
+            light.type = LightType.Spot;
+            light.spotAngle = 124f;
             light.color = new Color(1f, 0.74f, 0.44f);
-            light.intensity = 3.4f;
-            light.range = 19f;
+            light.intensity = 4.4f;
+            light.range = 14f;
             light.renderMode = LightRenderMode.ForcePixel;
             light.shadows = LightShadows.Soft;
+            light.shadowNormalBias = 0.3f;
 
-            NightMeshFactory.CreateVisual(NightMeshFactory.LightCone, "Cone", lamp.transform,
-                new Vector3(0f, 2.9f, 1.55f), Quaternion.identity, new Vector3(7f, 5.1f, 7f),
-                night.GlowWarm);
+            NightStreetBuilder.MakeVolumetric(light, 1f);
 
             AddFlicker(lamp, night, 5.5f);
         }
@@ -447,6 +454,11 @@ namespace UberBagarre.EditorTools
             light.renderMode = LightRenderMode.ForcePixel;
             light.shadows = LightShadows.Soft;
             light.shadowStrength = 0.7f;
+            light.shadowNearPlane = 0.1f;
+
+            // Un peu de poussiere dans l'air de la piece : juste assez pour que l'ampoule ait
+            // un halo, calcule a partir d'elle.
+            NightStreetBuilder.MakeVolumetric(light, 0.35f);
 
             // Fatiguée : elle vacille juste assez pour qu'on le remarque sans que ça devienne
             // le sujet de la pièce.

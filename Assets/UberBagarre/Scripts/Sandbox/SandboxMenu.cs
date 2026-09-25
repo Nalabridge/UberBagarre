@@ -764,6 +764,10 @@ namespace UberBagarre.Sandbox
                 new Vector2(0.3f, 2.5f), "0.00", _accent);
             if (Changed(exposure, _graphics.Exposure)) _graphics.Exposure = exposure;
 
+            float volumetric = Row(rect.x, ref ly, column, "Lumiere dans l'air", _graphics.Volumetric,
+                new Vector2(0f, 3f), "0.00", _accent);
+            if (Changed(volumetric, _graphics.Volumetric)) _graphics.Volumetric = volumetric;
+
             ly += 6f;
             ly = Section(rect.x, ly, column, "COULEUR", _playerAccent);
 
@@ -819,6 +823,16 @@ namespace UberBagarre.Sandbox
 
             ry += 36f;
 
+            if (Button(new Rect(right, ry, half, 28f),
+                    _graphics.Fxaa ? "ANTICRENELAGE : ON" : "ANTICRENELAGE : OFF",
+                    _graphics.Fxaa ? _playerAccent : _enemyAccent))
+            {
+                _graphics.Fxaa = !_graphics.Fxaa;
+                _graphics.Save();
+            }
+
+            ry += 36f;
+
             // --- ambiances
             float bottom = Mathf.Max(ly, ry) + 10f;
             float third = (rect.width - 28f) / 3f;
@@ -845,10 +859,11 @@ namespace UberBagarre.Sandbox
 
             bottom += 40f;
 
-            GuiKit.OutlinedLabel(new Rect(rect.x, bottom, rect.width, 66f),
+            GuiKit.OutlinedLabel(new Rect(rect.x, bottom, rect.width, 82f),
                 "HEURE a 0 = nuit, a 1 = plein jour : le soleil, la lune, le ciel, la brume et toutes\n" +
                 "les enseignes suivent le meme curseur. SEUIL DE BLOOM decide a partir de quelle\n" +
                 "luminosite une surface deborde — en dessous de 1, meme un mur eclaire se met a briller.\n" +
+                "LUMIERE DANS L'AIR : le faisceau des lampes dans la brume, calcule a partir des vraies lampes.\n" +
                 "REFLETS coute un second rendu de la scene : c'est le premier reglage a baisser si ca rame.",
                 GuiKit.Style(12, FontStyle.Italic, TextAnchor.UpperLeft),
                 new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);

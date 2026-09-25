@@ -18,7 +18,10 @@ namespace UberBagarre.View
     [DisallowMultipleComponent]
     public class GraphicsDirector : MonoBehaviour
     {
-        private const string PrefsPrefix = "UberBagarre.Gfx.";
+        // Le suffixe de version change quand les valeurs par defaut changent de nature : les
+        // anciens reglages sauvegardes (grain et aberration a fond) ne doivent pas ressusciter
+        // le bruit qu'on vient justement de retirer.
+        private const string PrefsPrefix = "UberBagarre.Gfx2.";
 
         public enum Preset
         {
@@ -39,11 +42,13 @@ namespace UberBagarre.View
         [SerializeField, Range(0f, 2f)] private float _saturation = 1.06f;
         [SerializeField, Range(0.5f, 2f)] private float _contrast = 1.08f;
         [SerializeField, Range(0f, 1f)] private float _vignette = 0.42f;
-        [SerializeField, Range(0f, 0.5f)] private float _grain = 0.055f;
-        [SerializeField, Range(0f, 4f)] private float _aberration = 0.55f;
+        [SerializeField, Range(0f, 0.5f)] private float _grain;
+        [SerializeField, Range(0f, 4f)] private float _aberration;
+        [SerializeField, Range(0f, 3f)] private float _volumetric = 1f;
+        [SerializeField] private bool _fxaa = true;
         [SerializeField] private bool _postEnabled = true;
         [SerializeField] private bool _reflectionsEnabled = true;
-        [SerializeField, Range(1, 8)] private int _reflectionDownsample = 2;
+        [SerializeField, Range(1, 8)] private int _reflectionDownsample = 1;
         [SerializeField, Range(0f, 1f)] private float _day;
 
         [Header("Persistance")]
@@ -66,6 +71,8 @@ namespace UberBagarre.View
         public float Vignette { get { return _vignette; } set { _vignette = Mathf.Clamp01(value); Push(); } }
         public float Grain { get { return _grain; } set { _grain = Mathf.Clamp(value, 0f, 0.5f); Push(); } }
         public float Aberration { get { return _aberration; } set { _aberration = Mathf.Clamp(value, 0f, 4f); Push(); } }
+        public float Volumetric { get { return _volumetric; } set { _volumetric = Mathf.Clamp(value, 0f, 3f); Push(); } }
+        public bool Fxaa { get { return _fxaa; } set { _fxaa = value; Push(); } }
         public bool PostEnabled { get { return _postEnabled; } set { _postEnabled = value; Push(); } }
         public bool ReflectionsEnabled { get { return _reflectionsEnabled; } set { _reflectionsEnabled = value; Push(); } }
 
@@ -102,6 +109,9 @@ namespace UberBagarre.View
                     post.Vignette = _vignette;
                     post.Grain = _grain;
                     post.Aberration = _aberration;
+                    post.Volumetric = _volumetric > 0.001f;
+                    post.VolumetricIntensity = _volumetric;
+                    post.Fxaa = _fxaa;
                 }
             }
 
@@ -135,8 +145,9 @@ namespace UberBagarre.View
                     _saturation = 1f;
                     _contrast = 1.02f;
                     _vignette = 0.22f;
-                    _grain = 0.02f;
-                    _aberration = 0.15f;
+                    _grain = 0f;
+                    _aberration = 0f;
+                    _volumetric = 0.7f;
                     break;
 
                 case Preset.Batard:
@@ -146,8 +157,9 @@ namespace UberBagarre.View
                     _saturation = 1.28f;
                     _contrast = 1.16f;
                     _vignette = 0.58f;
-                    _grain = 0.075f;
-                    _aberration = 1.35f;
+                    _grain = 0.03f;
+                    _aberration = 0.6f;
+                    _volumetric = 1.8f;
                     break;
 
                 default:
@@ -157,8 +169,9 @@ namespace UberBagarre.View
                     _saturation = 1.06f;
                     _contrast = 1.08f;
                     _vignette = 0.42f;
-                    _grain = 0.055f;
-                    _aberration = 0.55f;
+                    _grain = 0f;
+                    _aberration = 0f;
+                    _volumetric = 1f;
                     break;
             }
 
@@ -176,6 +189,8 @@ namespace UberBagarre.View
             PlayerPrefs.SetFloat(PrefsPrefix + "vignette", _vignette);
             PlayerPrefs.SetFloat(PrefsPrefix + "grain", _grain);
             PlayerPrefs.SetFloat(PrefsPrefix + "aberration", _aberration);
+            PlayerPrefs.SetFloat(PrefsPrefix + "volumetrique", _volumetric);
+            PlayerPrefs.SetInt(PrefsPrefix + "fxaa", _fxaa ? 1 : 0);
             PlayerPrefs.SetFloat(PrefsPrefix + "jour", _day);
             PlayerPrefs.SetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0);
             PlayerPrefs.SetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0);
@@ -193,6 +208,8 @@ namespace UberBagarre.View
             _vignette = PlayerPrefs.GetFloat(PrefsPrefix + "vignette", _vignette);
             _grain = PlayerPrefs.GetFloat(PrefsPrefix + "grain", _grain);
             _aberration = PlayerPrefs.GetFloat(PrefsPrefix + "aberration", _aberration);
+            _volumetric = PlayerPrefs.GetFloat(PrefsPrefix + "volumetrique", _volumetric);
+            _fxaa = PlayerPrefs.GetInt(PrefsPrefix + "fxaa", _fxaa ? 1 : 0) != 0;
             if (_restoreDay) _day = PlayerPrefs.GetFloat(PrefsPrefix + "jour", _day);
             _postEnabled = PlayerPrefs.GetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0) != 0;
             _reflectionsEnabled = PlayerPrefs.GetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0) != 0;
@@ -204,7 +221,7 @@ namespace UberBagarre.View
             string[] keys =
             {
                 "bloom", "seuil", "expo", "satu", "contraste", "vignette", "grain",
-                "aberration", "jour", "post", "reflets", "refletsQualite"
+                "aberration", "volumetrique", "fxaa", "jour", "post", "reflets", "refletsQualite"
             };
 
             for (int i = 0; i < keys.Length; i++) PlayerPrefs.DeleteKey(PrefsPrefix + keys[i]);

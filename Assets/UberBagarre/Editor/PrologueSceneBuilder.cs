@@ -39,9 +39,12 @@ namespace UberBagarre.EditorTools
         /// <summary>Le parking du chapitre 1, de l'autre côté de la rue, aussi loin que la planque.</summary>
         public static readonly Vector3 ParkingOrigin = new Vector3(0f, 0f, 600f);
 
+        /// <summary>L'intérieur du Vertigo, sur le côté : aucun des autres lieux ne le voit.</summary>
+        public static readonly Vector3 ClubOrigin = new Vector3(600f, 0f, 0f);
+
         private const float ClubSidewalkZ = NightStreetBuilder.RoadFar + 0.4f;
 
-        [MenuItem("Uber Bagarre/3 - Construire la scene Prologue", false, 30)]
+        [MenuItem("Uber Bagarre/3 - Construire le JEU (histoire complete)", false, 30)]
         public static void BuildFromMenu()
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
@@ -84,6 +87,7 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.Result street = NightStreetBuilder.Build(night);
             HouseBuilder.Result house = HouseBuilder.Build(night, HouseOrigin);
             ParkingBuilder.Result parking = ParkingBuilder.Build(night, ParkingOrigin);
+            ClubInteriorBuilder.Result club = ClubInteriorBuilder.Build(night, materials, ClubOrigin);
 
             // Le joueur naît chez lui : le prologue commence dans la planque, pas dans la rue.
             Camera gameCamera;
@@ -103,6 +107,7 @@ namespace UberBagarre.EditorTools
 
             MissionBriefing briefing = BuildBriefing();
             MissionBriefing briefingTwo = BuildBriefingTwo();
+            MissionBriefing briefingThree = BuildBriefingThree();
 
             SandboxSceneBuilder.FighterParts target;
             List<SandboxSceneBuilder.FighterParts> crowd;
@@ -111,13 +116,21 @@ namespace UberBagarre.EditorTools
             SandboxSceneBuilder.WireHudAndDebug(player, target.Go, attacks.Straight);
 
             SandboxSceneBuilder.FighterParts[] brothers = BuildBrothers(materials, attacks, night, parking);
+            SandboxSceneBuilder.FighterParts champion = BuildChampion(materials, attacks, night, club, briefingThree);
 
             Interactable clubCar = BuildClubCarDoor(street.Root);
+            Interactable clubDoor = BuildClubEntrance(street.Root);
 
             PhoneDevice phone = BuildPhone(night, gameCamera, player, briefing);
 
             BuildStory(player, phone, briefing, house, street, clubCar, target, graphics, attacks,
                 briefingTwo, parking, brothers);
+
+            WireChapterTwo(player, briefingThree, club, champion, clubDoor);
+
+            // Le club reste eteint jusqu'a ce qu'on y entre : sa musique, sa foule et ses
+            // lyres ne tournent pas pendant qu'on est a la planque.
+            club.Root.gameObject.SetActive(false);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -136,10 +149,12 @@ namespace UberBagarre.EditorTools
                       "                 identification dans le groupe, bagarre avec tutoriel, photo, niveau 2\n" +
                       "  Chapitre 1   : deux etoiles, les freres Kovac au parking, bousculade, coup de tete,\n" +
                       "                 objets a lancer, deux photos, niveau 3, appel de " + briefing.FriendName + "\n" +
+                      "  Chapitre 2   : le Vertigo de l'interieur, la fosse et son public : le combat ne\n" +
+                      "                 commence qu'une fois la commande recue ET acceptee sur le telephone\n" +
                       "  Touches      : E = interagir / repondre / valider / ramasser, T = telephone,\n" +
                       "                 clic gauche = frapper, lancer l'objet tenu, declencher la photo\n" +
                       "                 G = coup de tete (debloque au niveau 2), X = bousculer\n" +
-                      "  Test direct  : coche '_startAtChapterOne' sur PrologueDirector pour sauter au chapitre 1.\n" +
+                      "  Test direct  : coche 'Start At Chapter One' ou 'Start At Chapter Two' sur PrologueDirector.\n" +
                       "  Tout le reste des commandes est identique a la sandbox.\n" +
                       "  Appuie sur Play.");
         }
@@ -205,6 +220,123 @@ namespace UberBagarre.EditorTools
             SerializedWiring.Verify(briefing, "_reviewStars");
 
             return briefing;
+        }
+
+        /// <summary>
+        /// Le contrat du chapitre 2 : trois étoiles, dans la fosse du Vertigo.
+        /// L'heure du rendez-vous est « MAINTENANT » : la commande tombe sur place.
+        /// </summary>
+        private static MissionBriefing BuildBriefingThree()
+        {
+            GameObject go = new GameObject("=== Mission 3 ===");
+            MissionBriefing briefing = go.AddComponent<MissionBriefing>();
+
+            SerializedWiring.SetString(briefing, "_targetName", "LE TAUREAU");
+            SerializedWiring.SetString(briefing, "_targetAge", "34 ans");
+            SerializedWiring.SetString(briefing, "_targetClothing", "Débardeur noir, treillis kaki");
+            SerializedWiring.SetString(briefing, "_targetLocation", "Le Vertigo — la fosse, salle du fond");
+            SerializedWiring.SetString(briefing, "_meetingTime", "MAINTENANT");
+            SerializedWiring.SetString(briefing, "_targetRecord",
+                "Champion de la fosse.\nOnze combats, onze K.O.");
+
+            SerializedWiring.SetString(briefing, "_clientName", "CLIENT VIP — parieur");
+            SerializedWiring.SetInt(briefing, "_stars", 3);
+            SerializedWiring.SetInt(briefing, "_reward", 600);
+            SerializedWiring.SetInt(briefing, "_experience", 380);
+            SerializedWiring.SetString(briefing, "_review", "Il a fait taire la salle. Je rejoue la semaine prochaine.");
+            SerializedWiring.SetInt(briefing, "_reviewStars", 5);
+            SerializedWiring.SetString(briefing, "_friendName", "SAMI");
+
+            SerializedWiring.Verify(briefing, "_meetingTime");
+
+            return briefing;
+        }
+
+        /// <summary>Le champion de la fosse. Il attend, cerveau éteint, que la commande tombe.</summary>
+        private static SandboxSceneBuilder.FighterParts BuildChampion(BuildMaterials materials,
+            AttackLibraryBuilder.Library attacks, NightMaterialFactory.Palette night, ClubInteriorBuilder.Result club,
+            MissionBriefing briefing)
+        {
+            FighterBuilder.Skin skin = FighterBuilder.Skin.Enemy(materials);
+            skin.Shirt = Jacket(night, "M_Debardeur", new Color(0.05f, 0.05f, 0.06f));
+            skin.Pants = Jacket(night, "M_Treillis", new Color(0.24f, 0.27f, 0.16f));
+
+            SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(materials, attacks,
+                briefing.TargetName, club.ChampionPosition, club.ChampionYaw, skin, 230f, true);
+
+            parts.Go.transform.SetParent(club.Root, true);
+            if (parts.Brain != null) parts.Brain.enabled = false;
+
+            return parts;
+        }
+
+        /// <summary>La porte du club, côté rue : fermée tant que l'histoire ne l'ouvre pas.</summary>
+        private static Interactable BuildClubEntrance(Transform streetRoot)
+        {
+            GameObject door = EditorBuildUtility.CreateEmpty("Porte du club (entree)", streetRoot,
+                new Vector3(0f, 1.1f, NightStreetBuilder.ClubFront - 0.7f));
+
+            BoxCollider collider = door.AddComponent<BoxCollider>();
+            collider.size = new Vector3(2.6f, 2.2f, 1.4f);
+            collider.isTrigger = true;
+
+            Interactable interactable = door.AddComponent<Interactable>();
+            SerializedWiring.SetString(interactable, "_label", "Entrer au Vertigo");
+            SerializedWiring.SetString(interactable, "_hint", "La salle du fond");
+            SerializedWiring.SetFloat(interactable, "_range", 3f);
+            SerializedWiring.SetBool(interactable, "_once", true);
+            SerializedWiring.SetBool(interactable, "_enabledForPlayer", false);
+
+            return interactable;
+        }
+
+        /// <summary>Le club devient un lieu, et le chapitre 2 reçoit tout ce qu'il pilote.</summary>
+        private static void WireChapterTwo(GameObject player, MissionBriefing briefingThree,
+            ClubInteriorBuilder.Result club, SandboxSceneBuilder.FighterParts champion, Interactable clubDoor)
+        {
+            PrologueDirector prologue = Object.FindAnyObjectByType<PrologueDirector>();
+            LocationDirector locations = Object.FindAnyObjectByType<LocationDirector>();
+
+            if (locations != null)
+            {
+                SerializedObject so = SerializedWiring.Open(locations);
+                SerializedProperty array = so.FindProperty("_locations");
+
+                if (array != null)
+                {
+                    int index = array.arraySize;
+                    array.arraySize = index + 1;
+
+                    SerializedProperty inside = array.GetArrayElementAtIndex(index);
+                    inside.FindPropertyRelative("name").stringValue = "Club";
+                    inside.FindPropertyRelative("root").objectReferenceValue = club.Root;
+                    inside.FindPropertyRelative("arrival").objectReferenceValue = club.Arrival;
+
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+
+            if (prologue == null)
+            {
+                Debug.LogWarning("[UberBagarre] PrologueDirector introuvable : chapitre 2 non cable.");
+                return;
+            }
+
+            SerializedWiring.SetObject(prologue, "_briefingThree", briefingThree);
+            SerializedWiring.SetObject(prologue, "_clubDoor", clubDoor);
+            SerializedWiring.SetObject(prologue, "_clubExit", club.Exit);
+            SerializedWiring.SetObject(prologue, "_ring", club.Ring);
+            SerializedWiring.SetObject(prologue, "_ringGate", club.RingGate);
+            SerializedWiring.SetObject(prologue, "_champion", champion.Combatant);
+            SerializedWiring.SetObject(prologue, "_championBrain", champion.Brain);
+            SerializedWiring.SetObject(prologue, "_crowd", club.Crowd);
+            SerializedWiring.SetString(prologue, "_clubLocation", "Club");
+
+            SandboxSceneBuilder.SetComponentArray(prologue, "_ringCrowd", club.RingCrowd.ToArray());
+
+            SerializedWiring.Verify(prologue, "_clubDoor");
+            SerializedWiring.Verify(prologue, "_ringGate");
+            SerializedWiring.Verify(prologue, "_champion");
         }
 
         /// <summary>
@@ -413,7 +545,7 @@ namespace UberBagarre.EditorTools
         /// c'est un vrai objet, il apparaît dans les reflets du bitume mouillé — consulter son
         /// téléphone au bord d'une flaque, la nuit, se voit dans la flaque.
         /// </summary>
-        private static PhoneDevice BuildPhone(NightMaterialFactory.Palette night, Camera camera,
+        internal static PhoneDevice BuildPhone(NightMaterialFactory.Palette night, Camera camera,
             GameObject player, MissionBriefing briefing)
         {
             Material body = EditorBuildUtility.CreateOrUpdateMaterial(

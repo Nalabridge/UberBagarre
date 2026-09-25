@@ -210,6 +210,48 @@ namespace UberBagarre.EditorTools
             p.Headlight = CreateNeon(MaterialsFolder, "M_Phare", new Color(1f, 0.94f, 0.82f), 9f);
             p.Taillight = CreateNeon(MaterialsFolder, "M_Feu", new Color(1f, 0.12f, 0.10f), 4.5f);
 
+            // --------------------------------------------------------- relief (PBR)
+            //
+            // Chaque matiere texturee recoit une carte de relief tiree de sa propre texture :
+            // les joints de brique, les dalles, les gravillons du bitume, la rouille. Le flou
+            // avant derivation est plus fort pour les textures bruitees par pixel (bitume,
+            // grains) : un relief par pixel scintille des qu'on s'eloigne.
+            Texture2D asphaltNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_Asphalte", asphalt, 2.2f, 2);
+            Texture2D slabsNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_Dalles", slabs, 3.5f, 1);
+            Texture2D brickNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_BriqueNuit", brickNight, 4.5f, 1);
+            Texture2D darkBrickNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_BriqueSombre", darkBrick, 6f, 1);
+            Texture2D concreteNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_BetonNuit", concreteGrain, 3f, 2);
+            Texture2D rustNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_Rouille", rustGrain, 2.6f, 2);
+            Texture2D metalNormal = EditorBuildUtility.CreateOrUpdateNormalMap(TexturesFolder,
+                "N_MetalBrosse", metalGrain, 1.2f, 2);
+
+            EditorBuildUtility.ApplyNormalMap(p.Sidewalk, slabsNormal, 1f);
+            EditorBuildUtility.ApplyNormalMap(p.Curb, concreteNormal, 0.8f);
+            EditorBuildUtility.ApplyNormalMap(p.Brick, brickNormal, 1f);
+            EditorBuildUtility.ApplyNormalMap(p.DarkBrick, darkBrickNormal, 1f);
+            EditorBuildUtility.ApplyNormalMap(p.Concrete, concreteNormal, 0.9f);
+            EditorBuildUtility.ApplyNormalMap(p.DarkConcrete, concreteNormal, 0.9f);
+            EditorBuildUtility.ApplyNormalMap(p.Metal, metalNormal, 0.5f);
+            EditorBuildUtility.ApplyNormalMap(p.DarkMetal, metalNormal, 0.5f);
+            EditorBuildUtility.ApplyNormalMap(p.Rust, rustNormal, 1f);
+            EditorBuildUtility.ApplyNormalMap(p.CarBody, rustNormal, 0.45f);
+            EditorBuildUtility.ApplyNormalMap(p.CarRoof, rustNormal, 0.45f);
+
+            // Le bitume mouille a son propre shader : le relief y est attenue dans les
+            // flaques, parce que l'eau remplit les asperites.
+            if (p.WetAsphalt != null && p.WetAsphalt.HasProperty("_BumpMap"))
+            {
+                p.WetAsphalt.SetTexture("_BumpMap", asphaltNormal);
+                SetFloat(p.WetAsphalt, "_BumpScale", 1f);
+                EditorUtility.SetDirty(p.WetAsphalt);
+            }
+
             return p;
         }
 

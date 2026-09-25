@@ -28,6 +28,10 @@ namespace UberBagarre.Story
 
         [SerializeField] private string _targetLocation = "Devant le club — Le Vertigo";
 
+        [SerializeField]
+        [Tooltip("Heure du rendez-vous, affichee sur la carte de la course.")]
+        private string _meetingTime = "02:30";
+
         [SerializeField, TextArea(2, 4)]
         private string _targetRecord = "Videur. Connu pour cogner d'abord.\nA casse le bras d'un livreur en mars.";
 
@@ -53,6 +57,7 @@ namespace UberBagarre.Story
         public string TargetAge { get { return _targetAge; } }
         public string TargetClothing { get { return _targetClothing; } }
         public string TargetLocation { get { return _targetLocation; } }
+        public string MeetingTime { get { return _meetingTime; } }
         public string TargetRecord { get { return _targetRecord; } }
         public string ClientName { get { return _clientName; } }
         public int Stars { get { return _stars; } }

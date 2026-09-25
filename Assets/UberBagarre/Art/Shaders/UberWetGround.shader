@@ -22,6 +22,8 @@ Shader "UberBagarre/WetGround"
     {
         _Color ("Teinte", Color) = (1, 1, 1, 1)
         _MainTex ("Albedo", 2D) = "white" {}
+        [Normal] _BumpMap ("Relief", 2D) = "bump" {}
+        _BumpScale ("Force du relief", Range(0, 2)) = 1.0
         _Glossiness ("Rugosite inverse (sec)", Range(0, 1)) = 0.12
         _Metallic ("Metallique", Range(0, 1)) = 0.0
 
@@ -38,6 +40,7 @@ Shader "UberBagarre/WetGround"
         _RippleStrength ("Force des ondulations", Range(0, 0.05)) = 0.010
         _RippleScale ("Echelle des ondulations", Float) = 1.6
         _RippleSpeed ("Vitesse des ondulations", Float) = 0.35
+        _RippleFadeDistance ("Distance de fondu des ondulations", Float) = 28
     }
 
     SubShader
@@ -50,6 +53,8 @@ Shader "UberBagarre/WetGround"
         #pragma target 3.0
 
         sampler2D _MainTex;
+        sampler2D _BumpMap;
+        half _BumpScale;
         sampler2D _WetMask;
         sampler2D _ReflectionTex;
 
@@ -68,6 +73,7 @@ Shader "UberBagarre/WetGround"
         half _RippleStrength;
         half _RippleScale;
         half _RippleSpeed;
+        float _RippleFadeDistance;
 
         struct Input
         {
@@ -92,6 +98,14 @@ Shader "UberBagarre/WetGround"
             o.Metallic = _Metallic;
             o.Smoothness = lerp(_Glossiness, 0.94, puddle);
 
+            // Relief du bitume : les gravillons accrochent la lumiere des lampadaires. Dans
+            // une flaque, l'eau remplit les creux et la surface redevient un miroir plat.
+            float3 bump = UnpackNormal(tex2D(_BumpMap, IN.uv_MainTex));
+            bump.xy *= _BumpScale * (1.0 - puddle * 0.85);
+            o.Normal = normalize(bump);
+
+            float cameraDistance = length(_WorldSpaceCameraPos - IN.worldPos);
+
             // Ondulations : deux trains d'ondes de periodes differentes. Un seul
             // sinus produit un moire regulier immediatement identifiable.
             float2 rippleInput = IN.worldPos.xz * _RippleScale;
@@ -101,6 +115,10 @@ Shader "UberBagarre/WetGround"
             ripple.x = sin(rippleInput.x * 1.9 + t * 1.7) + sin(rippleInput.y * 2.7 - t * 1.1);
             ripple.y = cos(rippleInput.y * 2.1 - t * 1.3) + cos(rippleInput.x * 3.1 + t * 0.9);
             ripple *= 0.5 * _RippleStrength * puddle;
+
+            // Au loin, une ondulation devient plus fine qu'un pixel : elle ne se voit plus
+            // comme de l'eau mais comme un grouillement. On l'eteint progressivement.
+            ripple *= saturate(1.0 - cameraDistance / max(_RippleFadeDistance, 1.0));
 
             float2 screenUv = IN.screenPos.xy / max(IN.screenPos.w, 1e-5);
             screenUv += ripple;

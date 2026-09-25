@@ -117,6 +117,11 @@ namespace UberBagarre.EditorTools
             BuildProps(root.transform, palette);
             BuildDrizzle(root.transform);
 
+            // Ce que les surfaces lisses reflètent : les neons, les lampadaires et les facades
+            // de CETTE rue. Sans sonde, le chrome et les vitrines refletaient le ciel noir.
+            EditorBuildUtility.AddReflectionProbe(root.transform, "Sonde de reflexion (rue)",
+                new Vector3(0f, 2.2f, -1f), new Vector3(GroundLength, 26f, 44f), false, 1f);
+
             return result;
         }
 
@@ -258,12 +263,62 @@ namespace UberBagarre.EditorTools
             light.color = color;
             light.intensity = intensity;
             light.range = range;
-            light.renderMode = important ? LightRenderMode.ForcePixel : LightRenderMode.ForceVertex;
+
+            // Plus aucune lampe « par sommet » : sur un mur fait de quatre sommets, une lampe
+            // calculee aux sommets ne dessine rien — au mieux une teinte uniforme, au pire rien
+            // du tout. C'est ce qui faisait dire que les lumieres n'eclairaient pas vraiment.
+            // Le rendu differe calcule de toute facon chaque lampe par pixel.
+            light.renderMode = important ? LightRenderMode.ForcePixel : LightRenderMode.Auto;
             light.shadows = shadows ? LightShadows.Soft : LightShadows.None;
             light.shadowStrength = 0.75f;
+            light.shadowNearPlane = 0.2f;
             light.bounceIntensity = 0f;
 
             return light;
+        }
+
+        /// <summary>
+        /// Un projecteur : une vraie lampe à cône, comme un lampadaire, un phare ou une
+        /// poursuite de scène. <paramref name="direction"/> est l'axe du faisceau, en local.
+        /// </summary>
+        internal static Light AddSpot(Transform parent, string name, Vector3 localPosition, Vector3 direction,
+            Color color, float intensity, float range, float angle, bool shadows)
+        {
+            GameObject go = EditorBuildUtility.CreateEmpty(name, parent, localPosition);
+            go.transform.localRotation = Quaternion.LookRotation(direction.normalized,
+                Mathf.Abs(direction.normalized.y) > 0.95f ? Vector3.forward : Vector3.up);
+
+            Light light = go.AddComponent<Light>();
+            light.type = LightType.Spot;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.spotAngle = angle;
+            light.renderMode = LightRenderMode.ForcePixel;
+            light.shadows = shadows ? LightShadows.Soft : LightShadows.None;
+            light.shadowStrength = 0.85f;
+            light.shadowBias = 0.03f;
+            light.shadowNormalBias = 0.3f;
+            light.shadowNearPlane = 0.2f;
+            light.bounceIntensity = 0f;
+
+            return light;
+        }
+
+        /// <summary>
+        /// Rend la lumière d'une lampe visible dans l'air humide. Remplace les cônes et les
+        /// halos en maillage : le faisceau est calculé à partir de la lampe elle-même, il en
+        /// suit la couleur, le cône, le clignotement et l'extinction au lever du jour.
+        /// </summary>
+        internal static VolumetricLight MakeVolumetric(Light light, float scattering)
+        {
+            if (light == null) return null;
+
+            VolumetricLight volumetric = light.gameObject.GetComponent<VolumetricLight>();
+            if (volumetric == null) volumetric = light.gameObject.AddComponent<VolumetricLight>();
+
+            SerializedWiring.SetFloat(volumetric, "_scattering", scattering);
+            return volumetric;
         }
 
         internal static NeonFlicker AddFlicker(GameObject target, NeonFlicker.Pattern pattern,
@@ -358,17 +413,16 @@ namespace UberBagarre.EditorTools
             Box(sign.transform, "Caisson", new Vector3(0f, 0.75f, 0.35f),
                 new Vector3(width + 1.4f, 2.5f, 0.35f), palette.DarkMetal, false);
 
-            AddLight(sign.transform, "Halo gauche", new Vector3(-width * 0.3f, 0.8f, -0.6f),
+            Light signLeft = AddLight(sign.transform, "Halo gauche", new Vector3(-width * 0.3f, 0.8f, -0.6f),
                 new Color(1f, 0.2f, 0.62f), 3.2f, 14f, true, false);
-            AddLight(sign.transform, "Halo droit", new Vector3(width * 0.3f, 0.8f, -0.6f),
+            Light signRight = AddLight(sign.transform, "Halo droit", new Vector3(width * 0.3f, 0.8f, -0.6f),
                 new Color(1f, 0.2f, 0.62f), 3.2f, 14f, true, false);
 
-            // Nappe additive DEVANT l'enseigne. Le bloom fait deborder la lumiere dans
-            // l'image, mais il ne met rien dans l'AIR : sans ce volume, l'enseigne brille
-            // sans que la brume autour d'elle en garde la couleur.
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Nappe", sign.transform,
-                new Vector3(0f, 0.8f, -0.45f), new Vector3(width * 0.92f, 2.7f, 1.3f),
-                palette.GlowMagenta, false);
+            // La brume autour de l'enseigne prend sa couleur : ce sont ses VRAIES lampes qui
+            // diffusent dans l'air, faiblement. L'ancienne nappe en maillage se voyait comme
+            // un ballon rose pose devant la facade.
+            MakeVolumetric(signLeft, 0.18f);
+            MakeVolumetric(signRight, 0.18f);
 
             AddFlicker(sign, NeonFlicker.Pattern.Calme, 7.5f, 0.07f, 1.1f, 23f);
 
@@ -410,11 +464,10 @@ namespace UberBagarre.EditorTools
                 NeonTextBuilder.Build(line.transform, vertical.Substring(i, 1), 0.58f, 0.075f, palette.NeonCyan);
             }
 
-            AddLight(blade.transform, "Halo", new Vector3(0f, 2.8f, -0.5f),
+            Light bladeLight = AddLight(blade.transform, "Halo", new Vector3(0f, 2.8f, -0.5f),
                 new Color(0.25f, 0.88f, 1f), 3f, 13f, true, false);
 
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Nappe", blade.transform,
-                new Vector3(0f, 2.6f, 0f), new Vector3(2.6f, 7.4f, 1.6f), palette.GlowCyan, false);
+            MakeVolumetric(bladeLight, 0.18f);
 
             AddFlicker(blade, NeonFlicker.Pattern.Fatigue, 6.5f, 0.15f, 0.9f, 59f);
 
@@ -552,7 +605,7 @@ namespace UberBagarre.EditorTools
             }
         }
 
-        private static void Barrier(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
+        internal static GameObject Barrier(Transform parent, NightMaterialFactory.Palette palette, Vector3 position, float yaw)
         {
             GameObject barrier = EditorBuildUtility.CreateEmpty("Barriere", parent, position);
             barrier.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -573,6 +626,8 @@ namespace UberBagarre.EditorTools
                 Box(barrier.transform, "Barreau", new Vector3(-0.9f + i * 0.36f, 0.58f, 0f),
                     new Vector3(0.035f, 0.95f, 0.035f), palette.Metal, false);
             }
+
+            return barrier;
         }
 
         // ------------------------------------------------------------------ îlot d'en face
@@ -818,13 +873,15 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>
-        /// Un lampadaire au sodium, avec son cône de lumière.
+        /// Un lampadaire au sodium.
         ///
-        /// Le cône est ce qui fait la différence entre « une lampe » et « une nuit humide ».
-        /// Une lampe ponctuelle Unity éclaire les surfaces mais laisse l'air parfaitement
-        /// transparent : on voit un disque clair au sol sans comprendre d'où il vient. Le
-        /// volume additif rend visible le trajet de la lumière, et c'est lui que l'œil lit
-        /// comme de la brume.
+        /// C'est un PROJECTEUR tourné vers le sol, pas une lampe ponctuelle : un vrai
+        /// lampadaire n'éclaire ni le haut de son propre mât ni la façade à six mètres de haut,
+        /// il pose un disque de lumière sur la chaussée, avec une ombre nette sous tout ce qui
+        /// passe dessous. Le faisceau dans l'air humide est calculé à partir de cette lampe par
+        /// le post-traitement (VolumetricLight) : il s'arrête sur les combattants, clignote
+        /// avec la lampe et s'éteint avec elle. Les anciens cônes en maillage additif étaient
+        /// des objets posés à côté de la lumière — on les voyait comme des cônes.
         /// </summary>
         private static void StreetLamp(Transform parent, NightMaterialFactory.Palette palette,
             Vector3 position, float yaw, int index)
@@ -847,18 +904,18 @@ namespace UberBagarre.EditorTools
             Box(lamp.transform, "Ampoule", new Vector3(0f, 5.78f, 1.75f),
                 new Vector3(0.36f, 0.07f, 0.72f), palette.NeonWarm, false);
 
-            AddLight(lamp.transform, "Lumiere", new Vector3(0f, 5.7f, 1.75f),
-                new Color(1f, 0.72f, 0.42f), 3.6f, 17f, index < 4, index < 2);
+            // Ombres sur les lampadaires qui encadrent le combat : ce sont elles qui posent
+            // les combattants SUR la chaussee. Plus loin, elles couteraient sans se voir.
+            Light light = AddSpot(lamp.transform, "Lumiere", new Vector3(0f, 5.72f, 1.75f), Vector3.down,
+                new Color(1f, 0.72f, 0.42f), 4.6f, 14f, 124f, index % 4 == 1 || index % 4 == 2);
 
-            // Le cône descend de la lanterne jusqu'au sol, et s'élargit. Il ne touche pas
-            // tout à fait la chaussée : un volume additif qui s'arrête net dans le sol y
-            // dessine une ellipse claire au bord dur, très visible.
-            NightMeshFactory.CreateVisual(NightMeshFactory.LightCone, "Cone de lumiere",
-                lamp.transform, new Vector3(0f, 3.05f, 1.75f), Quaternion.identity,
-                new Vector3(7.4f, 5.4f, 7.4f), palette.GlowWarm);
+            MakeVolumetric(light, 1f);
 
-            EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Halo", lamp.transform,
-                new Vector3(0f, 5.78f, 1.75f), Vector3.one * 1.5f, palette.GlowWarm, false);
+            // Une petite lampe ponctuelle tres faible sous la lanterne : le dessous de la
+            // lanterne et le haut du mat recoivent un peu de lumiere, comme dans la realite
+            // ou le verre diffuse de tous cotes.
+            AddLight(lamp.transform, "Diffusion", new Vector3(0f, 5.62f, 1.75f),
+                new Color(1f, 0.72f, 0.42f), 0.6f, 3.2f, false, false);
 
             // Un lampadaire sur quatre est fatigué. Pas plus : au-delà, le clignotement
             // devient le sujet de la scène.
@@ -980,18 +1037,8 @@ namespace UberBagarre.EditorTools
 
             if (headlightsOn)
             {
-                for (int side = -1; side <= 1; side += 2)
-                {
-                    GameObject beam = EditorBuildUtility.CreateEmpty("Faisceau", lights.transform,
-                        new Vector3(2.3f, 0.96f, side * 0.62f));
-
-                    beam.transform.localRotation = Quaternion.Euler(0f, 0f, -90f);
-
-                    NightMeshFactory.CreateVisual(NightMeshFactory.WideCone, "Cone", beam.transform,
-                        new Vector3(0f, 4.2f, 0f), Quaternion.Euler(180f, 0f, 0f),
-                        new Vector3(3.2f, 8.4f, 3.2f), palette.GlowWhite);
-                }
-
+                // Les faisceaux des phares dans la bruine sont calcules a partir du
+                // projecteur ci-dessous : plus de cones en maillage.
                 GameObject spotGo = EditorBuildUtility.CreateEmpty("Projecteur", lights.transform,
                     new Vector3(2.35f, 0.96f, 0f));
 
@@ -1007,15 +1054,10 @@ namespace UberBagarre.EditorTools
                 spot.shadowStrength = 0.8f;
                 spot.renderMode = LightRenderMode.ForcePixel;
 
+                MakeVolumetric(spot, 0.9f);
+
                 AddLight(lights.transform, "Lueur arriere", new Vector3(-2.4f, 0.96f, 0f),
                     new Color(1f, 0.15f, 0.12f), 1.3f, 5f, false, false);
-
-                for (int side = -1; side <= 1; side += 2)
-                {
-                    EditorBuildUtility.CreatePrimitive(PrimitiveType.Sphere, "Nappe arriere",
-                        lights.transform, new Vector3(-2.25f, 0.96f, side * 0.66f),
-                        new Vector3(0.55f, 0.5f, 0.75f), palette.GlowRed, false);
-                }
 
                 AddFlicker(lights, NeonFlicker.Pattern.Calme, 9f, 0.05f, 0.9f, 131f);
             }
@@ -1429,7 +1471,7 @@ namespace UberBagarre.EditorTools
         private static void BuildDrizzle(Transform parent)
         {
             Material material = NightMaterialFactory.CreateRain(NightMaterialFactory.MaterialsFolder, "M_Bruine",
-                new Color(0.72f, 0.82f, 1f), 1.1f);
+                new Color(0.72f, 0.82f, 1f), 0.75f);
 
             if (material == null) return;
 
@@ -1447,16 +1489,19 @@ namespace UberBagarre.EditorTools
             main.loop = true;
             main.startLifetime = 1.6f;
             main.startSpeed = new ParticleSystem.MinMaxCurve(9f, 13f);
-            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.07f);
+            // Des gouttes plus rares et plus discretes qu'avant : une pluie de traits fins
+            // tres contrastes, plus minces qu'un pixel, clignote et se lit comme du bruit
+            // sur toute l'image. On doit la sentir, pas la compter.
+            main.startSize = new ParticleSystem.MinMaxCurve(0.025f, 0.045f);
             main.startColor = new ParticleSystem.MinMaxGradient(
-                new Color(0.72f, 0.82f, 1f, 0.45f), new Color(0.9f, 0.95f, 1f, 0.8f));
+                new Color(0.72f, 0.82f, 1f, 0.16f), new Color(0.9f, 0.95f, 1f, 0.32f));
             main.gravityModifier = 0.6f;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
-            main.maxParticles = 1400;
+            main.maxParticles = 600;
             main.playOnAwake = true;
 
             ParticleSystem.EmissionModule emission = system.emission;
-            emission.rateOverTime = 420f;
+            emission.rateOverTime = 170f;
 
             ParticleSystem.ShapeModule shape = system.shape;
             shape.shapeType = ParticleSystemShapeType.Box;

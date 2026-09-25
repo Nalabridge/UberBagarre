@@ -407,7 +407,8 @@ namespace UberBagarre.Phone
                 _briefing != null ? _briefing.Stars : 1);
 
             Label(new Rect(card.x + U(0.025f), card.y + U(0.125f), card.width - U(0.05f), U(0.10f)),
-                "CE SOIR — 02:30\n" + (_briefing != null ? _briefing.TargetLocation : "Devant le club"),
+                "CE SOIR — " + (_briefing != null ? _briefing.MeetingTime : "02:30") + "\n" +
+                (_briefing != null ? _briefing.TargetLocation : "Devant le club"),
                 Font(0.023f), FontStyle.Normal, TextAnchor.UpperLeft, _dim, true);
 
             Label(new Rect(card.x + U(0.025f), card.y + U(0.245f), card.width - U(0.05f), U(0.05f)),

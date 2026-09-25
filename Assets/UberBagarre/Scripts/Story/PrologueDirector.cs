@@ -94,6 +94,38 @@ namespace UberBagarre.Story
                  "acquise. Pour tester la suite sans rejouer vingt minutes d'histoire.")]
         private bool _startAtChapterOne;
 
+        [Header("Chapitre 2 — Trois etoiles")]
+        [SerializeField] private MissionBriefing _briefingThree;
+
+        [SerializeField]
+        [Tooltip("La porte du club, cote rue.")]
+        private Interactable _clubDoor;
+
+        [SerializeField]
+        [Tooltip("La porte du club, cote salle : pour ressortir.")]
+        private Interactable _clubExit;
+
+        [SerializeField] private Transform _ring;
+
+        [SerializeField]
+        [Tooltip("La barriere qui ferme la fosse. Desactivee = ouverte.")]
+        private GameObject _ringGate;
+
+        [SerializeField] private Combatant _champion;
+        [SerializeField] private EnemyBrain _championBrain;
+        [SerializeField] private CrowdAudio _crowd;
+        [SerializeField] private Spectator[] _ringCrowd = new Spectator[0];
+        [SerializeField] private string _clubLocation = "Club";
+
+        [SerializeField]
+        [Tooltip("Commencer directement au chapitre 2 (le club), avec la progression des deux " +
+                 "courses precedentes deja acquise.")]
+        private bool _startAtChapterTwo;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Endurance gagnee au niveau 4 (capacite SECOND SOUFFLE), en fraction.")]
+        private float _secondWindBonus = 0.3f;
+
         [Header("Reglages")]
         [SerializeField, Min(0.5f)] private float _installDuration = 3.2f;
 
@@ -139,6 +171,10 @@ namespace UberBagarre.Story
         private int _throwHitsAtStart;
         private bool _brothersProvoked;
         private bool _toughnessApplied;
+        private bool _secondWindApplied;
+        private bool _enteredClub;
+        private bool _leftClubInside;
+        private float _baseStamina;
 
         // --- preuves photo : ce qui doit etre photographie, et ce qui l'a ete
         private readonly List<Transform> _photoRequired = new List<Transform>(2);
@@ -161,6 +197,8 @@ namespace UberBagarre.Story
             if (_carAtParking != null) _carAtParking.Activated += OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken += OnPhotoTaken;
             if (_progress != null) _progress.LeveledUp += OnLeveledUp;
+            if (_clubDoor != null) _clubDoor.Activated += OnClubDoor;
+            if (_clubExit != null) _clubExit.Activated += OnClubExit;
         }
 
         private void OnDisable()
@@ -180,6 +218,8 @@ namespace UberBagarre.Story
             if (_carAtParking != null) _carAtParking.Activated -= OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken -= OnPhotoTaken;
             if (_progress != null) _progress.LeveledUp -= OnLeveledUp;
+            if (_clubDoor != null) _clubDoor.Activated -= OnClubDoor;
+            if (_clubExit != null) _clubExit.Activated -= OnClubExit;
         }
 
         private void Start()
@@ -200,7 +240,8 @@ namespace UberBagarre.Story
 
             _story.Play(BuildBeats());
 
-            if (_startAtChapterOne) _story.JumpTo("chapitre-1");
+            if (_startAtChapterTwo) _story.JumpTo("chapitre-2");
+            else if (_startAtChapterOne) _story.JumpTo("chapitre-1");
         }
 
         private void Update()
@@ -258,6 +299,34 @@ namespace UberBagarre.Story
             _throwHitsAtStart = 0;
             _brothersProvoked = false;
             _toughnessApplied = false;
+            _secondWindApplied = false;
+            _enteredClub = false;
+            _leftClubInside = false;
+
+            // L'endurance de depart est memorisee une fois : c'est elle que le niveau 4 augmente,
+            // et elle qu'une partie relancee doit retrouver.
+            if (_player != null && _player.Stamina != null)
+            {
+                if (_baseStamina <= 0f) _baseStamina = _player.Stamina.MaxStamina;
+                _player.Stamina.MaxStamina = _baseStamina;
+                _player.Stamina.Refill();
+            }
+
+            if (_championBrain != null) _championBrain.enabled = false;
+            if (_ringGate != null) _ringGate.SetActive(true);
+            if (_targetTransform != null) _targetTransform.gameObject.SetActive(true);
+
+            if (_clubDoor != null)
+            {
+                _clubDoor.ResetUsage();
+                _clubDoor.SetAvailable(false);
+            }
+
+            if (_clubExit != null)
+            {
+                _clubExit.ResetUsage();
+                _clubExit.SetAvailable(false);
+            }
             _photoRequired.Clear();
             _photographed.Clear();
 
@@ -907,19 +976,328 @@ namespace UberBagarre.Story
             beats.Add(new StoryBeat("appel-2")
                 .Say(friend, "Les Kovac. Les deux. Dans le même soir.")
                 .Say(friend, "T'as vu ta page ? Les gens laissent des avis sur toi, mec.")
-                .Say(friend, "Y a un garage vers le port. Trois étoiles. Ils paient en liquide.")
-                .Say("MOI", "Trois étoiles, c'est combien de types ?")
-                .Say(friend, "Ça, l'appli le dit jamais avant.")
+                .Say(friend, "Vendredi, au Vertigo. La salle du fond. Ils font des combats, et les gens parient.")
+                .Say("MOI", "Et l'appli, dans tout ça ?")
+                .Say(friend, "T'es sur place, t'attends. La commande tombe quand ils ont choisi ton adversaire.")
                 .Exit(delegate
                 {
                     if (_phone != null) _phone.HangUp();
                     if (_fader == null) return;
 
                     _fader.FadeOut(2f);
-                    _fader.ShowCard("ÜBER BAGARRE\nCHAPITRE 1\n\nÀ SUIVRE");
+                    _fader.ShowCard("ÜBER BAGARRE\nCHAPITRE 1");
                 }));
 
             beats.Add(new StoryBeat("carton-chapitre-1")
+                .Freeze()
+                .Wait(4.5f)
+                .Exit(delegate
+                {
+                    if (_fader != null) _fader.ShowCard(null);
+                    if (_phone != null) _phone.Lower();
+                }));
+
+            beats.Add(new StoryBeat("entracte-2")
+                .Freeze()
+                .Wait(1f));
+
+            AddChapterTwo(beats, friend);
+        }
+
+        // ------------------------------------------------------------------ chapitre 2
+
+        /// <summary>
+        /// Chapitre 2 : trois étoiles, le Vertigo de l'intérieur, la fosse.
+        ///
+        /// La règle du jeu y est poussée au bout : le joueur se rend sur place SANS contrat, et
+        /// le combat ne commence que lorsque la commande tombe sur le téléphone et qu'il l'a
+        /// acceptée. Tant qu'elle n'est pas là, le champion attend dans la fosse et la salle
+        /// danse. C'est la course qui déclenche la bagarre, jamais le décor.
+        ///
+        /// C'est aussi le premier combat devant un PUBLIC : la foule regarde, rugit sur les
+        /// coups, fait mur autour de la fosse. Le prologue apprenait à frapper, le chapitre 1 à
+        /// se battre à deux contre un ; celui-ci apprend qu'on se bat pour quelqu'un.
+        /// </summary>
+        private void AddChapterTwo(List<StoryBeat> beats, string friend)
+        {
+            string champion = _briefingThree != null ? _briefingThree.TargetName : "LE TAUREAU";
+            string clothing = _briefingThree != null ? _briefingThree.TargetClothing : "";
+
+            beats.Add(new StoryBeat("chapitre-2")
+                .Freeze()
+                .Wait(3.4f)
+                .Enter(delegate
+                {
+                    EnsureChapterTwoState();
+
+                    if (_fader == null) return;
+                    _fader.SetBlackImmediate();
+                    _fader.ShowCard("CHAPITRE 2\nTROIS ÉTOILES");
+                })
+                .Exit(delegate
+                {
+                    if (_fader == null) return;
+                    _fader.ShowCard(null);
+                    _fader.FadeIn(1.6f);
+                }));
+
+            beats.Add(new StoryBeat("vendredi")
+                .Wait(1.4f)
+                .Say("MOI", "Vendredi. Pas de commande, pas de fiche. Juste une adresse.")
+                .Say("MOI", "Faut être sur place quand ça tombe."));
+
+            beats.Add(new StoryBeat("depart-3")
+                .Goal("Rejoins ta voiture")
+                .Enter(delegate
+                {
+                    _leftHouse = false;
+
+                    if (_carAtHouse != null)
+                    {
+                        _carAtHouse.ResetUsage();
+                        _carAtHouse.SetAvailable(true);
+                    }
+
+                    if (_phone != null) _phone.Lower();
+                })
+                .Until(delegate { return _leftHouse; }));
+
+            beats.Add(new StoryBeat("route-3")
+                .Freeze()
+                .Wait(4.4f)
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.Available = false;
+                    if (_interaction != null) _interaction.Active = false;
+                    if (_fader == null) return;
+
+                    _fader.FadeOut(1f);
+                    _fader.ShowCard("LE VERTIGO\n00:40");
+                })
+                .Exit(delegate
+                {
+                    // Trois nuits ont passe : le videur du prologue n'est plus etendu devant
+                    // l'entree.
+                    if (_targetTransform != null) _targetTransform.gameObject.SetActive(false);
+
+                    if (_locations != null) _locations.GoTo(_streetLocation);
+                    if (_phone != null)
+                    {
+                        _phone.Available = true;
+                        _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                    }
+
+                    if (_interaction != null) _interaction.Active = true;
+                    if (_fader != null) _fader.FadeIn(1.2f);
+                }));
+
+            beats.Add(new StoryBeat("arrivee-3")
+                .Wait(1.2f)
+                .Enter(delegate
+                {
+                    if (_fader != null) _fader.ShowCard(null);
+
+                    if (_clubDoor == null) return;
+                    _clubDoor.ResetUsage();
+                    _clubDoor.SetAvailable(true);
+                })
+                .Say("MOI", "Le Vertigo. La dernière fois, je suis resté dehors.")
+                .Say("MOI", "Ce soir, je rentre par la porte."));
+
+            beats.Add(new StoryBeat("entree-club")
+                .Goal("Entre dans le club")
+                .Until(delegate { return _enteredClub; }));
+
+            beats.Add(new StoryBeat("dedans")
+                .Freeze()
+                .Wait(1.3f)
+                .Enter(delegate
+                {
+                    if (_interaction != null) _interaction.Active = false;
+                    if (_fader != null) _fader.FadeOut(0.6f);
+                })
+                .Exit(delegate
+                {
+                    if (_locations != null) _locations.GoTo(_clubLocation);
+                    if (_interaction != null) _interaction.Active = true;
+                    if (_fader != null) _fader.FadeIn(1f);
+                }));
+
+            beats.Add(new StoryBeat("salle")
+                .Goal("Rejoins la fosse, au fond à droite")
+                .Say("MOI", "La fumée, le son, la sueur.")
+                .Say("MOI", "La salle du fond, c'est là où il y a du monde. Derrière les barrières.")
+                .Until(delegate { return PlayerNear(_ring, 8.5f); }));
+
+            beats.Add(new StoryBeat("attente")
+                .Goal("Attends la commande")
+                .Say("MOI", "J'y suis. Maintenant, on attend que ça tombe.")
+                .Wait(3f));
+
+            // LA règle : la bagarre commence quand la commande est reçue ET acceptée.
+            beats.Add(new StoryBeat("commande-3")
+                .Goal("Accepte le RDV BASTON")
+                .Say("APPLI", "RDV BASTON. Trois étoiles. Ici, maintenant.")
+                .Say("APPLI", "Le client est dans la salle. Il veut voir ça de près.")
+                .Enter(delegate
+                {
+                    _confirm = false;
+
+                    if (_phoneDisplay != null) _phoneDisplay.Briefing = _briefingThree;
+                    if (_phone == null) return;
+
+                    _phone.Available = true;
+                    _phone.SetScreen(PhoneDevice.Screen.Accueil);
+                    _phone.Raise();
+                })
+                .Until(delegate { return _confirm; })
+                .Exit(delegate
+                {
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Cible);
+                }));
+
+            beats.Add(new StoryBeat("fiche-3")
+                .Goal("Lis la fiche du sujet")
+                .Say("APPLI", "Sujet : " + champion + ". Champion de la fosse. Onze combats, onze K.O.")
+                .Say("APPLI", "Signalement : " + clothing + ".")
+                .Say("MOI", "Pas besoin de le chercher. Il m'attend.")
+                .Wait(1.2f)
+                .Exit(delegate
+                {
+                    if (_phone != null)
+                    {
+                        _phone.SetScreen(PhoneDevice.Screen.Mission);
+                        _phone.Lower();
+                    }
+
+                    // La barriere s'ouvre, la salle comprend.
+                    if (_ringGate != null) _ringGate.SetActive(false);
+                    if (_crowd != null) _crowd.Roar(0.5f);
+                    CheerRing(0.5f, 1.2f);
+                }));
+
+            beats.Add(new StoryBeat("entree-fosse")
+                .Goal("Entre dans la fosse")
+                .Until(delegate { return PlayerNear(_ring, 3.2f); }));
+
+            beats.Add(new StoryBeat("gong")
+                .Goal("Mets " + champion + " K.O.")
+                .Say(champion, "Le livreur. On m'a parlé de toi.")
+                .Say(champion, "Ce soir, t'es pas le seul à avoir reçu une commande.")
+                .Say("MOI", "Alors on va être deux à être payés.")
+                .Enter(delegate
+                {
+                    // La barriere se referme derriere le joueur, et le champion avance.
+                    if (_ringGate != null) _ringGate.SetActive(true);
+                    if (_championBrain != null) _championBrain.enabled = true;
+                    if (_crowd != null) _crowd.Roar(1f);
+                    CheerRing(0.9f, 2.5f);
+                }));
+
+            beats.Add(new StoryBeat("ko-3")
+                .Goal("Mets " + champion + " K.O.")
+                .Until(ChampionKnockedOut));
+
+            beats.Add(new StoryBeat("photo-3")
+                .Goal("Envoie la photo au client")
+                .Say("APPLI", "Preuve exigée. Photo du sujet au sol.")
+                .Enter(delegate
+                {
+                    RequirePhotos(_champion != null ? _champion.transform : null);
+
+                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "T pour le téléphone, puis cadre-le", 0);
+
+                    if (_phone == null) return;
+                    _phone.SetScreen(PhoneDevice.Screen.Photo);
+                    _phone.Raise();
+                })
+                .Until(delegate { return _photoValidated; })
+                .Exit(delegate
+                {
+                    if (_tutorial != null) _tutorial.Hide();
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Valide);
+                }));
+
+            beats.Add(new StoryBeat("validee-3")
+                .Say("APPLI", "Course validée. " + (_briefingThree != null ? _briefingThree.Reward : 600) + " euros.")
+                .Say("APPLI", "Le client avait parié sur toi. Il a laissé un avis.")
+                .Enter(delegate { Pay(_briefingThree); })
+                .Wait(2.5f));
+
+            beats.Add(new StoryBeat("niveau-4")
+                .Say("APPLI", "Niveau 4. Capacité débloquée : second souffle.")
+                .Say("APPLI", "Trois étoiles au compteur. Les grosses commandes vont arriver.")
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Profil);
+                })
+                .Wait(2f));
+
+            beats.Add(new StoryBeat("sortie-3")
+                .Goal("Sors du club")
+                .Enter(delegate
+                {
+                    _leftClubInside = false;
+
+                    if (_ringGate != null) _ringGate.SetActive(false);
+                    if (_phone != null) _phone.Lower();
+
+                    if (_clubExit == null) return;
+                    _clubExit.ResetUsage();
+                    _clubExit.SetAvailable(true);
+                })
+                .Until(delegate { return _leftClubInside; }));
+
+            beats.Add(new StoryBeat("rentree-3")
+                .Freeze()
+                .Wait(4f)
+                .Enter(delegate
+                {
+                    if (_phone != null) _phone.Available = false;
+                    if (_interaction != null) _interaction.Active = false;
+                    if (_fader != null)
+                    {
+                        _fader.FadeOut(1f);
+                        _fader.ShowCard("LA PLANQUE\n02:10");
+                    }
+                })
+                .Exit(delegate
+                {
+                    if (_championBrain != null) _championBrain.enabled = false;
+
+                    if (_locations != null) _locations.GoTo(_houseLocation);
+                    if (_phone != null) _phone.Available = true;
+                    if (_interaction != null) _interaction.Active = true;
+                    if (_fader != null) _fader.FadeIn(1.4f);
+                }));
+
+            beats.Add(new StoryBeat("compte-3")
+                .Wait(1.2f)
+                .Enter(delegate
+                {
+                    int money = _progress != null ? _progress.Money : 0;
+
+                    List<DialogueLine> lines = new List<DialogueLine>(4);
+                    lines.Add(DialogueLine.Say("MOI", money + " euros."));
+
+                    lines.Add(money >= _rent
+                        ? DialogueLine.Say("MOI", "Le loyer est payé. Pour la première fois depuis l'hiver.")
+                        : DialogueLine.Say("MOI", "Il en manque encore " + (_rent - money) + "."));
+
+                    lines.Add(DialogueLine.Say("MOI", "Et quelqu'un a commandé ce combat-là contre moi."));
+                    lines.Add(DialogueLine.Say("MOI", "Faudra savoir qui."));
+
+                    if (_subtitles != null) _subtitles.Play(lines);
+                })
+                .Exit(delegate
+                {
+                    if (_fader == null) return;
+
+                    _fader.FadeOut(2f);
+                    _fader.ShowCard("ÜBER BAGARRE\nCHAPITRE 2\n\nÀ SUIVRE");
+                }));
+
+            beats.Add(new StoryBeat("carton-chapitre-2")
                 .Freeze()
                 .Wait(5f)
                 .Exit(delegate
@@ -931,8 +1309,38 @@ namespace UberBagarre.Story
                     }
 
                     if (_phone != null) _phone.Lower();
-                    if (_objectives != null) _objectives.Set("Chapitre 1 terminé");
+                    if (_objectives != null) _objectives.Set("Chapitre 2 terminé");
                 }));
+        }
+
+        /// <summary>
+        /// Met le monde dans l'état de la fin du chapitre 1, pour un départ direct au chapitre 2.
+        /// Mêmes chemins que le jeu : les courses sont encaissées, les niveaux passent, les
+        /// capacités s'ouvrent.
+        /// </summary>
+        private void EnsureChapterTwoState()
+        {
+            EnsureChapterOneState();
+
+            if (_progress != null && _progress.Contracts < 2) Pay(_briefingTwo);
+
+            SetBrothersActive(false);
+            if (_championBrain != null) _championBrain.enabled = false;
+            if (_ringGate != null) _ringGate.SetActive(true);
+        }
+
+        /// <summary>Le public autour de la fosse exulte, chacun avec son propre retard.</summary>
+        private void CheerRing(float strength, float duration)
+        {
+            for (int i = 0; i < _ringCrowd.Length; i++)
+            {
+                if (_ringCrowd[i] != null) _ringCrowd[i].Cheer(strength, duration);
+            }
+        }
+
+        private bool ChampionKnockedOut()
+        {
+            return _champion == null || (_champion.Health != null && !_champion.Health.IsAlive);
         }
 
         /// <summary>
@@ -1053,6 +1461,22 @@ namespace UberBagarre.Story
                 }
             }
 
+            if (level >= 4 && !_secondWindApplied)
+            {
+                _secondWindApplied = true;
+
+                if (_player != null && _player.Stamina != null && _secondWindBonus > 0f)
+                {
+                    _player.Stamina.MaxStamina = _player.Stamina.MaxStamina * (1f + _secondWindBonus);
+                    _player.Stamina.Refill();
+                }
+
+                if (_phoneDisplay != null)
+                {
+                    _phoneDisplay.UnlockedAbility = "SECOND SOUFFLE — +" + Mathf.RoundToInt(_secondWindBonus * 100f) + " % d'endurance";
+                }
+            }
+
             Debug.Log("[UberBagarre] Niveau " + level + " atteint.", this);
         }
 
@@ -1164,6 +1588,16 @@ namespace UberBagarre.Story
         private void OnCarAtParking(Interactable source)
         {
             _leftParking = true;
+        }
+
+        private void OnClubDoor(Interactable source)
+        {
+            _enteredClub = true;
+        }
+
+        private void OnClubExit(Interactable source)
+        {
+            _leftClubInside = true;
         }
 
         /// <summary>
