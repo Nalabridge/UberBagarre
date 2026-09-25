@@ -27,6 +27,10 @@ namespace UberBagarre.Player
         [SerializeField] private Combatant _combatant;
 
         [SerializeField]
+        [Tooltip("Optionnel : hors combat, esquive et glissade sont desactivees.")]
+        private CombatPresence _presence;
+
+        [SerializeField]
         [Tooltip("Optionnel. Sans lui, la touche de garde ne fait que lever les poings a l'ecran.")]
         private GuardSystem _guard;
 
@@ -155,6 +159,7 @@ namespace UberBagarre.Player
 
         private void Awake()
         {
+            if (_presence == null) _presence = GetComponent<CombatPresence>();
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
             if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
@@ -272,6 +277,12 @@ namespace UberBagarre.Player
                            "(ou '4 - Regenerer les coups par defaut').", this);
         }
 
+        /// <summary>Hors combat, esquive et glissade sont rangées. Sans CombatPresence : toujours en combat.</summary>
+        private bool InCombat
+        {
+            get { return _presence == null || _presence.InCombat; }
+        }
+
         private void Update()
         {
             if (_input == null || _executor == null) return;
@@ -294,7 +305,8 @@ namespace UberBagarre.Player
                 return;
             }
 
-            if (_input.DodgePressed) TryDodge();
+            // Hors combat, pas d'esquive : une roulade en rentrant chez soi n'a aucun sens.
+            if (_input.DodgePressed && InCombat) TryDodge();
 
             UpdateGuard();
             UpdateAttacks();
@@ -546,8 +558,9 @@ namespace UberBagarre.Player
 
             _motor.SprintBlocked = stamina.IsEmpty;
 
-            // La glissade se refuse AVANT de partir : il faut de quoi la payer entierement.
-            _motor.SlideBlocked = !stamina.CanSpend(_slideStaminaCost);
+            // La glissade se refuse AVANT de partir : il faut de quoi la payer entierement. Et
+            // comme l'esquive, elle est rangee hors combat.
+            _motor.SlideBlocked = !stamina.CanSpend(_slideStaminaCost) || !InCombat;
         }
 
         private void UpdateMovementPenalty()

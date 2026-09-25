@@ -31,6 +31,13 @@ namespace UberBagarre.Enemy
         private float _idleGuard = 0.35f;
 
         private float _guardWeight;
+        private float _relaxed;
+        private EnemyBrain _brain;
+
+        private void Awake()
+        {
+            _brain = GetComponent<EnemyBrain>();
+        }
 
         private void Update()
         {
@@ -47,6 +54,13 @@ namespace UberBagarre.Enemy
                 float target = covering ? 1f : (ready ? _idleGuard : 0f);
                 _guardWeight = Mathf.MoveTowards(_guardWeight, target, _guardBlendSpeed * dt);
                 _arms.GuardWeight = _guardWeight;
+
+                // Tant qu'il n'est pas engage (cerveau eteint, ou tenu par une cinematique), il
+                // attend comme n'importe qui : les bras le long du corps. La garde monte quand
+                // la bagarre commence — et c'est ce geste qui dit qu'elle commence.
+                bool engaged = _brain == null || (_brain.enabled && !EnemyBrain.HoldAll);
+                _relaxed = Mathf.MoveTowards(_relaxed, engaged ? 0f : 1f, (engaged ? 4f : 1.2f) * dt);
+                _arms.RelaxedWeight = _relaxed;
             }
 
             if (_locomotion != null && _motor != null)

@@ -598,7 +598,15 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(knockdown, "_cameraRoot", cameraKnockdown.transform);
             SerializedWiring.SetBool(knockdown, "_collapseOnDeath", true);
 
+            // En combat ou pas : hors combat, bras le long du corps, pas d'esquive ni de HUD.
+            CombatPresence presence = playerGo.AddComponent<CombatPresence>();
+            SerializedWiring.SetObject(presence, "_self", combatant);
+            SerializedWiring.SetObject(presence, "_executor", executor);
+            SerializedWiring.SetObject(presence, "_input", input);
+            SerializedWiring.SetObject(driver, "_presence", presence);
+
             PlayerCombat combat = playerGo.AddComponent<PlayerCombat>();
+            SerializedWiring.SetObject(combat, "_presence", presence);
             SerializedWiring.SetObject(combat, "_input", input);
             SerializedWiring.SetObject(combat, "_executor", executor);
             SerializedWiring.SetObject(combat, "_motor", motor);
@@ -1059,6 +1067,7 @@ namespace UberBagarre.EditorTools
             Combatant enemyCombatant = enemy.GetComponent<Combatant>();
 
             CombatHud hud = player.AddComponent<CombatHud>();
+            SerializedWiring.SetObject(hud, "_presence", player.GetComponent<CombatPresence>());
             SerializedWiring.SetObject(hud, "_playerHealth", playerCombatant.Health);
             SerializedWiring.SetObject(hud, "_playerStamina", playerCombatant.Stamina);
             SerializedWiring.SetObject(hud, "_player", playerCombatant);

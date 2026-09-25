@@ -222,7 +222,7 @@ namespace UberBagarre.Phone
 
             switch (_os.Current)
             {
-                case PhoneOS.App.RdvBaston: DrawRdv(body); break;
+                case PhoneOS.App.UberBagarre: DrawRdv(body); break;
                 case PhoneOS.App.Messages: DrawMessages(body); break;
                 case PhoneOS.App.Appels: DrawCalls(body); break;
                 case PhoneOS.App.Photo: DrawCameraSplash(body); break;
@@ -328,7 +328,7 @@ namespace UberBagarre.Phone
                     Label(dot, badge.ToString(), Font(0.018f), FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
                 }
 
-                Label(new Rect(slot.x, iconRect.yMax + U(0.006f), slot.width, U(0.03f)), PhoneOS.AppName(apps[i]),
+                Label(new Rect(slot.x - U(0.012f), iconRect.yMax + U(0.006f), slot.width + U(0.024f), U(0.03f)), PhoneOS.AppName(apps[i]),
                     Font(0.0175f), selected ? FontStyle.Bold : FontStyle.Normal, TextAnchor.UpperCenter,
                     selected ? _ink : _dim);
             }
@@ -365,7 +365,7 @@ namespace UberBagarre.Phone
 
             switch (app)
             {
-                case PhoneOS.App.RdvBaston:
+                case PhoneOS.App.UberBagarre:
                     GuiKit.Disc(new Rect(cx - w * 0.36f, cy - w * 0.36f, w * 0.72f, w * 0.72f), new Color(1f, 1f, 1f, 0.25f));
                     Label(r, "U", Mathf.Max(10, Mathf.RoundToInt(w * 0.55f)), FontStyle.Bold, TextAnchor.MiddleCenter, white);
                     break;
@@ -482,7 +482,7 @@ namespace UberBagarre.Phone
             GuiKit.Fill(new Rect(row.x, row.y, Mathf.Max(2f, U(0.005f)), row.height), accent);
         }
 
-        // ------------------------------------------------------------------ RDV BASTON
+        // ------------------------------------------------------------------ appli UBER BAGARRE
 
         private void DrawRdv(Rect body)
         {

@@ -122,7 +122,7 @@ namespace UberBagarre.Phone
         private bool _available = true;
 
         [SerializeField]
-        [Tooltip("L'appli RDV BASTON est-elle installee ? Le prologue commence sans elle.")]
+        [Tooltip("L'appli UBER BAGARRE est-elle installee ? Le prologue commence sans elle.")]
         private bool _appInstalled = true;
 
         private float _raise;

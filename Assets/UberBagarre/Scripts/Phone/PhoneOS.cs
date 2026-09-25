@@ -32,7 +32,7 @@ namespace UberBagarre.Phone
         public enum App
         {
             Accueil = 0,
-            RdvBaston = 1,
+            UberBagarre = 1,
             Messages = 2,
             Appels = 3,
             Photo = 4,
@@ -143,13 +143,13 @@ namespace UberBagarre.Phone
             get { return Time.unscaledTime < _toastUntil ? _toast : null; }
         }
 
-        /// <summary>Les applis de l'écran d'accueil, dans l'ordre. RDV BASTON n'y est qu'une fois installée.</summary>
+        /// <summary>Les applis de l'écran d'accueil, dans l'ordre. ÜBER BAGARRE n'y est qu'une fois installée.</summary>
         public IList<App> Apps
         {
             get
             {
                 _apps.Clear();
-                if (_device == null || _device.AppInstalled) _apps.Add(App.RdvBaston);
+                if (_device == null || _device.AppInstalled) _apps.Add(App.UberBagarre);
                 _apps.Add(App.Messages);
                 _apps.Add(App.Appels);
                 _apps.Add(App.Photo);
@@ -165,7 +165,7 @@ namespace UberBagarre.Phone
         {
             switch (app)
             {
-                case App.RdvBaston: return "RDV BASTON";
+                case App.UberBagarre: return "Über Bagarre";
                 case App.Messages: return "Messages";
                 case App.Appels: return "Appels";
                 case App.Photo: return "Photo";
@@ -181,7 +181,7 @@ namespace UberBagarre.Phone
         {
             switch (app)
             {
-                case App.RdvBaston: return new Color(0.92f, 0.16f, 0.52f);
+                case App.UberBagarre: return new Color(0.92f, 0.16f, 0.52f);
                 case App.Messages: return new Color(0.20f, 0.72f, 0.36f);
                 case App.Appels: return new Color(0.16f, 0.62f, 0.30f);
                 case App.Photo: return new Color(0.30f, 0.32f, 0.38f);
@@ -208,7 +208,7 @@ namespace UberBagarre.Phone
                     return unread;
 
                 case App.Appels: return _callsSeen ? 0 : 4;
-                case App.RdvBaston: return _rdvUnseen ? 1 : 0;
+                case App.UberBagarre: return _rdvUnseen ? 1 : 0;
                 default: return 0;
             }
         }
@@ -398,7 +398,7 @@ namespace UberBagarre.Phone
             _device.CameraMode = _app == App.Photo;
             _device.ScreenBrightness = Brightness;
 
-            if (_app == App.RdvBaston && raised) _rdvUnseen = false;
+            if (_app == App.UberBagarre && raised) _rdvUnseen = false;
             if (_app == App.Appels && raised) _callsSeen = true;
             if (_app == App.Messages && _thread >= 0 && raised) _seen[_thread] = Messages(_thread).Count;
 
@@ -448,8 +448,8 @@ namespace UberBagarre.Phone
                     _device.AppInstalled = true;
                     _lastRdv = screen;
                     _rdvTab = 0;
-                    if (!_device.IsRaised || _app != App.RdvBaston) _rdvUnseen = true;
-                    Open(App.RdvBaston, false);
+                    if (!_device.IsRaised || _app != App.UberBagarre) _rdvUnseen = true;
+                    Open(App.UberBagarre, false);
                     break;
 
                 case PhoneDevice.Screen.Photo:
@@ -480,7 +480,7 @@ namespace UberBagarre.Phone
                 case PhoneDevice.Screen.Mission:
                 case PhoneDevice.Screen.Valide:
                 case PhoneDevice.Screen.Profil:
-                    return _app == App.RdvBaston && _rdvTab == 0;
+                    return _app == App.UberBagarre && _rdvTab == 0;
 
                 case PhoneDevice.Screen.Photo:
                     return _app == App.Photo;
@@ -538,7 +538,7 @@ namespace UberBagarre.Phone
             switch (_app)
             {
                 case App.Accueil: NavigateHome(up, down, left, right, select); break;
-                case App.RdvBaston: NavigateRdv(left, right); break;
+                case App.UberBagarre: NavigateRdv(left, right); break;
                 case App.Messages: NavigateMessages(up, down, select); break;
                 case App.Appels: NavigateCalls(up, down, select); break;
                 case App.Galerie: NavigateGallery(up, down, left, right, select); break;
@@ -717,7 +717,7 @@ namespace UberBagarre.Phone
                 if (index >= 0) _homeSelection = index;
             }
 
-            if (app == App.RdvBaston && fromHome) _rdvTab = 0;
+            if (app == App.UberBagarre && fromHome) _rdvTab = 0;
             _app = app;
         }
 

@@ -25,6 +25,10 @@ namespace UberBagarre.Player
                  "encaisses, au lieu de suivre la touche sans condition.")]
         private GuardSystem _guard;
 
+        [SerializeField]
+        [Tooltip("Optionnel : hors combat, les mains pendent le long du corps au lieu d'etre en garde.")]
+        private CombatPresence _presence;
+
         [Header("Reactivite")]
         [SerializeField, Min(0.5f)] private float _guardBlendSpeed = 10f;
         [SerializeField, Min(0.5f)] private float _sprintBlendSpeed = 6f;
@@ -37,6 +41,7 @@ namespace UberBagarre.Player
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
             if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
+            if (_presence == null) _presence = GetComponentInParent<CombatPresence>();
         }
 
         private void Update()
@@ -61,6 +66,7 @@ namespace UberBagarre.Player
 
                 _hands.GuardWeight = _guardWeight;
                 _hands.SprintWeight = _sprintWeight;
+                _hands.RelaxedWeight = _presence != null ? 1f - _presence.Weight : 0f;
 
                 if (_input != null) _hands.SetLookDelta(_input.LookDelta, dt);
 

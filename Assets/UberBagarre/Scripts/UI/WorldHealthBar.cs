@@ -1,4 +1,6 @@
 using UberBagarre.Combat;
+using UberBagarre.Enemy;
+using UberBagarre.Player;
 using UberBagarre.Story;
 using UnityEngine;
 
@@ -53,6 +55,9 @@ namespace UberBagarre.UI
         [SerializeField, Min(0f)] private float _shakeAmplitude = 7f;
 
         private float _trail = 1f;
+        private float _visibility;
+        private float _lastHit = -100f;
+        private EnemyBrain _brain;
         private float _trailHold;
         private float _flash;
         private float _shake;
@@ -61,6 +66,7 @@ namespace UberBagarre.UI
         {
             if (_combatant == null) _combatant = GetComponent<Combatant>();
             if (_camera == null) _camera = Camera.main;
+            _brain = GetComponent<EnemyBrain>();
         }
 
         private void OnEnable()
@@ -78,6 +84,7 @@ namespace UberBagarre.UI
             _flash = 1f;
             _shake = 1f;
             _trailHold = _trailDelay;
+            _lastHit = Time.time;
         }
 
         private void Update()
@@ -85,6 +92,13 @@ namespace UberBagarre.UI
             float dt = Time.unscaledDeltaTime;
 
             _flash = Mathf.MoveTowards(_flash, 0f, dt / Mathf.Max(0.01f, _flashDuration));
+
+            // La barre n'existe que pendant un combat : un passant, ou l'adversaire avant qu'il
+            // ne s'engage, n'a pas de jauge au-dessus de la tete.
+            bool engaged = _brain == null || (_brain.enabled && !EnemyBrain.HoldAll);
+            bool shown = (engaged || Time.time - _lastHit < 5f) &&
+                         (CombatPresence.Player == null || CombatPresence.Player.InCombat);
+            _visibility = Mathf.MoveTowards(_visibility, shown ? 1f : 0f, dt * 3f);
             _shake = Mathf.MoveTowards(_shake, 0f, dt * 3.5f);
 
             if (_trailHold > 0f)
@@ -105,7 +119,15 @@ namespace UberBagarre.UI
             if (FightIntro.AnyPlaying) return;
 
             if (_combatant == null || _combatant.Health == null) return;
-            if (!_combatant.Health.IsAlive) return;
+            if (!_combatant.Health.IsAlive || _visibility < 0.01f) return;
+
+            GuiKit.Alpha = _visibility;
+            Draw();
+            GuiKit.Alpha = 1f;
+        }
+
+        private void Draw()
+        {
 
             _camera = GuiKit.ActiveCamera(_camera);
             if (_camera == null) return;

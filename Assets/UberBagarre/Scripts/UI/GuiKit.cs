@@ -14,6 +14,12 @@ namespace UberBagarre.UI
     /// </summary>
     public static class GuiKit
     {
+        /// <summary>
+        /// Opacité globale appliquée à tout ce que dessine GuiKit. Un affichage qui doit
+        /// apparaître en fondu la règle avant de dessiner et la remet à 1 après.
+        /// </summary>
+        public static float Alpha = 1f;
+
         private static Texture2D _pixel;
 
         public static Texture2D Pixel
@@ -68,6 +74,7 @@ namespace UberBagarre.UI
 
         public static void Disc(Rect rect, Color color)
         {
+            color.a *= Alpha;
             Color previous = GUI.color;
             GUI.color = color;
             GUI.DrawTexture(rect, SoftDisc);
@@ -76,6 +83,7 @@ namespace UberBagarre.UI
 
         public static void Fill(Rect rect, Color color)
         {
+            color.a *= Alpha;
             Color previous = GUI.color;
             GUI.color = color;
             GUI.DrawTexture(rect, Pixel);
@@ -139,6 +147,8 @@ namespace UberBagarre.UI
             Color outlineColor, float thickness)
         {
             Color previousContent = GUI.contentColor;
+            textColor.a *= Alpha;
+            outlineColor.a *= Alpha;
 
             GUI.contentColor = outlineColor;
             for (int x = -1; x <= 1; x++)

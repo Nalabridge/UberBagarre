@@ -45,6 +45,10 @@ namespace UberBagarre.UI
         private AttackExecutor _executor;
 
         [Header("Affichage")]
+        [SerializeField]
+        [Tooltip("Optionnel : hors combat, pas de barre de vie ni de reticule de combat.")]
+        private CombatPresence _presence;
+
         [SerializeField] private bool _visible = true;
         [SerializeField, Min(0f)] private float _margin = 30f;
         [SerializeField, Min(80f)] private float _panelWidth = 330f;
@@ -138,13 +142,39 @@ namespace UberBagarre.UI
 
             if (!_visible) return;
 
+            // Hors combat, l'interface de combat s'efface : il ne reste qu'un point au centre, et
+            // la jauge d'endurance quand on court. Elle revient en fondu des qu'on s'engage.
+            float combat = _presence != null ? _presence.Weight : 1f;
+
+            GuiKit.Alpha = Mathf.Lerp(0.45f, 1f, combat);
             DrawCrosshair();
-            DrawAimedZone();
-            DrawGuard();
-            DrawCharge();
-            DrawRiposte();
-            DrawPlayerPanel();
+
+            GuiKit.Alpha = combat;
+            if (combat > 0.01f)
+            {
+                DrawAimedZone();
+                DrawGuard();
+                DrawCharge();
+                DrawRiposte();
+                DrawPlayerPanel();
+            }
+
+            GuiKit.Alpha = 1f;
+            if (combat < 0.99f) DrawRestStamina(1f - combat);
+
             DrawOutdatedWarning();
+        }
+
+        /// <summary>Hors combat : une fine jauge d'endurance au bas de l'écran, seulement quand elle n'est pas pleine.</summary>
+        private void DrawRestStamina(float visibility)
+        {
+            if (_playerStamina == null || _playerStamina.Normalized > 0.985f) return;
+
+            GuiKit.Alpha = visibility;
+            Rect bar = new Rect(Screen.width * 0.5f - 90f, Screen.height - 38f, 180f, 6f);
+            GuiKit.Bar(bar, _playerStamina.Normalized, _playerStamina.Normalized, _staminaColor, _trailColor,
+                _barBackground, _barBorder, 1.5f, 0f);
+            GuiKit.Alpha = 1f;
         }
 
         /// <summary>

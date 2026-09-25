@@ -51,6 +51,13 @@ namespace UberBagarre.View
         [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.205f, -0.30f, 0.20f), new Vector3(14f, 24f, 50f));
         [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.205f, -0.30f, 0.20f), new Vector3(14f, -24f, -50f));
 
+        // Hors combat : les bras pendent le long du corps, paumes vers les cuisses, mains
+        // entrouvertes. Hors du champ de la camera — un homme qui marche ne voit pas ses mains.
+        [Header("Hors combat")]
+        [SerializeField] private HandPose _leftRelaxedPose = new HandPose(new Vector3(-0.21f, -0.47f, 0.13f), new Vector3(24f, 8f, 84f));
+        [SerializeField] private HandPose _rightRelaxedPose = new HandPose(new Vector3(0.21f, -0.47f, 0.13f), new Vector3(24f, -8f, -84f));
+        [SerializeField, Range(0f, 1f)] private float _relaxedGrip = 0.28f;
+
         [Header("Fermeture des mains")]
         [SerializeField, Range(0f, 1f)] private float _guardGrip = 1f;
         [SerializeField, Range(0f, 1f)]
@@ -123,6 +130,9 @@ namespace UberBagarre.View
 
         public float GuardWeight { get; set; }
         public float SprintWeight { get; set; }
+
+        /// <summary>0 = en garde, 1 = hors combat (bras le long du corps).</summary>
+        public float RelaxedWeight { get; set; }
 
         /// <summary>
         /// 0 = mains en place, 1 = mains baissées hors du champ. Sert au mode appareil photo :
@@ -275,6 +285,11 @@ namespace UberBagarre.View
 
             basePose = HandPose.Lerp(basePose, isLeft ? _leftSprintPose : _rightSprintPose, Mathf.Clamp01(SprintWeight));
 
+            // La garde monte et descend en courbe : un bras qui se leve lineairement se lit
+            // comme un objet deplace, pas comme un geste.
+            float relaxed = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(RelaxedWeight));
+            basePose = HandPose.Lerp(basePose, isLeft ? _leftRelaxedPose : _rightRelaxedPose, relaxed);
+
             return basePose + Breathing(isLeft) + IdleNoise(isLeft) + Sway() + ArmSwing(side);
         }
 
@@ -355,6 +370,7 @@ namespace UberBagarre.View
             if (hand == null) return;
 
             float grip = Mathf.Lerp(_guardGrip, _sprintGrip, Mathf.Clamp01(SprintWeight));
+            grip = Mathf.Lerp(grip, _relaxedGrip, Mathf.Clamp01(RelaxedWeight));
             if (attackGrip >= 0f) grip = Mathf.Lerp(grip, attackGrip, attackWeight);
             if (holdWeight > 0f) grip = Mathf.Lerp(grip, isLeft ? _leftHoldGrip : _rightHoldGrip, holdWeight);
 
