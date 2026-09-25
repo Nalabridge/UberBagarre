@@ -97,7 +97,7 @@ namespace UberBagarre.Phone
         [Tooltip("Pose levee. L'inclinaison reste FAIBLE : l'interface est dessinee sur le contour " +
                  "projete de l'ecran, et une approximation affine ne suit exactement qu'un " +
                  "parallelogramme. Au-dela de quelques degres, le dessin deborderait du cadre.")]
-        private Vector3 _raisedPosition = new Vector3(0.052f, -0.072f, 0.295f);
+        private Vector3 _raisedPosition = new Vector3(0.062f, -0.058f, 0.25f);
 
         [SerializeField] private Vector3 _raisedEuler = new Vector3(3f, -2.5f, -3.5f);
 
@@ -121,6 +121,10 @@ namespace UberBagarre.Phone
         [Tooltip("Le telephone peut-il etre sorti ? Coupe pendant les transitions.")]
         private bool _available = true;
 
+        [SerializeField]
+        [Tooltip("L'appli RDV BASTON est-elle installee ? Le prologue commence sans elle.")]
+        private bool _appInstalled = true;
+
         private float _raise;
         private bool _wantRaised;
         private bool _ringing;
@@ -129,10 +133,15 @@ namespace UberBagarre.Phone
         private float _downloadProgress;
         private float _screenAge;
 
-        private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
         private static readonly int IntensityId = Shader.PropertyToID("_Intensity");
 
+        private static readonly int ColorId = Shader.PropertyToID("_Color");
+
         private MaterialPropertyBlock _block;
+        private Renderer[] _renderers;
+        private PhoneOS _os;
+        private bool _hidden;
+        private float _cameraBlend;
 
         /// <summary>Levé pour de bon (au-delà de la moitié de la course).</summary>
         public bool IsRaised { get { return _raise > 0.5f; } }
@@ -146,6 +155,25 @@ namespace UberBagarre.Phone
         public float CallTime { get { return _callTime; } }
         public float ScreenAge { get { return _screenAge; } }
         public Transform ScreenTransform { get { return _screenTransform; } }
+
+        /// <summary>
+        /// L'OS affiche-t-il en ce moment l'écran que l'histoire attend ? Posé par PhoneOS à
+        /// chaque image. Une validation (E) ne compte que dans ce cas : ouvrir une autre appli
+        /// avec E ne doit jamais accepter une course par accident.
+        /// </summary>
+        public bool ShowingStoryScreen { get; set; }
+
+        /// <summary>Mode appareil photo plein écran : le téléphone et les mains sortent du champ.</summary>
+        public bool CameraMode { get; set; }
+
+        /// <summary>Luminosité de l'écran, 0 à 1 (réglages du téléphone).</summary>
+        public float ScreenBrightness { get; set; }
+
+        public bool AppInstalled
+        {
+            get { return _appInstalled; }
+            set { _appInstalled = value; }
+        }
 
         public float DownloadProgress
         {
@@ -168,6 +196,17 @@ namespace UberBagarre.Phone
 
         /// <summary>Déclenché quand une photo est prise, avec la cible visée si elle est valide.</summary>
         public event Action<Transform> PhotoTaken;
+
+        /// <summary>
+        /// Le joueur valide l'écran de l'histoire (installer le lien, accepter une course) depuis
+        /// l'OS : Entrée ou clic gauche. E passe toujours, lui, par la touche d'interaction.
+        /// </summary>
+        public event Action StoryConfirmed;
+
+        public void ConfirmStory()
+        {
+            if (StoryConfirmed != null) StoryConfirmed();
+        }
 
         // ------------------------------------------------------------------ commandes
 
@@ -241,6 +280,9 @@ namespace UberBagarre.Phone
         private void Awake()
         {
             _block = new MaterialPropertyBlock();
+            _renderers = GetComponentsInChildren<Renderer>(true);
+            _os = GetComponent<PhoneOS>();
+            if (ScreenBrightness <= 0f) ScreenBrightness = 0.6f;
 
             if (_anchor == null)
             {
@@ -254,6 +296,10 @@ namespace UberBagarre.Phone
             _screenAge += Time.unscaledDeltaTime;
 
             if (_input != null && _input.PhonePressed && _available) Toggle();
+
+            // Scene sans systeme de telephone (generee avant lui) : E, telephone leve, valide
+            // l'ecran affiche, comme avant.
+            if (_os == null && !_ringing && _input != null && _input.InteractPressed && IsRaised) ConfirmStory();
 
             // Un appel sort le téléphone tout seul. Le joueur n'a pas à deviner qu'une touche
             // existe au moment précis où le jeu lui apprend qu'elle existe.
@@ -283,33 +329,81 @@ namespace UberBagarre.Phone
         /// </summary>
         private void LateUpdate()
         {
+            // Mode photo : le telephone monte vers l'oeil puis disparait, les mains descendent.
+            // L'image devient le viseur, comme sur un vrai telephone tenu a bout de bras.
+            float cameraTarget = CameraMode && _wantRaised ? 1f : 0f;
+            _cameraBlend = Mathf.MoveTowards(_cameraBlend, cameraTarget, Time.unscaledDeltaTime * 5f);
+
             ApplyPose();
             ApplyGrip();
+            ApplyVisibility();
         }
 
+        private void ApplyVisibility()
+        {
+            bool hide = _cameraBlend > 0.6f;
+            if (hide == _hidden || _renderers == null) return;
+
+            _hidden = hide;
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                if (_renderers[i] != null) _renderers[i].enabled = !hide;
+            }
+        }
+
+        // La prise, doigt par doigt : (base, milieu, bout) en degres, dans l'ordre index, majeur,
+        // annulaire, auriculaire, pouce. Trouvee par optimisation sur une reproduction exacte de
+        // la main et du telephone (aucun doigt ne traverse l'appareil, les bouts de doigts
+        // enveloppent le bord gauche, la paume porte le dos, le pouce se pose en bas de l'ecran),
+        // puis verifiee au rendu depuis la camera du joueur.
+        private static readonly Vector3[] GripCurls =
+        {
+            new Vector3(-0.1f, 21.9f, 60.5f),
+            new Vector3(1.2f, 53.9f, 83.9f),
+            new Vector3(18f, 100f, 62.7f),
+            new Vector3(42.2f, 85.4f, 40.6f),
+            new Vector3(26.9f, 80f, 72f)
+        };
+
+        private static readonly Vector3 GripThumb = new Vector3(23.1f, 75.6f, 1.8f);
+
         /// <summary>
-        /// La main droite tient le téléphone : paume contre le dos de l'appareil, doigts vers le
-        /// haut qui se referment sur les bords, pouce côté écran. Le poignet est placé sous le
-        /// milieu du téléphone, un peu derrière — là où il serait vraiment.
+        /// La main droite tient le téléphone comme on tient le sien : l'appareil en travers de la
+        /// paume, les doigts enroulés autour du bord gauche (on en voit le bout), le talon de la
+        /// main et le pouce en bas à droite. Avant, le poignet était sous le téléphone, les doigts
+        /// pointés vers le haut, et une fermeture globale les faisait passer À TRAVERS l'écran.
         /// </summary>
         private void ApplyGrip()
         {
             if (_hands == null) return;
 
-            float weight = Mathf.SmoothStep(0f, 1f, _raise);
+            _hands.Lowered = Mathf.SmoothStep(0f, 1f, _cameraBlend);
+
+            float weight = Mathf.SmoothStep(0f, 1f, _raise) * (1f - _cameraBlend);
             if (weight <= 0.001f)
             {
                 _hands.SetHold(HandSide.Right, transform.position, transform.rotation, 0f, 0f);
                 return;
             }
 
+            Vector3 right = transform.right;
             Vector3 up = transform.up;
             Vector3 back = transform.forward;
 
-            Vector3 wrist = transform.position - up * 0.078f + back * 0.024f;
-            Quaternion rotation = Quaternion.LookRotation(up, back);
+            // Les doigts partent en diagonale vers le haut a gauche ; le dos de la main regarde
+            // a l'oppose de l'ecran, legerement roule.
+            const float slant = 51.4f * Mathf.Deg2Rad;
+            const float roll = 6.35f * Mathf.Deg2Rad;
 
-            _hands.SetHold(HandSide.Right, wrist, rotation, weight, 0.42f);
+            Vector3 fingers = -right * Mathf.Cos(slant) + up * Mathf.Sin(slant);
+            Vector3 handBack = back * Mathf.Cos(roll) + Vector3.Cross(back, fingers) * Mathf.Sin(roll);
+            Quaternion rotation = Quaternion.LookRotation(fingers, handBack);
+
+            // Les articulations des doigts, posees derriere le telephone ; le poignet s'en deduit.
+            Vector3 knuckles = transform.position - right * 0.03f - up * 0.06f + back * 0.023f;
+            Vector3 wrist = knuckles - rotation * new Vector3(0f, -0.005f, 0.068f);
+
+            _hands.SetHold(HandSide.Right, wrist, rotation, weight, GripCurls, GripThumb);
         }
 
         private void ApplyPose()
@@ -323,6 +417,10 @@ namespace UberBagarre.Phone
             Vector3 position = Vector3.Lerp(_loweredPosition, _raisedPosition, t);
             Quaternion rotation = Quaternion.Slerp(Quaternion.Euler(_loweredEuler),
                 Quaternion.Euler(_raisedEuler), t);
+
+            // Vers l'oeil en mode photo.
+            float lift = Mathf.SmoothStep(0f, 1f, _cameraBlend);
+            position = Vector3.Lerp(position, new Vector3(0f, -0.01f, 0.16f), lift);
 
             // Balancement de repos. Il n'existe que quand le téléphone est levé : une main
             // baissée hors du champ n'a aucune raison de respirer.
@@ -348,26 +446,29 @@ namespace UberBagarre.Phone
         private void ApplyScreenLight()
         {
             Color tint = ScreenTint(_screen);
-            float power = _raise * _raise;
+            float power = _raise * _raise * (1f - _cameraBlend);
+            float brightness = Mathf.Clamp01(ScreenBrightness);
 
             if (_screenLight != null)
             {
-                // Faible : a quelques centimetres des mains, 0,85 les brulait litteralement et le
-                // bloom faisait du telephone un flash en pleine nuit.
+                // Faible : a quelques centimetres des mains, une lampe plus forte les brulait et
+                // le bloom faisait du telephone un flash en pleine nuit.
                 _screenLight.color = tint;
-                _screenLight.intensity = 0.2f * power;
+                _screenLight.intensity = 0.14f * power * (0.4f + 0.6f * brightness);
                 _screenLight.enabled = power > 0.02f;
             }
 
             if (_screenRenderer == null) return;
 
-            // L'écran s'éteint quand le téléphone est rangé : un rectangle lumineux qui flotte
-            // à la hanche pendant tout le jeu est le genre de détail qui détruit une nuit.
+            // La dalle elle-meme est du VERRE SOMBRE. C'etait elle, la « flashbang » : le
+            // materiau de neon gardait sa couleur blanc bleute (la teinte etait envoyee dans une
+            // propriete que le shader ne lit pas), soit un rectangle presque blanc qui couvrait
+            // un quart de l'image a chaque sortie du telephone, avant que l'interface — sombre —
+            // ne s'affiche par-dessus. L'interface est dessinee par PhoneDisplay ; la dalle n'a
+            // qu'a etre noire et a peine teintee.
             _screenRenderer.GetPropertyBlock(_block);
-            // L'ecran reste SOUS le seuil du bloom : un vrai ecran de telephone est lisible dans
-            // le noir sans eblouir. Au-dessus du seuil, il debordait sur toute l'image.
-            _block.SetColor(EmissionColorId, tint * Mathf.Lerp(0.05f, 0.4f, power));
-            _block.SetFloat(IntensityId, Mathf.Lerp(0.06f, 0.55f, power));
+            _block.SetColor(ColorId, new Color(0.025f, 0.026f, 0.034f) + tint * 0.018f);
+            _block.SetFloat(IntensityId, Mathf.Lerp(0.3f, 1f, power));
             _screenRenderer.SetPropertyBlock(_block);
         }
 

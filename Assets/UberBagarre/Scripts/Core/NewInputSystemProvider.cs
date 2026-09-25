@@ -68,6 +68,20 @@ namespace UberBagarre.Core
             return mouse.delta.ReadValue() * MouseDeltaToLegacyScale;
         }
 
+        public float GetScrollDelta()
+        {
+            Mouse mouse = Mouse.current;
+            if (mouse == null) return 0f;
+
+            // Selon la plateforme, un cran de molette vaut 120 (Windows) ou 1 (X11, macOS) :
+            // on ramene tout a « un cran = 1 ».
+            float y = mouse.scroll.ReadValue().y;
+            if (Mathf.Abs(y) < 0.001f) return 0f;
+
+            float notches = y / 120f;
+            return Mathf.Abs(notches) < 1f ? Mathf.Sign(y) : Mathf.Clamp(notches, -4f, 4f);
+        }
+
         private static ButtonControl ResolveControl(InputBinding binding)
         {
             if (!binding.IsAssigned) return null;
@@ -137,6 +151,7 @@ namespace UberBagarre.Core
 
                 case KeyCode.Space: return Key.Space;
                 case KeyCode.Return: return Key.Enter;
+                case KeyCode.KeypadEnter: return Key.NumpadEnter;
                 case KeyCode.Escape: return Key.Escape;
                 case KeyCode.Tab: return Key.Tab;
                 case KeyCode.Backspace: return Key.Backspace;

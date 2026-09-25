@@ -36,17 +36,20 @@ namespace UberBagarre.View
         [Tooltip("Optionnel : fournit le balancement des bras synchronise avec les jambes.")]
         private ProceduralLocomotion _locomotion;
 
+        // Garde de boxeur : poings VERTICAUX, pouces en haut et vers l'interieur (roulis de
+        // ~65 degres). Les coups partent de la et tournent le poing a plat a l'impact — la
+        // vrille du direct, qui fait toute la difference entre un bras qui se tend et un coup.
         [Header("Garde normale (espace de visee)")]
-        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.155f, -0.135f, 0.335f), new Vector3(-6f, 20f, 6f));
-        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.148f, -0.165f, 0.275f), new Vector3(-4f, -18f, -8f));
+        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.155f, -0.135f, 0.335f), new Vector3(-6f, 20f, 66f));
+        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.148f, -0.165f, 0.275f), new Vector3(-4f, -18f, -68f));
 
         [Header("Garde serree (clic droit)")]
-        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.115f, -0.072f, 0.300f), new Vector3(-10f, 28f, 10f));
-        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.115f, -0.078f, 0.290f), new Vector3(-10f, -28f, -10f));
+        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.115f, -0.072f, 0.300f), new Vector3(-10f, 28f, 74f));
+        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.115f, -0.078f, 0.290f), new Vector3(-10f, -28f, -74f));
 
         [Header("Course")]
-        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.205f, -0.30f, 0.20f), new Vector3(14f, 24f, 4f));
-        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.205f, -0.30f, 0.20f), new Vector3(14f, -24f, -4f));
+        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.205f, -0.30f, 0.20f), new Vector3(14f, 24f, 50f));
+        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.205f, -0.30f, 0.20f), new Vector3(14f, -24f, -50f));
 
         [Header("Fermeture des mains")]
         [SerializeField, Range(0f, 1f)] private float _guardGrip = 1f;
@@ -107,6 +110,11 @@ namespace UberBagarre.View
         private float _rightHoldWeight;
         private float _rightHoldGrip;
 
+        private Vector3[] _leftHoldCurls;
+        private Vector3 _leftHoldThumb;
+        private Vector3[] _rightHoldCurls;
+        private Vector3 _rightHoldThumb;
+
         /// <summary>Repère dans lequel les poses sont exprimées. Les coups de pied s'en servent aussi.</summary>
         public Transform PoseSpace
         {
@@ -115,6 +123,12 @@ namespace UberBagarre.View
 
         public float GuardWeight { get; set; }
         public float SprintWeight { get; set; }
+
+        /// <summary>
+        /// 0 = mains en place, 1 = mains baissées hors du champ. Sert au mode appareil photo :
+        /// l'image est le viseur, des poings au premier plan n'y ont rien à faire.
+        /// </summary>
+        public float Lowered { get; set; }
 
         private void Awake()
         {
@@ -174,6 +188,27 @@ namespace UberBagarre.View
                 _rightHoldRotation = wristRotation;
                 _rightHoldWeight = weight;
                 _rightHoldGrip = grip;
+            }
+        }
+
+        /// <summary>
+        /// Même chose, avec une prise doigt par doigt (voir <see cref="HandRig.SetPoseOverride"/>)
+        /// au lieu d'une simple fermeture.
+        /// </summary>
+        public void SetHold(HandSide side, Vector3 wristPosition, Quaternion wristRotation, float weight,
+            Vector3[] fingerCurls, Vector3 thumbRotation)
+        {
+            SetHold(side, wristPosition, wristRotation, weight, 0.5f);
+
+            if (side == HandSide.Left)
+            {
+                _leftHoldCurls = fingerCurls;
+                _leftHoldThumb = thumbRotation;
+            }
+            else
+            {
+                _rightHoldCurls = fingerCurls;
+                _rightHoldThumb = thumbRotation;
             }
         }
 
@@ -309,6 +344,12 @@ namespace UberBagarre.View
                 worldRotation = Quaternion.Slerp(worldRotation, isLeft ? _leftHoldRotation : _rightHoldRotation, holdWeight);
             }
 
+            if (Lowered > 0.001f)
+            {
+                Vector3 low = _poseSpace.TransformPoint(new Vector3(isLeft ? -0.2f : 0.2f, -0.62f, 0.12f));
+                worldPosition = Vector3.Lerp(worldPosition, low, Mathf.Clamp01(Lowered));
+            }
+
             arm.ApplyWorldPose(worldPosition, worldRotation);
 
             if (hand == null) return;
@@ -318,6 +359,9 @@ namespace UberBagarre.View
             if (holdWeight > 0f) grip = Mathf.Lerp(grip, isLeft ? _leftHoldGrip : _rightHoldGrip, holdWeight);
 
             hand.TargetGrip = grip;
+
+            Vector3[] curls = isLeft ? _leftHoldCurls : _rightHoldCurls;
+            hand.SetPoseOverride(curls != null ? holdWeight : 0f, curls, isLeft ? _leftHoldThumb : _rightHoldThumb);
         }
 
         private void OnDrawGizmosSelected()

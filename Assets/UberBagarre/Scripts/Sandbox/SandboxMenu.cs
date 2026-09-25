@@ -1031,10 +1031,17 @@ namespace UberBagarre.Sandbox
             // nettes en rendu avant), FXAA (le plus leger), aucun.
             UberPostProcess.AntiAliasingMode aa = _graphics.AntiAliasing;
 
-            if (Button(new Rect(right, ry, column, 28f), "ANTICRENELAGE : " + AntiAliasingLabel(aa),
+            if (Button(new Rect(right, ry, half, 28f), "AA : " + AntiAliasingLabel(aa),
                     aa == UberPostProcess.AntiAliasingMode.Aucun ? _enemyAccent : _playerAccent))
             {
                 _graphics.AntiAliasing = NextAntiAliasing(aa);
+                _graphics.Save();
+            }
+
+            if (Button(new Rect(right + half + 10f, ry, half, 28f), _graphics.VSync ? "VSYNC : ON" : "VSYNC : OFF",
+                    _graphics.VSync ? _playerAccent : _enemyAccent))
+            {
+                _graphics.VSync = !_graphics.VSync;
                 _graphics.Save();
             }
 

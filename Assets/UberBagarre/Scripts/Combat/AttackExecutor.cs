@@ -625,10 +625,15 @@ namespace UberBagarre.Combat
 
             if (_cameraPunch != null)
             {
+                // Le contact se SENT dans la vue, il ne la deplace pas : un a-coup de tangage d'un
+                // a deux degres, presque rien en lacet et en position. Les anciennes valeurs
+                // (jusqu'a 5 degres et 7 cm en une image) faisaient sauter l'image a chaque coup porte.
                 float strength = _attack.shakeIntensity;
                 _cameraPunch.AddImpulse(
-                    new Vector3(UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f), -1f) * strength,
-                    new Vector3(-strength * 60f, UnityEngine.Random.Range(-1f, 1f) * strength * 40f, 0f));
+                    new Vector3(0f, 0f, -0.12f * strength),
+                    new Vector3(-strength * 22f,
+                        UnityEngine.Random.Range(-1f, 1f) * strength * 7f,
+                        UnityEngine.Random.Range(-1f, 1f) * strength * 5f));
             }
 
             Action<AttackData, Hurtbox, Vector3> landed = HitLanded;

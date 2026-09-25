@@ -84,6 +84,9 @@ namespace UberBagarre.Player
         public bool InteractHeld { get; private set; }
         public bool PhonePressed { get; private set; }
 
+        /// <summary>Crans de molette de cette frame (toujours lus : le téléphone s'en sert même figé).</summary>
+        public float ScrollDelta { get; private set; }
+
         public InputBindings Bindings
         {
             get { return _bindings; }
@@ -195,6 +198,7 @@ namespace UberBagarre.Player
             InteractPressed = _provider.GetPressedThisFrame(_bindings.interact);
             InteractHeld = _provider.GetHeld(_bindings.interact);
             PhonePressed = _provider.GetPressedThisFrame(_bindings.phone);
+            ScrollDelta = _provider.GetScrollDelta();
 
             if (!GameplayInputEnabled)
             {

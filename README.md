@@ -98,6 +98,17 @@ Dans l'ordre :
    redemande la capture tout seul si le système la rend, et les déplacements marchent même sans
    capture — mais la visée, elle, a besoin de la souris dans la fenêtre.
 
+### 6. Si l'image saccade ou « se coupe »
+
+1. **Active la synchronisation verticale de la vue Game** : dans la vue Game, menu déroulant du
+   format d'image (« Free Aspect »), coche **VSync (Game view only)**. Sans elle, l'image se
+   « déchire » en bandes dès que la vue bouge vite — exactement ce qui arrive en combat. Dans le jeu
+   compilé, c'est le bouton **VSYNC** de Tab → Graphismes (activé par défaut).
+2. **F1** affiche en haut les images par seconde, la pire image récente et les passages du
+   ramasse-miettes. La **Console** nomme chaque saut de caméra et sa cause.
+3. Tab → Graphismes : l'anticrénelage par défaut est **FXAA** (le plus stable et le moins cher) ; le
+   MSAA oblige un rendu bien plus coûteux avec toutes les lampes de la rue.
+
 ---
 
 ## Commandes
@@ -131,7 +142,11 @@ Dans l'ordre :
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
 | **E** | **Interagir** : répondre au téléphone, lire le courrier, monter en voiture, valider un écran |
-| **T** | **Sortir / ranger le téléphone** (on peut marcher en le regardant, pas frapper) |
+| **T** | **Sortir / ranger le téléphone** — quand tu veux (on peut marcher en le regardant, pas frapper) |
+| **Flèches** / **molette** | Téléphone sorti : choisir une appli, faire défiler |
+| **Entrée** / **clic gauche** / **E** | Téléphone sorti : ouvrir, valider |
+| **Retour arrière** / **clic droit** | Téléphone sorti : revenir (sur l'accueil : ranger) |
+| **Appli Photo** | Viseur plein écran : **clic gauche** photo, **molette** zoom, **gauche / droite** filtre |
 | **Tab** | **Menu de test** — dans le jeu **et** dans le bac à sable : Combat (PV, dégâts, nervosité, profils), **TRICHE**, Vagues (bac à sable), Statistiques, **Graphismes**, Commandes |
 | **F6** | **Noclip** : vol à travers les murs (ZQSD dans le regard, Espace monte, C descend, Maj accélère) |
 | **F7** | **Godmode** |
@@ -178,7 +193,8 @@ Tu peux les changer sans toucher à une ligne de code.
 | 23 | Chapitre 2 : intérieur du Vertigo, public animé, musique générée, la commande déclenche le combat | ✅ |
 | 24 | Vraies mains (maillage continu déformé par les os), anti-spam, épuisement, TAA, anti-chute | ✅ |
 | 25 | Voix des personnages, ambiances sonores par lieu, caméra stable, combat nerveux, adversaire toujours lisible, menu de triche dans le jeu | ✅ |
-| 26 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 26 | Téléphone avec un vrai système (8 applis), appareil photo plein écran, prise en main réaliste, cinématique d'avant-combat, foule qui se forme, garde et coups en vrille, mouchard de caméra | ✅ |
+| 27 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -327,9 +343,26 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 ### Le téléphone
 
 C'est l'objet central du jeu, donc il est construit comme un objet et pas comme un menu : une coque,
-une dalle émissive et une petite lampe. Il se lève et se baisse avec **T**, il s'incline, il vibre
-quand ça sonne, il **éclaire les mains dans le noir** et il **apparaît dans les reflets du bitume
-mouillé**.
+une dalle et une petite lampe. Il se sort **quand on veut** avec **T**, il est **tenu dans la main
+droite** (les doigts enroulés autour du bord gauche, le pouce en bas de l'écran), il vibre et
+**sonne** quand on appelle, il éclaire faiblement les mains dans le noir.
+
+Il a un vrai **système**, sombre et à la luminosité réglable, avec un écran d'accueil et huit applis :
+
+| Appli | Contenu |
+|---|---|
+| **RDV BASTON** | la course en cours (contrat, fiche, directive, validation) et le **profil** (niveau, réputation, avis) — apparaît une fois installée |
+| **Messages** | Sami (le lien de l'appli, puis ses réactions après chaque course), maman, la banque, SFR, l'agence |
+| **Appels** | le journal des appels ; les appels entrants s'y affichent |
+| **Photo** | l'appareil photo **plein écran** : grille, cadre de mise au point (vert sur une cible au sol), **zoom à la molette**, 5 **filtres**, vraie photo qui file en vignette |
+| **Galerie** | les photos de la partie, en grille et en grand |
+| **Banque** | le découvert, le portefeuille de l'appli, les dernières opérations |
+| **Carte** | la planque, le Vertigo, le parking — et où tu es |
+| **Réglages** | **luminosité** (4 crans), **mode nuit**, sonnerie ou vibreur |
+
+Quand l'histoire a besoin du téléphone (un appel, le lien de Sami, une course, une preuve à
+photographier), il ouvre l'appli concernée, comme une notification qu'on touche. On peut en sortir et
+y revenir ; une validation ne compte que si l'écran de l'histoire est vraiment affiché.
 
 Son interface n'est pas collée par-dessus l'image : elle est dessinée **sur la dalle**, à partir de
 ses quatre coins projetés à l'écran. Elle suit donc l'inclinaison du poignet et le balancement.
@@ -405,6 +438,20 @@ Pour y aller directement : coche **`Start At Chapter Two`** sur `PrologueDirecto
 | **La commande** | Rien ne se passe tant qu'elle n'est pas tombée : la bagarre commence **quand la commande est reçue sur le téléphone et acceptée** (E). La barrière s'ouvre, la salle rugit. |
 | **Le combat** | La barrière se referme derrière toi. Le public regarde l'échange, lève les bras sur les beaux coups, grimace sur les coups durs, exulte au K.O. — chacun avec son propre temps de réaction. |
 | **Après** | Photo, 600 €, **niveau 4** (*second souffle* : +30 % d'endurance), avis 5 étoiles. À la planque, le loyer est enfin payé… et quelqu'un avait commandé ce combat contre toi. *À suivre.* |
+
+---
+
+## Les bagarres commencent comme au cinéma
+
+Quand un combat démarre (Bruno Moretti devant le club, les frères Kovac au parking, le Taureau dans la
+fosse, l'adversaire du bac à sable), la caméra quitte tes yeux pendant quatre secondes : **bandes
+noires**, plan large qui tourne autour des deux hommes, **gros plan sur l'adversaire avec son nom**,
+contre-plongée, puis retour en vue subjective sur un « **BAGARRE !** ». Personne ne bouge pendant ce
+temps ; **E**, **Espace** ou un clic pour passer.
+
+Dans la rue et au parking, **des badauds arrivent** : ils partent de loin, chacun à son heure,
+marchent jusqu'à une place autour du combat, s'arrêtent et regardent — puis réagissent aux coups
+(bras levés, grimaces, clameurs) comme le public du club.
 
 ---
 
@@ -581,7 +628,10 @@ au **chapitre 1** ou au **chapitre 2**, se **téléporter** (maison, rue, parkin
 **+1 niveau**. Rien de tout ça n'est sauvegardé : une invincibilité oubliée d'une session à l'autre
 fausserait tous les tests suivants. **F6** et **F7** basculent noclip et godmode sans ouvrir le menu.
 
-**F1 — Diagnostic.** Cadence réelle en coups/s, écart en ms entre tes deux derniers coups, échelle
+**F1 — Diagnostic.** En tête : **images par seconde, pire image des 2 dernières secondes, passages
+du ramasse-miettes**, et le nombre de **sauts de caméra** détectés avec leur cause. Chaque saut est
+aussi écrit dans la **Console** (« Saut de camera : 3.1 deg d'effet de camera : CameraPunch ») : si
+l'image saccade encore, c'est là qu'il faut regarder. Ensuite : cadence réelle en coups/s, écart en ms entre tes deux derniers coups, échelle
 de temps courante, état du tampon d'entrée, et les trois zones de l'adversaire avec leur
 multiplicateur.
 

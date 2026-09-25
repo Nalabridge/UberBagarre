@@ -20,7 +20,7 @@ namespace UberBagarre.Feedback
 
         [Header("Apparence")]
         [SerializeField] private Color _color = new Color(0.62f, 0.03f, 0.03f);
-        [SerializeField, Range(0f, 1f)] private float _maxIntensity = 0.8f;
+        [SerializeField, Range(0f, 1f)] private float _maxIntensity = 0.6f;
 
         [SerializeField, Range(0.3f, 0.95f)]
         [Tooltip("Rayon du trou central. Plus haut = vignette plus fine sur les bords.")]

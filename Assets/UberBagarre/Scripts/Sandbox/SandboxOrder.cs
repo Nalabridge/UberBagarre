@@ -1,7 +1,10 @@
+using UberBagarre.Combat;
 using UberBagarre.Enemy;
 using UberBagarre.Phone;
 using UberBagarre.Player;
+using UberBagarre.Story;
 using UberBagarre.UI;
+using UberBagarre.World;
 using UnityEngine;
 
 namespace UberBagarre.Sandbox
@@ -19,6 +22,17 @@ namespace UberBagarre.Sandbox
     {
         [SerializeField] private PhoneDevice _phone;
         [SerializeField] private PlayerInputReader _input;
+
+        [Header("Mise en scene")]
+        [SerializeField]
+        [Tooltip("Optionnel : la presentation de l'adversaire quand la course est acceptee.")]
+        private FightIntro _intro;
+
+        [SerializeField]
+        [Tooltip("Optionnel : les badauds qui s'approchent.")]
+        private FightCrowd _crowd;
+
+        [SerializeField] private Combatant _opponent;
 
         [SerializeField]
         [Tooltip("Decocher pour retrouver l'ancien bac a sable : combat immediat.")]
@@ -50,6 +64,21 @@ namespace UberBagarre.Sandbox
             _notifyAt = Time.time + _delay;
         }
 
+        private void OnEnable()
+        {
+            if (_phone != null) _phone.StoryConfirmed += OnConfirmed;
+        }
+
+        private void OnDisable()
+        {
+            if (_phone != null) _phone.StoryConfirmed -= OnConfirmed;
+        }
+
+        private void OnConfirmed()
+        {
+            if (_notified && _phone != null && _phone.Current == PhoneDevice.Screen.Accueil) Accept();
+        }
+
         private void OnDestroy()
         {
             if (!_accepted) EnemyBrain.HoldAll = false;
@@ -69,9 +98,11 @@ namespace UberBagarre.Sandbox
 
             if (!_notified || _input == null) return;
 
-            // Accepter = E pendant que la carte de la course est affichée, téléphone levé :
-            // le même geste que dans l'histoire.
-            if (_input.InteractPressed && _phone.IsRaised && _phone.Current == PhoneDevice.Screen.Accueil)
+            // Accepter = valider la carte de la course sur le telephone (E, Entree ou clic) :
+            // le meme geste que dans l'histoire. Le systeme du telephone ne l'envoie que si la
+            // carte est vraiment affichee. Scene ancienne sans systeme : E, telephone leve.
+            if (_phone.GetComponent<PhoneOS>() == null && _input.InteractPressed && _phone.IsRaised &&
+                _phone.Current == PhoneDevice.Screen.Accueil)
             {
                 Accept();
             }
@@ -85,10 +116,16 @@ namespace UberBagarre.Sandbox
             _accepted = true;
             EnemyBrain.HoldAll = false;
 
-            if (_phone == null) return;
+            if (_phone != null)
+            {
+                _phone.SetScreen(PhoneDevice.Screen.Mission);
+                _phone.Lower();
+            }
 
-            _phone.SetScreen(PhoneDevice.Screen.Mission);
-            _phone.Lower();
+            if (_opponent == null || _input == null) return;
+
+            if (_crowd != null) _crowd.Gather((_opponent.transform.position + _input.transform.position) * 0.5f);
+            if (_intro != null) _intro.Play(_opponent, _opponent.DisplayName.ToUpperInvariant(), "RDV BASTON  ·  2 ÉTOILES", null);
         }
 
         private void OnGUI()

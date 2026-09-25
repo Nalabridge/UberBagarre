@@ -90,7 +90,8 @@ namespace UberBagarre.EditorTools
             GraphicsDirector graphics = BuildRendering(sun, moon, street, gameCamera, observerCamera);
             WireHudAndDebug(player, enemy, attacks.Straight);
             BuildSpawnSystem(player, enemy, graphics);
-            BuildOrder(night, player, gameCamera);
+            BuildOrder(night, player, gameCamera, enemy,
+                BuildFightCrowd(street.Root, night, materials, 9, 11, "Badauds (bac a sable)"));
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -167,7 +168,30 @@ namespace UberBagarre.EditorTools
         /// Le téléphone et la commande : même dans le bac à sable, le combat ne commence
         /// qu'une fois la course reçue et acceptée. L'adversaire attend dans la rue jusque-là.
         /// </summary>
-        private static void BuildOrder(NightMaterialFactory.Palette night, GameObject player, Camera gameCamera)
+        /// <summary>
+        /// Des badauds, caches jusqu'a ce qu'une bagarre les attire. Partage avec le jeu : la rue
+        /// et le parking ont chacun les leurs.
+        /// </summary>
+        internal static FightCrowd BuildFightCrowd(Transform parent, NightMaterialFactory.Palette night,
+            BuildMaterials materials, int count, int seed, string name)
+        {
+            GameObject go = EditorBuildUtility.CreateEmpty(name, parent, Vector3.zero);
+            FightCrowd crowd = go.AddComponent<FightCrowd>();
+
+            CrowdAudio murmur = go.AddComponent<CrowdAudio>();
+            SerializedWiring.SetFloat(murmur, "_murmurVolume", 0.22f);
+            SerializedWiring.SetFloat(murmur, "_cheerVolume", 0.6f);
+            murmur.enabled = false;
+
+            Spectator[] members = ClubInteriorBuilder.BuildPassersby(go.transform, night, materials, count, seed);
+
+            SetComponentArray(crowd, "_members", members);
+            SerializedWiring.SetObject(crowd, "_audio", murmur);
+            return crowd;
+        }
+
+        private static void BuildOrder(NightMaterialFactory.Palette night, GameObject player, Camera gameCamera,
+            GameObject enemy, FightCrowd crowd)
         {
             GameObject go = new GameObject("=== Commande ===");
 
@@ -191,6 +215,9 @@ namespace UberBagarre.EditorTools
             SandboxOrder order = go.AddComponent<SandboxOrder>();
             SerializedWiring.SetObject(order, "_phone", phone);
             SerializedWiring.SetObject(order, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(order, "_intro", player.GetComponent<FightIntro>());
+            SerializedWiring.SetObject(order, "_crowd", crowd);
+            SerializedWiring.SetObject(order, "_opponent", enemy != null ? enemy.GetComponent<Combatant>() : null);
             SerializedWiring.Verify(order, "_phone");
         }
 
@@ -473,6 +500,14 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hands, "_rightHand", body.Rig.RightHand);
             SerializedWiring.SetObject(hands, "_locomotion", body.Locomotion);
 
+            // Le mouchard de la camera : nomme dans la console le noeud qui fait sauter l'image.
+            CameraDiagnostics diagnostics = cameraGo.AddComponent<CameraDiagnostics>();
+            SerializedWiring.SetObject(diagnostics, "_look", look);
+            SerializedWiring.SetObject(diagnostics, "_root", playerGo.transform);
+            SerializedWiring.SetObject(diagnostics, "_head", head.transform);
+            SetComponentArray(diagnostics, "_nodes", cameraKnockdown.transform, cameraBob.transform,
+                cameraShakeNode.transform, cameraPunchNode.transform);
+
             ObserverCamera observer = playerGo.AddComponent<ObserverCamera>();
             SerializedWiring.SetObject(observer, "_input", input);
             SerializedWiring.SetObject(observer, "_look", look);
@@ -480,6 +515,14 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(observer, "_observerCamera", freeCamera);
             SerializedWiring.SetObject(observer, "_target", head.transform);
             SerializedWiring.Verify(observer, "_observerCamera");
+
+            // La mini-cinematique d'avant-combat filme avec la camera d'observation.
+            FightIntro intro = playerGo.AddComponent<FightIntro>();
+            SerializedWiring.SetObject(intro, "_gameCamera", camera);
+            SerializedWiring.SetObject(intro, "_cinematicCamera", freeCamera);
+            SerializedWiring.SetObject(intro, "_observer", observer);
+            SerializedWiring.SetObject(intro, "_input", input);
+            SerializedWiring.SetObject(intro, "_player", playerGo.transform);
 
             PlayerAvatarDriver driver = playerGo.AddComponent<PlayerAvatarDriver>();
             SerializedWiring.SetObject(driver, "_input", input);

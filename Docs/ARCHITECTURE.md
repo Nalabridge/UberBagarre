@@ -1851,3 +1851,107 @@ coup, multiplicateur de dégâts, vitesse du temps (`HitStop.BaseTimeScale` : le
 revient au lieu de remettre le temps à 1), adversaires figés, et les raccourcis de l'histoire —
 réplique, étape (`StoryDirector.SkipBeat`), chapitre (`PrologueDirector.StartAt`), lieu, argent,
 niveau. Rien n'est sauvegardé, et un `DebugCheats` désactivé ne laisse aucune triche derrière lui.
+
+## 22. Un téléphone qui en est un, des mains qui tiennent, des bagarres qui commencent
+
+Demande : *« toujours le bug de caméra, check ; la caméra du téléphone ne marche pas, je veux un
+fonctionnement comme dans GTA V ; le téléphone est toujours une flashbang et il ne le tient pas ; une
+interface de téléphone, un OS avec des applis, que je sors quand je veux ; une mini-cinématique au
+début du combat et une foule qui se forme doucement autour ; l'animation des coups plus humaine. »*
+
+### 22.1 La caméra : ce que le code faisait vraiment
+
+Trois causes, trouvées dans le code et non supposées :
+
+- **Le ramasse-miettes.** `GuiKit.Style` créait un nouveau `GUIStyle` à CHAQUE appel. Une vingtaine
+  d'affichages en appellent plusieurs, deux fois par image (passages Layout et Repaint d'OnGUI) :
+  des centaines d'objets par seconde, avec finaliseur natif. Les passages du ramasse-miettes
+  gelaient l'image quelques dizaines de millisecondes — et d'autant plus en combat, où les chiffres
+  de dégâts, les barres, les combos et le diagnostic s'affichent en même temps. Les styles sont
+  maintenant mis en cache (clé : taille, graisse, alignement, retour à la ligne) et partagés ; ceux
+  qui les modifiaient reçoivent une variante dédiée.
+- **Le recul de caméra par à-coup.** Chaque coup porté ajoutait jusqu'à ~5° et 7 cm à la caméra
+  EN UNE IMAGE, puis les reprenait en décroissant : un saut d'image, pas un choc. `CameraPunch` est
+  devenu un **ressort à amortissement critique** (pas exact, stable à tout pas de temps) : une
+  impulsion y devient une vitesse, la vue monte en ~50 ms, culmine et revient sans dépasser. Les
+  amplitudes sont aussi plafonnées (4°, 3,5 cm) et le coup porté ne donne plus qu'un à deux degrés.
+- **Le coût du rendu.** Le MSAA ×8 imposait le rendu avant : chaque objet redessiné par lampe (dix
+  au plus, les autres « par sommet », d'où un éclairage qui saute), et le reflet planaire refaisait
+  toute la scène en pleine résolution. Retour au rendu différé avec **FXAA** par défaut, reflet en
+  demi-résolution, et **synchronisation verticale** activée (sans elle, l'image se déchire en bandes
+  quand la vue bouge vite).
+
+Et un mouchard, `CameraDiagnostics`, sur la caméra : il compare à chaque image la rotation du rig
+(tout ce qui sépare la tête de la caméra) et le déplacement du corps à ce que la souris et la vitesse
+expliquent ; au-delà, il nomme le nœud coupable dans la Console. L'overlay F1 affiche images par
+seconde, pire image et passages du ramasse-miettes. Si quelque chose saute encore, on saura quoi.
+
+### 22.2 La « flashbang » était la dalle
+
+Le matériau de la dalle (le shader de néon) gardait sa couleur blanc bleuté : la teinte et
+l'atténuation étaient envoyées dans `_EmissionColor`, une propriété que ce shader ne lit pas. Un
+rectangle presque blanc couvrait un quart de l'image à chaque sortie du téléphone, avant que
+l'interface — sombre — ne s'affiche par-dessus. La dalle est maintenant du verre noir à peine teinté,
+l'interface a un thème sombre, et la luminosité (4 crans) et un mode nuit se règlent dans l'appli
+Réglages : c'est un voile sur tout l'écran, texte compris, comme sur un vrai téléphone.
+
+### 22.3 Un système, des applis
+
+`PhoneOS` porte l'état (appli ouverte, sélection, fils de messages, réglages) ; `PhoneDisplay` dessine
+(accueil avec fond, horloge, grille d'icônes dessinées en rectangles et disques, pastilles de
+notification ; puis chaque appli) ; `PhoneCamera` est l'appareil photo. L'histoire garde la main sur
+ce qui compte : quand elle affiche un écran, l'OS ouvre l'appli correspondante. Une validation
+(installer, accepter) passe désormais par un événement `PhoneDevice.StoryConfirmed`, émis seulement
+si l'écran de l'histoire est RÉELLEMENT affiché au début de l'image : ouvrir la galerie avec Entrée
+ne peut plus accepter une course. Téléphone sorti, E lui appartient (les portes ne réagissent plus).
+
+L'appareil photo, façon téléphone de jeu en monde ouvert : le téléphone monte à l'œil puis
+disparaît, les mains sortent du champ, l'image entière devient le viseur (grille des tiers, cadre de
+mise au point qui dit qui est visé et s'il est au sol, zoom à la molette par le champ de vision avec
+une visée ralentie d'autant, cinq filtres par le post-traitement). Le déclencheur fait un vrai rendu
+de la caméra dans une texture (post-traitement compris, sans l'interface), qui file en vignette et
+rejoint la Galerie. La preuve n'est envoyée au client que quand l'histoire en attend une.
+
+### 22.4 Les mains étaient construites en miroir
+
+Paume vers le bas (−Y), doigts vers l'avant (+Z) : le pouce d'une main droite est du côté −X. Le
+signe était inversé depuis le début, dans le squelette comme dans la peau : chaque main était une
+main de l'autre côté, le pouce du poing droit sortait vers l'extérieur, et aucune prise ne pouvait
+avoir l'air naturelle. Corrigé aux deux endroits.
+
+La prise du téléphone a ensuite été **calculée** : une reproduction exacte de la main (squelette,
+peau, courbures) et du téléphone, une recherche aléatoire puis affinée sur 22 paramètres (angle et
+position de la main, trois courbures par doigt, rotation de la base du pouce) sous contraintes —
+aucun point de doigt dans l'appareil, bouts des doigts sur le bord gauche juste devant la face,
+paume portant le dos, pouce posé en bas de l'écran — puis le rendu depuis la caméra du joueur pour
+choisir. `HandRig.SetPoseOverride` applique ces courbures doigt par doigt ; une fermeture globale ne
+pouvait pas les produire.
+
+### 22.5 Les coups : la vrille
+
+La garde est passée aux **poings verticaux** (pouces en haut et vers l'intérieur). Les coups partent
+de là et tournent le poing à plat à l'impact (direct, crochet), ou paume vers soi pour l'uppercut :
+c'est la vrille, qui distingue un coup d'un bras qui se tend. La main libre remonte au menton dans la
+même orientation, le buste tourne davantage sur le direct arrière. La version des données d'attaque
+passe à 5 : les assets existants sont régénérés à la reconstruction.
+
+### 22.6 Le début d'une bagarre
+
+`FightIntro` filme avec la caméra d'observation (qui a déjà sa chaîne d'image) : bandes noires, plan
+large tournant, gros plan en légère contre-plongée avec la carte de l'adversaire, contre-plongée
+large, retour en vue subjective sur « BAGARRE ! » et un coup sourd. Les adversaires sont tenus et les
+commandes coupées pendant ce temps ; chaque plan vérifie qu'aucun mur ne s'intercale. Les affichages
+de jeu se cachent (`FightIntro.AnyPlaying`).
+
+`FightCrowd` fait venir les badauds : une place tirée autour du combat et vérifiée (pas dans un mur,
+pas dans une voiture), un point de départ derrière elle dont le trajet est dégagé, un départ décalé
+pour chacun, la marche animée par la locomotion procédurale et posée sur le sol (trottoir, bordure),
+un ralentissement à l'arrivée. Arrivé, le badaud devient un `Spectator` : il regarde le combat et
+réagit aux coups. Le brouhaha naît avec le premier arrivé.
+
+### 22.7 Un vrai compilateur
+
+Le code est désormais compilé à chaque étape par Roslyn (le compilateur C# officiel), contre les
+assemblages de référence d'Unity 2021.3 et un environnement .NET 8 récupérés sur NuGet — jeu et
+éditeur. Seules les API apparues après 2021.3 (`linearVelocity`) sont renommées le temps de la
+vérification.

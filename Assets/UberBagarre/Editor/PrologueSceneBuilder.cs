@@ -133,6 +133,7 @@ namespace UberBagarre.EditorTools
                 briefingTwo, parking, brothers);
 
             WireChapterTwo(player, briefingThree, club, champion, clubDoor);
+            WireFightStaging(player, night, materials, street, parking);
             BuildTestTools(player, graphics);
 
             // Le club reste eteint jusqu'a ce qu'on y entre : sa musique, sa foule et ses
@@ -297,6 +298,27 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetBool(interactable, "_enabledForPlayer", false);
 
             return interactable;
+        }
+
+        /// <summary>
+        /// La mise en scene des bagarres : les badauds de la rue et du parking, et la
+        /// cinematique d'avant-combat (portee par le joueur).
+        /// </summary>
+        private static void WireFightStaging(GameObject player, NightMaterialFactory.Palette night,
+            BuildMaterials materials, NightStreetBuilder.Result street, ParkingBuilder.Result parking)
+        {
+            FightCrowd streetCrowd = SandboxSceneBuilder.BuildFightCrowd(street.Root, night, materials, 10, 0,
+                "Badauds (rue)");
+            FightCrowd parkingCrowd = SandboxSceneBuilder.BuildFightCrowd(parking.Root, night, materials, 8, 5,
+                "Badauds (parking)");
+
+            PrologueDirector prologue = Object.FindAnyObjectByType<PrologueDirector>();
+            if (prologue == null) return;
+
+            SerializedWiring.SetObject(prologue, "_intro", player.GetComponent<FightIntro>());
+            SerializedWiring.SetObject(prologue, "_streetCrowd", streetCrowd);
+            SerializedWiring.SetObject(prologue, "_parkingCrowd", parkingCrowd);
+            SerializedWiring.Verify(prologue, "_intro");
         }
 
         /// <summary>
@@ -644,10 +666,18 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(display, "_camera", camera);
             SerializedWiring.SetObject(display, "_briefing", briefing);
 
+            // Le systeme du telephone : ecran d'accueil, applis, navigation.
+            PhoneOS os = phoneGo.AddComponent<PhoneOS>();
+            SerializedWiring.SetObject(os, "_device", device);
+            SerializedWiring.SetObject(os, "_input", input);
+            SerializedWiring.SetObject(display, "_os", os);
+
             PhoneCamera photo = phoneGo.AddComponent<PhoneCamera>();
             SerializedWiring.SetObject(photo, "_device", device);
             SerializedWiring.SetObject(photo, "_input", input);
             SerializedWiring.SetObject(photo, "_camera", camera);
+            SerializedWiring.SetObject(photo, "_look", player.GetComponent<PlayerLook>());
+            SerializedWiring.SetObject(photo, "_display", display);
 
             return device;
         }
@@ -681,6 +711,9 @@ namespace UberBagarre.EditorTools
             PhoneDisplay display = phone != null ? phone.GetComponent<PhoneDisplay>() : null;
             if (display != null) SerializedWiring.SetObject(display, "_progress", progress);
 
+            PhoneOS os = phone != null ? phone.GetComponent<PhoneOS>() : null;
+            if (os != null) SerializedWiring.SetObject(os, "_progress", progress);
+
             // Le coup de tete se GAGNE : il est verrouille des la construction, et c'est le
             // passage au niveau 2, a la fin du prologue, qui l'ouvre.
             PlayerCombat playerCombat = player.GetComponent<PlayerCombat>();
@@ -695,6 +728,7 @@ namespace UberBagarre.EditorTools
             InteractionSystem interaction = player.AddComponent<InteractionSystem>();
             SerializedWiring.SetObject(interaction, "_input", input);
             SerializedWiring.SetObject(interaction, "_camera", camera);
+            SerializedWiring.SetObject(interaction, "_phone", phone);
 
             // Ramasser passe APRES l'interaction : si une portiere est visee, E lui revient.
             PropHandler props = player.GetComponent<PropHandler>();
@@ -718,6 +752,7 @@ namespace UberBagarre.EditorTools
 
             LocationDirector locations = root.AddComponent<LocationDirector>();
             SerializedWiring.SetObject(locations, "_player", player);
+            if (os != null) SerializedWiring.SetObject(os, "_locations", locations);
             SerializedWiring.SetInt(locations, "_startIndex", 0);
 
             SerializedObject so = SerializedWiring.Open(locations);

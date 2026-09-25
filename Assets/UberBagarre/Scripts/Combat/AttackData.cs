@@ -202,7 +202,7 @@ namespace UberBagarre.Combat
         /// version, le générateur sait distinguer « asset réglé par l'utilisateur » de « asset
         /// créé par une version antérieure du code ».
         /// </summary>
-        public const int CurrentVersion = 4;
+        public const int CurrentVersion = 5;
 
         [HideInInspector]
         public int dataVersion;

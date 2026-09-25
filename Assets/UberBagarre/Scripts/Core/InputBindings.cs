@@ -85,6 +85,17 @@ namespace UberBagarre.Core
                  "deja prise par le deplacement en AZERTY.")]
         public InputBinding phone = InputBinding.FromKey(KeyCode.T);
 
+        [Header("Telephone (navigation, telephone sorti)")]
+        [Tooltip("Les fleches choisissent une appli, Entree l'ouvre, Retour arriere revient. La souris " +
+                 "marche aussi : molette, clic gauche, clic droit.")]
+        public InputBinding phoneUp = InputBinding.FromKey(KeyCode.UpArrow);
+
+        public InputBinding phoneDown = InputBinding.FromKey(KeyCode.DownArrow);
+        public InputBinding phoneLeft = InputBinding.FromKey(KeyCode.LeftArrow);
+        public InputBinding phoneRight = InputBinding.FromKey(KeyCode.RightArrow);
+        public InputBinding phoneSelect = InputBinding.FromKeys(KeyCode.Return, KeyCode.KeypadEnter);
+        public InputBinding phoneBack = InputBinding.FromKey(KeyCode.Backspace);
+
 #if UNITY_EDITOR
         /// <summary>
         /// Restaure toutes les touches par défaut.

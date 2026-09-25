@@ -41,12 +41,19 @@ namespace UberBagarre.Player
         /// <summary>Désactive la visée sans désactiver le composant (état touché, menu, curseur libéré...).</summary>
         public bool LookEnabled { get; set; }
 
+        /// <summary>
+        /// Multiplicateur de sensibilité temporaire. L'appareil photo zoomé le baisse : à x4, la
+        /// même main qui balaie la rue ferait sauter le cadre d'un bout à l'autre.
+        /// </summary>
+        public float SensitivityScale { get; set; }
+
         public float Yaw { get; private set; }
         public float Pitch { get; private set; }
 
         private void Awake()
         {
             LookEnabled = true;
+            SensitivityScale = 1f;
 
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_yawTransform == null) _yawTransform = transform;
@@ -65,7 +72,7 @@ namespace UberBagarre.Player
         {
             if (!LookEnabled || _input == null) return;
 
-            Vector2 rawDelta = _input.LookDelta * _sensitivity;
+            Vector2 rawDelta = _input.LookDelta * (_sensitivity * Mathf.Clamp(SensitivityScale, 0.05f, 4f));
 
             if (_smoothingTime > 0.0001f)
             {

@@ -199,13 +199,13 @@ namespace UberBagarre.EditorTools
         // Garde au repos, recopiee de FirstPersonHands : une pose de coup qui ne part pas
         // exactement de la garde produit un saut visible a la premiere image.
         private static readonly Vector3 GuardRight = new Vector3(0.148f, -0.165f, 0.275f);
-        private static readonly Vector3 GuardRightEuler = new Vector3(-4f, -18f, -8f);
+        private static readonly Vector3 GuardRightEuler = new Vector3(-4f, -18f, -68f);
         private static readonly Vector3 GuardLeft = new Vector3(-0.155f, -0.135f, 0.335f);
-        private static readonly Vector3 GuardLeftEuler = new Vector3(-6f, 20f, 6f);
+        private static readonly Vector3 GuardLeftEuler = new Vector3(-6f, 20f, 66f);
 
         // Garde haute de la main libre : elle monte protéger le menton pendant qu'on frappe.
         private static readonly Vector3 CoverLeft = new Vector3(-0.122f, -0.080f, 0.296f);
-        private static readonly Vector3 CoverLeftEuler = new Vector3(-13f, 28f, 10f);
+        private static readonly Vector3 CoverLeftEuler = new Vector3(-13f, 28f, 70f);
 
         // Pied droit au repos, dans le repère du personnage (origine au sol), aligné sur
         // ProceduralLocomotion._idleRightFoot + la hauteur de cheville.
@@ -256,52 +256,52 @@ namespace UberBagarre.EditorTools
             {
                 Variant("01 - jab",
                     Rest(0.00f),
-                    Key(0.10f, new Vector3(0.176f, -0.152f, 0.206f), new Vector3(-2f, -12f, -5f), 0.50f,
+                    Key(0.10f, new Vector3(0.176f, -0.152f, 0.206f), new Vector3(-2f, -12f, -61f), 0.50f,
                         new Vector3(0f, 7f, 0f), new Vector3(0f, 0f, -0.008f), new Vector3(0.7f, -0.9f, 0f),
-                        new Vector3(-0.138f, -0.116f, 0.322f), new Vector3(-8f, 23f, 7f)),
-                    Key(0.40f, new Vector3(0.072f, -0.078f, 0.460f), new Vector3(0f, -4f, 0f), 1f,
+                        new Vector3(-0.138f, -0.116f, 0.322f), new Vector3(-8f, 23f, 67f)),
+                    Key(0.40f, new Vector3(0.072f, -0.078f, 0.460f), new Vector3(0f, -4f, -14f), 1f,
                         new Vector3(0f, -10f, 1f), new Vector3(0f, 0f, 0.010f), new Vector3(-1.2f, 1.4f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.50f, new Vector3(0.042f, -0.052f, 0.502f), new Vector3(1f, -1f, 1f), 1f,
+                    Key(0.50f, new Vector3(0.042f, -0.052f, 0.502f), new Vector3(1f, -1f, -1f), 1f,
                         new Vector3(0f, -13f, 1f), new Vector3(0f, -0.003f, 0.015f), new Vector3(-1.7f, 2f, 0.5f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.66f, new Vector3(0.100f, -0.110f, 0.380f), new Vector3(-2f, -8f, -3f), 0.95f,
+                    Key(0.66f, new Vector3(0.100f, -0.110f, 0.380f), new Vector3(-2f, -8f, -39f), 0.95f,
                         new Vector3(0f, -6f, 0f), new Vector3(0f, 0f, 0.003f), Vector3.zero,
-                        new Vector3(-0.138f, -0.114f, 0.318f), new Vector3(-9f, 23f, 7f)),
+                        new Vector3(-0.138f, -0.114f, 0.318f), new Vector3(-9f, 23f, 67f)),
                     Rest(1.00f)),
 
                 Variant("02 - cross",
                     Rest(0.00f),
-                    Key(0.12f, new Vector3(0.188f, -0.178f, 0.196f), new Vector3(-7f, -16f, -9f), 0.45f,
-                        new Vector3(0f, 9f, -1f), new Vector3(0f, 0f, -0.010f), new Vector3(0.9f, -1.1f, 0f),
-                        new Vector3(-0.134f, -0.108f, 0.326f), new Vector3(-9f, 24f, 8f)),
-                    Key(0.42f, new Vector3(0.080f, -0.092f, 0.456f), new Vector3(-3f, -5f, 1f), 1f,
-                        new Vector3(1f, -13f, 1f), new Vector3(0f, -0.004f, 0.012f), new Vector3(-1.4f, 1.3f, 0.7f),
+                    Key(0.12f, new Vector3(0.188f, -0.178f, 0.196f), new Vector3(-7f, -16f, -65f), 0.45f,
+                        new Vector3(0f, 12f, -1f), new Vector3(0f, 0f, -0.012f), new Vector3(0.9f, -1.1f, 0f),
+                        new Vector3(-0.134f, -0.108f, 0.326f), new Vector3(-9f, 24f, 68f)),
+                    Key(0.42f, new Vector3(0.080f, -0.092f, 0.456f), new Vector3(-3f, -5f, -13f), 1f,
+                        new Vector3(1f, -19f, 1.5f), new Vector3(0f, -0.005f, 0.015f), new Vector3(-1.4f, 1.3f, 0.7f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.52f, new Vector3(0.054f, -0.068f, 0.496f), new Vector3(-2f, -2f, 2f), 1f,
-                        new Vector3(1f, -16f, 2f), new Vector3(0f, -0.005f, 0.016f), new Vector3(-2f, 1.8f, 1.1f),
+                    Key(0.52f, new Vector3(0.054f, -0.068f, 0.496f), new Vector3(-2f, -2f, 0f), 1f,
+                        new Vector3(1f, -23f, 2.5f), new Vector3(0f, -0.006f, 0.020f), new Vector3(-2f, 1.8f, 1.1f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.68f, new Vector3(0.110f, -0.124f, 0.372f), new Vector3(-3f, -9f, -4f), 0.90f,
-                        new Vector3(0f, -7f, 0f), Vector3.zero, Vector3.zero,
-                        new Vector3(-0.140f, -0.116f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                    Key(0.68f, new Vector3(0.110f, -0.124f, 0.372f), new Vector3(-3f, -9f, -40f), 0.90f,
+                        new Vector3(0f, -10f, 0f), Vector3.zero, Vector3.zero,
+                        new Vector3(-0.140f, -0.116f, 0.316f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f)),
 
                 // Pic plus tot, moins de buste : un enchainement de trois directs ne doit pas
                 // battre la mesure comme un metronome.
                 Variant("03 - jab sec",
                     Rest(0.00f),
-                    Key(0.08f, new Vector3(0.168f, -0.148f, 0.224f), new Vector3(-1f, -11f, -4f), 0.55f,
+                    Key(0.08f, new Vector3(0.168f, -0.148f, 0.224f), new Vector3(-1f, -11f, -60f), 0.55f,
                         new Vector3(0f, 5f, 0f), new Vector3(0f, 0f, -0.006f), new Vector3(0.5f, -0.7f, 0f),
-                        new Vector3(-0.144f, -0.122f, 0.320f), new Vector3(-7f, 21f, 7f)),
-                    Key(0.34f, new Vector3(0.054f, -0.058f, 0.486f), new Vector3(1f, -2f, 1f), 1f,
+                        new Vector3(-0.144f, -0.122f, 0.320f), new Vector3(-7f, 21f, 67f)),
+                    Key(0.34f, new Vector3(0.054f, -0.058f, 0.486f), new Vector3(1f, -2f, -13f), 1f,
                         new Vector3(0f, -9f, 0f), new Vector3(0f, 0f, 0.012f), new Vector3(-1.2f, 1.5f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.44f, new Vector3(0.040f, -0.048f, 0.504f), new Vector3(1f, -1f, 1f), 1f,
+                    Key(0.44f, new Vector3(0.040f, -0.048f, 0.504f), new Vector3(1f, -1f, -1f), 1f,
                         new Vector3(0f, -11f, 0f), new Vector3(0f, -0.002f, 0.014f), new Vector3(-1.5f, 1.8f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.62f, new Vector3(0.104f, -0.116f, 0.368f), new Vector3(-2f, -8f, -3f), 0.95f,
+                    Key(0.62f, new Vector3(0.104f, -0.116f, 0.368f), new Vector3(-2f, -8f, -39f), 0.95f,
                         new Vector3(0f, -5f, 0f), Vector3.zero, Vector3.zero,
-                        new Vector3(-0.138f, -0.114f, 0.320f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.138f, -0.114f, 0.320f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f))
             };
         }
@@ -335,34 +335,34 @@ namespace UberBagarre.EditorTools
             {
                 Variant("01 - a la tete",
                     Rest(0.00f),
-                    Key(0.16f, new Vector3(0.302f, -0.138f, 0.166f), new Vector3(0f, -50f, -13f), 0.55f,
+                    Key(0.16f, new Vector3(0.302f, -0.138f, 0.166f), new Vector3(0f, -50f, -53f), 0.55f,
                         new Vector3(0f, 19f, -3f), new Vector3(0.017f, 0f, -0.012f), new Vector3(0f, 3.6f, -1.8f),
-                        new Vector3(-0.130f, -0.094f, 0.306f), new Vector3(-12f, 26f, 9f)),
-                    Key(0.42f, new Vector3(0.088f, -0.068f, 0.404f), new Vector3(0f, -68f, -8f), 1f,
+                        new Vector3(-0.130f, -0.094f, 0.306f), new Vector3(-12f, 26f, 69f)),
+                    Key(0.42f, new Vector3(0.088f, -0.068f, 0.404f), new Vector3(0f, -68f, -18f), 1f,
                         new Vector3(0f, -16f, 2f), new Vector3(-0.007f, 0f, 0.011f), new Vector3(-0.9f, -3.4f, 1.8f),
                         CoverLeft, CoverLeftEuler),
                     Key(0.54f, new Vector3(-0.034f, -0.052f, 0.418f), new Vector3(0f, -78f, -6f), 1f,
                         new Vector3(0f, -25f, 3f), new Vector3(-0.015f, 0f, 0.016f), new Vector3(-1.2f, -5.4f, 3f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.72f, new Vector3(0.062f, -0.110f, 0.318f), new Vector3(-2f, -44f, -8f), 0.95f,
+                    Key(0.72f, new Vector3(0.062f, -0.110f, 0.318f), new Vector3(-2f, -44f, -40f), 0.95f,
                         new Vector3(0f, -11f, 1f), new Vector3(-0.004f, 0f, 0.004f), Vector3.zero,
-                        new Vector3(-0.142f, -0.118f, 0.318f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.142f, -0.118f, 0.318f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f)),
 
                 Variant("02 - au corps",
                     Rest(0.00f),
-                    Key(0.18f, new Vector3(0.288f, -0.232f, 0.154f), new Vector3(13f, -46f, -15f), 0.55f,
+                    Key(0.18f, new Vector3(0.288f, -0.232f, 0.154f), new Vector3(13f, -46f, -55f), 0.55f,
                         new Vector3(4f, 18f, -3f), new Vector3(0.015f, -0.009f, -0.011f), new Vector3(1.6f, 3.4f, -1.6f),
-                        new Vector3(-0.126f, -0.090f, 0.302f), new Vector3(-13f, 27f, 10f)),
-                    Key(0.44f, new Vector3(0.072f, -0.208f, 0.396f), new Vector3(17f, -66f, -10f), 1f,
+                        new Vector3(-0.126f, -0.090f, 0.302f), new Vector3(-13f, 27f, 70f)),
+                    Key(0.44f, new Vector3(0.072f, -0.208f, 0.396f), new Vector3(17f, -66f, -20f), 1f,
                         new Vector3(5f, -15f, 2f), new Vector3(-0.006f, -0.007f, 0.011f), new Vector3(2f, -3.2f, 1.7f),
                         CoverLeft, CoverLeftEuler),
                     Key(0.56f, new Vector3(-0.044f, -0.198f, 0.408f), new Vector3(19f, -76f, -8f), 1f,
                         new Vector3(6f, -23f, 3f), new Vector3(-0.014f, -0.008f, 0.015f), new Vector3(2.5f, -5f, 2.8f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.74f, new Vector3(0.060f, -0.168f, 0.308f), new Vector3(9f, -42f, -9f), 0.95f,
+                    Key(0.74f, new Vector3(0.060f, -0.168f, 0.308f), new Vector3(9f, -42f, -41f), 0.95f,
                         new Vector3(3f, -10f, 1f), new Vector3(-0.003f, 0f, 0.003f), Vector3.zero,
-                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f))
             };
         }
@@ -401,35 +401,35 @@ namespace UberBagarre.EditorTools
             {
                 Variant("01 - au menton",
                     Rest(0.00f),
-                    Key(0.18f, new Vector3(0.174f, -0.336f, 0.236f), new Vector3(30f, -13f, -6f), 0.50f,
+                    Key(0.18f, new Vector3(0.174f, -0.336f, 0.236f), new Vector3(30f, -13f, -111f), 0.50f,
                         new Vector3(9f, 8f, 0f), new Vector3(0f, -0.017f, -0.007f), new Vector3(3f, 0f, 0f),
-                        new Vector3(-0.128f, -0.096f, 0.304f), new Vector3(-12f, 26f, 9f)),
-                    Key(0.44f, new Vector3(0.122f, -0.026f, 0.374f), new Vector3(-30f, -8f, 0f), 1f,
+                        new Vector3(-0.128f, -0.096f, 0.304f), new Vector3(-12f, 26f, 69f)),
+                    Key(0.44f, new Vector3(0.122f, -0.026f, 0.374f), new Vector3(-30f, -8f, -140f), 1f,
                         new Vector3(-8f, -8f, 1f), new Vector3(0f, 0.012f, 0.010f), new Vector3(2.6f, 0.8f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.56f, new Vector3(0.098f, 0.108f, 0.402f), new Vector3(-52f, -6f, 0f), 1f,
+                    Key(0.56f, new Vector3(0.098f, 0.108f, 0.402f), new Vector3(-52f, -6f, -152f), 1f,
                         new Vector3(-14f, -10f, 2f), new Vector3(0f, 0.019f, 0.011f), new Vector3(4f, 1.1f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.76f, new Vector3(0.126f, -0.030f, 0.322f), new Vector3(-20f, -12f, -4f), 0.95f,
+                    Key(0.76f, new Vector3(0.126f, -0.030f, 0.322f), new Vector3(-20f, -12f, -104f), 0.95f,
                         new Vector3(-4f, -4f, 0f), new Vector3(0f, 0.004f, 0f), Vector3.zero,
-                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f)),
 
                 // Uppercut court au plexus : trajectoire plus ramassee, moins de remontee.
                 Variant("02 - au plexus",
                     Rest(0.00f),
-                    Key(0.16f, new Vector3(0.162f, -0.310f, 0.262f), new Vector3(26f, -10f, -4f), 0.50f,
+                    Key(0.16f, new Vector3(0.162f, -0.310f, 0.262f), new Vector3(26f, -10f, -109f), 0.50f,
                         new Vector3(7f, 6f, 0f), new Vector3(0f, -0.015f, -0.006f), new Vector3(2.6f, 0f, 0f),
-                        new Vector3(-0.130f, -0.098f, 0.306f), new Vector3(-12f, 26f, 9f)),
-                    Key(0.42f, new Vector3(0.118f, -0.120f, 0.398f), new Vector3(-16f, -6f, 0f), 1f,
+                        new Vector3(-0.130f, -0.098f, 0.306f), new Vector3(-12f, 26f, 69f)),
+                    Key(0.42f, new Vector3(0.118f, -0.120f, 0.398f), new Vector3(-16f, -6f, -140f), 1f,
                         new Vector3(-5f, -7f, 1f), new Vector3(0f, 0.009f, 0.011f), new Vector3(2f, 0.7f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.54f, new Vector3(0.104f, -0.030f, 0.424f), new Vector3(-34f, -4f, 0f), 1f,
+                    Key(0.54f, new Vector3(0.104f, -0.030f, 0.424f), new Vector3(-34f, -4f, -152f), 1f,
                         new Vector3(-10f, -9f, 1f), new Vector3(0f, 0.015f, 0.013f), new Vector3(3.2f, 1f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.74f, new Vector3(0.130f, -0.110f, 0.330f), new Vector3(-12f, -11f, -3f), 0.95f,
+                    Key(0.74f, new Vector3(0.130f, -0.110f, 0.330f), new Vector3(-12f, -11f, -103f), 0.95f,
                         new Vector3(-3f, -4f, 0f), new Vector3(0f, 0.003f, 0f), Vector3.zero,
-                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f))
             };
         }
@@ -475,16 +475,16 @@ namespace UberBagarre.EditorTools
                     FootRest(0.00f),
                     Key(0.18f, new Vector3(0.170f, 0.450f, 0.110f), new Vector3(-34f, 0f, 0f), 1f,
                         new Vector3(-4f, 4f, 0f), new Vector3(0f, -0.012f, -0.008f), new Vector3(1.8f, 0f, 0f),
-                        new Vector3(-0.232f, -0.215f, 0.205f), new Vector3(6f, 34f, 14f)),
+                        new Vector3(-0.232f, -0.215f, 0.205f), new Vector3(6f, 34f, 59f)),
                     Key(0.42f, new Vector3(0.120f, 0.900f, 0.400f), new Vector3(-26f, 0f, 0f), 1f,
                         new Vector3(-7f, -3f, 0f), new Vector3(0f, 0.009f, 0.013f), new Vector3(-2f, 1f, 0f),
-                        new Vector3(-0.268f, -0.248f, 0.118f), new Vector3(10f, 42f, 20f)),
+                        new Vector3(-0.268f, -0.248f, 0.118f), new Vector3(10f, 42f, 65f)),
                     Key(0.52f, new Vector3(0.110f, 0.970f, 0.480f), new Vector3(-22f, 0f, 0f), 1f,
                         new Vector3(-8f, -4f, 0f), new Vector3(0f, 0.012f, 0.017f), new Vector3(-2.4f, 1.2f, 0f),
-                        new Vector3(-0.272f, -0.252f, 0.110f), new Vector3(11f, 44f, 21f)),
+                        new Vector3(-0.272f, -0.252f, 0.110f), new Vector3(11f, 44f, 66f)),
                     Key(0.74f, new Vector3(0.150f, 0.470f, 0.220f), new Vector3(-16f, 0f, 0f), 1f,
                         new Vector3(-3f, -1f, 0f), new Vector3(0f, 0.003f, 0.004f), Vector3.zero,
-                        new Vector3(-0.206f, -0.180f, 0.262f), new Vector3(0f, 26f, 9f)),
+                        new Vector3(-0.206f, -0.180f, 0.262f), new Vector3(0f, 26f, 54f)),
                     FootRest(1.00f)),
 
                 // Coup de pied circulaire : le pied arrive de cote, le buste accompagne.
@@ -492,16 +492,16 @@ namespace UberBagarre.EditorTools
                     FootRest(0.00f),
                     Key(0.18f, new Vector3(0.330f, 0.420f, 0.030f), new Vector3(-20f, 34f, 0f), 1f,
                         new Vector3(-3f, 12f, -3f), new Vector3(0.010f, -0.010f, -0.007f), new Vector3(1.5f, 2.4f, -1.2f),
-                        new Vector3(-0.236f, -0.200f, 0.190f), new Vector3(6f, 36f, 15f)),
+                        new Vector3(-0.236f, -0.200f, 0.190f), new Vector3(6f, 36f, 60f)),
                     Key(0.42f, new Vector3(0.150f, 0.860f, 0.390f), new Vector3(-18f, -10f, 0f), 1f,
                         new Vector3(-6f, -12f, 3f), new Vector3(-0.005f, 0.008f, 0.012f), new Vector3(-1.8f, -2.6f, 1.6f),
-                        new Vector3(-0.270f, -0.245f, 0.120f), new Vector3(10f, 44f, 20f)),
+                        new Vector3(-0.270f, -0.245f, 0.120f), new Vector3(10f, 44f, 65f)),
                     Key(0.52f, new Vector3(-0.020f, 0.900f, 0.450f), new Vector3(-16f, -34f, 0f), 1f,
                         new Vector3(-7f, -20f, 4f), new Vector3(-0.013f, 0.010f, 0.015f), new Vector3(-2.2f, -4.2f, 2.6f),
-                        new Vector3(-0.274f, -0.250f, 0.112f), new Vector3(11f, 46f, 22f)),
+                        new Vector3(-0.274f, -0.250f, 0.112f), new Vector3(11f, 46f, 67f)),
                     Key(0.74f, new Vector3(0.140f, 0.450f, 0.210f), new Vector3(-14f, -8f, 0f), 1f,
                         new Vector3(-3f, -6f, 1f), new Vector3(0f, 0.003f, 0.003f), Vector3.zero,
-                        new Vector3(-0.206f, -0.180f, 0.262f), new Vector3(0f, 26f, 9f)),
+                        new Vector3(-0.206f, -0.180f, 0.262f), new Vector3(0f, 26f, 54f)),
                     FootRest(1.00f))
             };
         }
@@ -546,16 +546,16 @@ namespace UberBagarre.EditorTools
                     FootRest(0.00f),
                     Key(0.16f, new Vector3(0.300f, 0.160f, -0.100f), new Vector3(0f, 20f, 0f), 1f,
                         new Vector3(0f, 12f, -2f), new Vector3(0.009f, -0.006f, -0.006f), new Vector3(0.8f, 2.2f, -1f),
-                        new Vector3(-0.136f, -0.110f, 0.318f), new Vector3(-8f, 24f, 8f)),
+                        new Vector3(-0.136f, -0.110f, 0.318f), new Vector3(-8f, 24f, 53f)),
                     Key(0.42f, new Vector3(0.050f, 0.200f, 0.400f), new Vector3(0f, -28f, 0f), 1f,
                         new Vector3(0f, -16f, 3f), new Vector3(-0.005f, -0.004f, 0.011f), new Vector3(0.9f, 2.2f, -1f),
-                        new Vector3(-0.178f, -0.160f, 0.268f), new Vector3(-2f, 30f, 12f)),
+                        new Vector3(-0.178f, -0.160f, 0.268f), new Vector3(-2f, 30f, 57f)),
                     Key(0.54f, new Vector3(-0.120f, 0.220f, 0.380f), new Vector3(0f, -42f, 0f), 1f,
                         new Vector3(0f, -20f, 4f), new Vector3(-0.010f, -0.004f, 0.009f), new Vector3(1.1f, 2.8f, -1.5f),
-                        new Vector3(-0.190f, -0.172f, 0.252f), new Vector3(0f, 32f, 13f)),
+                        new Vector3(-0.190f, -0.172f, 0.252f), new Vector3(0f, 32f, 58f)),
                     Key(0.76f, new Vector3(0.080f, 0.130f, 0.160f), new Vector3(0f, -12f, 0f), 1f,
                         new Vector3(0f, -7f, 1f), Vector3.zero, Vector3.zero,
-                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 9f)),
+                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 54f)),
                     FootRest(1.00f)),
 
                 // Coup direct dans la cuisse : plus sec, moins ample, meme consequence.
@@ -563,16 +563,16 @@ namespace UberBagarre.EditorTools
                     FootRest(0.00f),
                     Key(0.16f, new Vector3(0.190f, 0.300f, -0.060f), new Vector3(-22f, 6f, 0f), 1f,
                         new Vector3(-2f, 7f, 0f), new Vector3(0f, -0.009f, -0.007f), new Vector3(1.4f, 0.8f, 0f),
-                        new Vector3(-0.150f, -0.124f, 0.310f), new Vector3(-6f, 26f, 9f)),
+                        new Vector3(-0.150f, -0.124f, 0.310f), new Vector3(-6f, 26f, 54f)),
                     Key(0.42f, new Vector3(0.140f, 0.340f, 0.400f), new Vector3(-14f, -6f, 0f), 1f,
                         new Vector3(-3f, -9f, 2f), new Vector3(0f, 0.006f, 0.012f), new Vector3(-1.2f, 1.2f, 0f),
-                        new Vector3(-0.186f, -0.168f, 0.258f), new Vector3(-1f, 31f, 12f)),
+                        new Vector3(-0.186f, -0.168f, 0.258f), new Vector3(-1f, 31f, 57f)),
                     Key(0.54f, new Vector3(0.120f, 0.330f, 0.470f), new Vector3(-12f, -10f, 0f), 1f,
                         new Vector3(-4f, -12f, 2f), new Vector3(0f, 0.008f, 0.015f), new Vector3(-1.5f, 1.6f, 0f),
-                        new Vector3(-0.192f, -0.174f, 0.250f), new Vector3(0f, 33f, 13f)),
+                        new Vector3(-0.192f, -0.174f, 0.250f), new Vector3(0f, 33f, 58f)),
                     Key(0.76f, new Vector3(0.140f, 0.220f, 0.200f), new Vector3(-8f, -5f, 0f), 1f,
                         new Vector3(-2f, -5f, 1f), Vector3.zero, Vector3.zero,
-                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 9f)),
+                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 54f)),
                     FootRest(1.00f))
             };
         }
@@ -615,15 +615,15 @@ namespace UberBagarre.EditorTools
                     Rest(0.00f),
                     // L'epaule part en avant : les deux bras se replient, ce n'est pas un coup
                     // de poing mais un choc de tout le corps.
-                    Key(0.20f, new Vector3(0.118f, -0.205f, 0.330f), new Vector3(6f, -30f, -14f), 1f,
+                    Key(0.20f, new Vector3(0.118f, -0.205f, 0.330f), new Vector3(6f, -30f, -74f), 1f,
                         new Vector3(6f, 24f, -6f), new Vector3(0.012f, -0.014f, 0.030f), new Vector3(2.2f, 4.5f, -3f),
-                        new Vector3(-0.112f, -0.198f, 0.318f), new Vector3(6f, 34f, 14f)),
-                    Key(0.40f, new Vector3(0.098f, -0.188f, 0.352f), new Vector3(8f, -34f, -16f), 1f,
+                        new Vector3(-0.112f, -0.198f, 0.318f), new Vector3(6f, 34f, 74f)),
+                    Key(0.40f, new Vector3(0.098f, -0.188f, 0.352f), new Vector3(8f, -34f, -76f), 1f,
                         new Vector3(9f, 28f, -7f), new Vector3(0.015f, -0.016f, 0.038f), new Vector3(2.8f, 5.5f, -3.6f),
-                        new Vector3(-0.098f, -0.186f, 0.330f), new Vector3(8f, 38f, 16f)),
-                    Key(0.70f, new Vector3(0.132f, -0.190f, 0.300f), new Vector3(2f, -24f, -10f), 1f,
+                        new Vector3(-0.098f, -0.186f, 0.330f), new Vector3(8f, 38f, 76f)),
+                    Key(0.70f, new Vector3(0.132f, -0.190f, 0.300f), new Vector3(2f, -24f, -70f), 1f,
                         new Vector3(3f, 14f, -3f), new Vector3(0.006f, -0.006f, 0.012f), Vector3.zero,
-                        new Vector3(-0.130f, -0.180f, 0.310f), new Vector3(2f, 28f, 10f)),
+                        new Vector3(-0.130f, -0.180f, 0.310f), new Vector3(2f, 28f, 70f)),
                     Rest(1.00f))
             };
         }
@@ -657,18 +657,18 @@ namespace UberBagarre.EditorTools
                     Rest(0.00f),
                     // Le poing part tres haut puis s'abat : la trajectoire descendante est ce qui
                     // fait lire "de haut en bas" sans qu'on voie le corps du joueur.
-                    Key(0.18f, new Vector3(0.182f, 0.270f, 0.212f), new Vector3(-62f, -12f, -6f), 0.55f,
+                    Key(0.18f, new Vector3(0.182f, 0.270f, 0.212f), new Vector3(-62f, -12f, -56f), 0.55f,
                         new Vector3(-14f, 8f, 0f), new Vector3(0f, 0.024f, -0.010f), new Vector3(-4.5f, 0f, 0f),
-                        new Vector3(-0.126f, -0.092f, 0.302f), new Vector3(-13f, 27f, 10f)),
-                    Key(0.46f, new Vector3(0.092f, -0.176f, 0.452f), new Vector3(44f, -4f, 2f), 1f,
+                        new Vector3(-0.126f, -0.092f, 0.302f), new Vector3(-13f, 27f, 70f)),
+                    Key(0.46f, new Vector3(0.092f, -0.176f, 0.452f), new Vector3(44f, -4f, -10f), 1f,
                         new Vector3(16f, -10f, 1f), new Vector3(0f, -0.026f, 0.020f), new Vector3(6f, 1.4f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.58f, new Vector3(0.074f, -0.238f, 0.470f), new Vector3(56f, -2f, 3f), 1f,
+                    Key(0.58f, new Vector3(0.074f, -0.238f, 0.470f), new Vector3(56f, -2f, -1f), 1f,
                         new Vector3(20f, -12f, 2f), new Vector3(0f, -0.032f, 0.024f), new Vector3(7.5f, 1.8f, 0f),
                         CoverLeft, CoverLeftEuler),
-                    Key(0.80f, new Vector3(0.118f, -0.176f, 0.340f), new Vector3(20f, -10f, -3f), 0.95f,
+                    Key(0.80f, new Vector3(0.118f, -0.176f, 0.340f), new Vector3(20f, -10f, -38f), 0.95f,
                         new Vector3(6f, -5f, 0f), new Vector3(0f, -0.008f, 0.004f), Vector3.zero,
-                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 7f)),
+                        new Vector3(-0.140f, -0.114f, 0.316f), new Vector3(-8f, 22f, 67f)),
                     Rest(1.00f))
             };
         }
@@ -702,16 +702,16 @@ namespace UberBagarre.EditorTools
                     FootRest(0.00f),
                     Key(0.18f, new Vector3(0.260f, 0.110f, -0.060f), new Vector3(0f, 26f, 0f), 1f,
                         new Vector3(0f, 14f, -3f), new Vector3(0.010f, -0.004f, -0.004f), new Vector3(0.6f, 2.6f, -1.2f),
-                        new Vector3(-0.140f, -0.120f, 0.312f), new Vector3(-7f, 24f, 8f)),
+                        new Vector3(-0.140f, -0.120f, 0.312f), new Vector3(-7f, 24f, 53f)),
                     Key(0.44f, new Vector3(0.020f, 0.120f, 0.420f), new Vector3(0f, -34f, 0f), 1f,
                         new Vector3(0f, -19f, 4f), new Vector3(-0.008f, -0.002f, 0.012f), new Vector3(0.8f, 2.6f, -1.2f),
-                        new Vector3(-0.182f, -0.164f, 0.262f), new Vector3(-1f, 31f, 12f)),
+                        new Vector3(-0.182f, -0.164f, 0.262f), new Vector3(-1f, 31f, 57f)),
                     Key(0.56f, new Vector3(-0.180f, 0.125f, 0.340f), new Vector3(0f, -52f, 0f), 1f,
                         new Vector3(0f, -24f, 5f), new Vector3(-0.014f, -0.002f, 0.008f), new Vector3(1.2f, 3.4f, -1.8f),
-                        new Vector3(-0.196f, -0.176f, 0.244f), new Vector3(1f, 34f, 14f)),
+                        new Vector3(-0.196f, -0.176f, 0.244f), new Vector3(1f, 34f, 59f)),
                     Key(0.78f, new Vector3(0.060f, 0.110f, 0.140f), new Vector3(0f, -14f, 0f), 1f,
                         new Vector3(0f, -8f, 1f), Vector3.zero, Vector3.zero,
-                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 9f)),
+                        new Vector3(-0.160f, -0.140f, 0.300f), new Vector3(-5f, 26f, 54f)),
                     FootRest(1.00f))
             };
         }
@@ -752,16 +752,16 @@ namespace UberBagarre.EditorTools
                     // Le pied monte haut puis s'abat au sol, devant soi.
                     Key(0.24f, new Vector3(0.150f, 0.620f, 0.200f), new Vector3(-40f, 0f, 0f), 1f,
                         new Vector3(-6f, 3f, 0f), new Vector3(0f, -0.018f, -0.006f), new Vector3(-3.2f, 0f, 0f),
-                        new Vector3(-0.220f, -0.200f, 0.220f), new Vector3(4f, 32f, 13f)),
+                        new Vector3(-0.220f, -0.200f, 0.220f), new Vector3(4f, 32f, 58f)),
                     Key(0.50f, new Vector3(0.140f, 0.110f, 0.470f), new Vector3(14f, 0f, 0f), 1f,
                         new Vector3(12f, -2f, 0f), new Vector3(0f, -0.030f, 0.018f), new Vector3(6.5f, 0.8f, 0f),
-                        new Vector3(-0.190f, -0.172f, 0.252f), new Vector3(0f, 32f, 13f)),
+                        new Vector3(-0.190f, -0.172f, 0.252f), new Vector3(0f, 32f, 58f)),
                     Key(0.62f, new Vector3(0.138f, 0.085f, 0.480f), new Vector3(18f, 0f, 0f), 1f,
                         new Vector3(14f, -3f, 0f), new Vector3(0f, -0.034f, 0.020f), new Vector3(7.5f, 1f, 0f),
-                        new Vector3(-0.192f, -0.174f, 0.250f), new Vector3(0f, 33f, 13f)),
+                        new Vector3(-0.192f, -0.174f, 0.250f), new Vector3(0f, 33f, 58f)),
                     Key(0.84f, new Vector3(0.150f, 0.220f, 0.230f), new Vector3(4f, 0f, 0f), 1f,
                         new Vector3(4f, -1f, 0f), new Vector3(0f, -0.008f, 0.004f), Vector3.zero,
-                        new Vector3(-0.166f, -0.146f, 0.292f), new Vector3(-4f, 27f, 10f)),
+                        new Vector3(-0.166f, -0.146f, 0.292f), new Vector3(-4f, 27f, 55f)),
                     FootRest(1.00f))
             };
         }

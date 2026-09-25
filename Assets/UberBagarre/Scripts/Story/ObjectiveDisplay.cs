@@ -77,6 +77,9 @@ namespace UberBagarre.Story
 
         private void OnGUI()
         {
+            // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
+            if (FightIntro.AnyPlaying) return;
+
             if (_visibility <= 0.01f) return;
 
             float y = _margin.y;
@@ -102,8 +105,7 @@ namespace UberBagarre.Story
 
         private void DrawRow(float x, float y, string text, Color color, float alpha, bool struck, float pulse)
         {
-            GUIStyle style = GuiKit.Style(_fontSize, FontStyle.Bold, TextAnchor.MiddleLeft);
-            style.wordWrap = true;
+            GUIStyle style = GuiKit.Style(_fontSize, FontStyle.Bold, TextAnchor.MiddleLeft, true);
 
             float textWidth = _width - 34f;
             float height = Mathf.Max(24f, style.CalcHeight(new GUIContent(text), textWidth) + 8f);

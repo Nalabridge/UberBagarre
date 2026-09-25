@@ -147,6 +147,19 @@ namespace UberBagarre.Story
         private float _ambushDistance = 9f;
 
         [SerializeField] private string _houseLocation = "Maison";
+
+        [Header("Mise en scene des combats")]
+        [SerializeField]
+        [Tooltip("La mini-cinematique d'avant-combat : bandes noires, gros plan, nom de l'adversaire.")]
+        private FightIntro _intro;
+
+        [SerializeField]
+        [Tooltip("Les badauds qui s'approchent de la bagarre devant le club.")]
+        private FightCrowd _streetCrowd;
+
+        [SerializeField]
+        [Tooltip("Ceux du parking.")]
+        private FightCrowd _parkingCrowd;
         [SerializeField] private string _streetLocation = "Rue";
 
         [SerializeField]
@@ -196,6 +209,7 @@ namespace UberBagarre.Story
             if (_carAtClub != null) _carAtClub.Activated += OnCarAtClub;
             if (_carAtParking != null) _carAtParking.Activated += OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken += OnPhotoTaken;
+            if (_phone != null) _phone.StoryConfirmed += OnStoryConfirmed;
             if (_progress != null) _progress.LeveledUp += OnLeveledUp;
             if (_clubDoor != null) _clubDoor.Activated += OnClubDoor;
             if (_clubExit != null) _clubExit.Activated += OnClubExit;
@@ -217,6 +231,7 @@ namespace UberBagarre.Story
             if (_carAtClub != null) _carAtClub.Activated -= OnCarAtClub;
             if (_carAtParking != null) _carAtParking.Activated -= OnCarAtParking;
             if (_phone != null) _phone.PhotoTaken -= OnPhotoTaken;
+            if (_phone != null) _phone.StoryConfirmed -= OnStoryConfirmed;
             if (_progress != null) _progress.LeveledUp -= OnLeveledUp;
             if (_clubDoor != null) _clubDoor.Activated -= OnClubDoor;
             if (_clubExit != null) _clubExit.Activated -= OnClubExit;
@@ -259,14 +274,6 @@ namespace UberBagarre.Story
 
         private void Update()
         {
-            // Une confirmation sur le telephone est une pression sur E pendant qu'il est LEVE.
-            // Le distinguer d'une interaction avec le decor evite qu'ouvrir une porte valide en
-            // meme temps l'ecran affiche.
-            if (_input != null && _input.InteractPressed && _phone != null && _phone.IsRaised)
-            {
-                _confirm = true;
-            }
-
             if (_installing && _phone != null)
             {
                 _phone.DownloadProgress += Time.deltaTime / Mathf.Max(0.5f, _installDuration);
@@ -293,9 +300,50 @@ namespace UberBagarre.Story
                       "Un prologue ne se perd pas.", this);
         }
 
+        /// <summary>
+        /// Le début d'une bagarre : les badauds s'approchent, et la cinématique présente
+        /// l'adversaire. Le combat lui-même attend la fin de la présentation (les adversaires
+        /// sont tenus pendant ce temps).
+        /// </summary>
+        private void StartFight(Combatant opponent, string title, string subtitle, FightCrowd crowd)
+        {
+            if (crowd != null && opponent != null && _player != null)
+            {
+                crowd.Gather((opponent.transform.position + _player.transform.position) * 0.5f);
+            }
+
+            if (_intro != null && opponent != null) _intro.Play(opponent, title, subtitle, null);
+        }
+
+        private Combatant FirstBrother()
+        {
+            for (int i = 0; i < _brothers.Length; i++)
+            {
+                if (_brothers[i] != null) return _brothers[i];
+            }
+
+            return null;
+        }
+
+        private void DisperseCrowds()
+        {
+            if (_streetCrowd != null) _streetCrowd.Disperse();
+            if (_parkingCrowd != null) _parkingCrowd.Disperse();
+        }
+
+        /// <summary>
+        /// Validation sur le téléphone (E, Entrée ou clic), envoyée par son système UNIQUEMENT si
+        /// l'écran de l'histoire est affiché : ouvrir une autre appli ne valide jamais rien.
+        /// </summary>
+        private void OnStoryConfirmed()
+        {
+            _confirm = true;
+        }
+
         private void ResetState()
         {
             _confirm = false;
+            DisperseCrowds();
             _lettersRead = false;
             _installing = false;
             _straightHits = 0;
@@ -369,6 +417,7 @@ namespace UberBagarre.Story
             if (_phone != null)
             {
                 _phone.DownloadProgress = 0f;
+                _phone.AppInstalled = false;
                 _phone.SetScreen(PhoneDevice.Screen.Verrouille);
                 _phone.Available = true;
                 _phone.Lower();
@@ -569,6 +618,8 @@ namespace UberBagarre.Story
                 .Wait(0.8f)
                 .Exit(delegate
                 {
+                    // Le cerveau s'allume, mais la cinematique tient tout le monde tant qu'elle dure.
+                    StartFight(_target, target, "1 ÉTOILE  ·  " + clothing, _streetCrowd);
                     if (_targetBrain != null) _targetBrain.enabled = true;
                 }));
 
@@ -612,7 +663,7 @@ namespace UberBagarre.Story
                     // Le rappel de touche sert ici de mode d'emploi, pas d'exercice : le
                     // compteur est a zero, la consigne reste affichee tant que la photo n'est
                     // pas prise. Sans elle, « envoie la photo » ne dit pas quelle touche.
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "T pour sortir le téléphone, puis cadre-le", 0);
+                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Cadre-le au sol dans l'appareil photo (T si le téléphone est rangé)", 0);
 
                     if (_phone == null) return;
                     _phone.SetScreen(PhoneDevice.Screen.Photo);
@@ -667,6 +718,7 @@ namespace UberBagarre.Story
                 .Exit(delegate
                 {
                     if (_locations != null) _locations.GoTo(_houseLocation);
+                    DisperseCrowds();
                     if (_phone != null) _phone.Available = true;
                     if (_interaction != null) _interaction.Active = true;
                     if (_fader != null) _fader.FadeIn(1.4f);
@@ -843,6 +895,7 @@ namespace UberBagarre.Story
                 .Say("MOI", "Rien de personnel.")
                 .Enter(delegate
                 {
+                    StartFight(FirstBrother(), targets, "2 ÉTOILES  ·  " + elder + " ET " + younger, _parkingCrowd);
                     SetBrothersActive(true);
                     _throwHitsAtStart = _props != null ? _props.ThrowHits : 0;
                 }));
@@ -883,7 +936,7 @@ namespace UberBagarre.Story
 
                     RequirePhotos(proofs);
 
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "T pour le téléphone. Un cliché par frère", 0);
+                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Un cliché par frère, au sol. Molette : zoom", 0);
 
                     if (_phone == null) return;
                     _phone.SetScreen(PhoneDevice.Screen.Photo);
@@ -946,6 +999,7 @@ namespace UberBagarre.Story
                     SetBrothersActive(false);
 
                     if (_locations != null) _locations.GoTo(_houseLocation);
+                    DisperseCrowds();
                     if (_phone != null) _phone.Available = true;
                     if (_interaction != null) _interaction.Active = true;
                     if (_fader != null) _fader.FadeIn(1.4f);
@@ -1201,6 +1255,7 @@ namespace UberBagarre.Story
                 .Enter(delegate
                 {
                     // La barriere se referme derriere le joueur, et le champion avance.
+                    StartFight(_champion, champion, "3 ÉTOILES  ·  LA FOSSE DU VERTIGO", null);
                     if (_ringGate != null) _ringGate.SetActive(true);
                     if (_championBrain != null) _championBrain.enabled = true;
                     if (_crowd != null) _crowd.Roar(1f);
@@ -1218,7 +1273,7 @@ namespace UberBagarre.Story
                 {
                     RequirePhotos(_champion != null ? _champion.transform : null);
 
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "T pour le téléphone, puis cadre-le", 0);
+                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Cadre-le au sol. Molette : zoom", 0);
 
                     if (_phone == null) return;
                     _phone.SetScreen(PhoneDevice.Screen.Photo);
@@ -1279,6 +1334,7 @@ namespace UberBagarre.Story
                     if (_championBrain != null) _championBrain.enabled = false;
 
                     if (_locations != null) _locations.GoTo(_houseLocation);
+                    DisperseCrowds();
                     if (_phone != null) _phone.Available = true;
                     if (_interaction != null) _interaction.Active = true;
                     if (_fader != null) _fader.FadeIn(1.4f);
@@ -1362,6 +1418,7 @@ namespace UberBagarre.Story
         /// </summary>
         private void EnsureChapterOneState()
         {
+            if (_phone != null) _phone.AppInstalled = true;
             if (_player != null && _player.Health != null) _player.Health.ResetToFull();
             if (_targetBrain != null) _targetBrain.enabled = false;
             if (_finder != null) _finder.Searching = false;

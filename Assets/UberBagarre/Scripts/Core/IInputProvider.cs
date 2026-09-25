@@ -18,5 +18,8 @@ namespace UberBagarre.Core
 
         /// <summary>Déplacement de la souris depuis la frame précédente, normalisé pour être identique entre backends.</summary>
         Vector2 GetLookDelta();
+
+        /// <summary>Crans de molette depuis la frame précédente : positif vers le haut. Même échelle entre backends.</summary>
+        float GetScrollDelta();
     }
 }

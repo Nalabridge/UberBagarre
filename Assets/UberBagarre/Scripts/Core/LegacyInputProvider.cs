@@ -56,6 +56,12 @@ namespace UberBagarre.Core
             return key != KeyCode.None && Input.GetKeyUp(key);
         }
 
+        public float GetScrollDelta()
+        {
+            float y = Input.mouseScrollDelta.y;
+            return Mathf.Abs(y) < 0.001f ? 0f : Mathf.Clamp(y, -4f, 4f);
+        }
+
         public Vector2 GetLookDelta()
         {
             if (!_mouseAxesAvailable) return Vector2.zero;

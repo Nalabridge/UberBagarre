@@ -3,6 +3,7 @@ using System.Text;
 using UberBagarre.Combat;
 using UberBagarre.Enemy;
 using UberBagarre.Player;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.UI
@@ -61,6 +62,7 @@ namespace UberBagarre.UI
 
         // Horodatage des derniers coups portes, pour mesurer la cadence REELLE.
         private readonly List<float> _attackTimes = new List<float>(32);
+        private GUIStyle _panelStyle;
         private float _lastGap;
 
         private void OnEnable()
@@ -130,7 +132,7 @@ namespace UberBagarre.UI
         {
             if (!_visible) return;
 
-            Rect panel = new Rect(14f, 14f, 500f, 372f);
+            Rect panel = new Rect(14f, 14f, 560f, 410f);
             GuiKit.Fill(panel, _background);
             GuiKit.Outline(panel, 2f, new Color(0f, 0f, 0f, 0.9f));
 
@@ -140,8 +142,14 @@ namespace UberBagarre.UI
             AppendEnemy();
             AppendRange();
 
-            GUIStyle style = GuiKit.Style(13, FontStyle.Normal, TextAnchor.UpperLeft);
-            style.padding = new RectOffset(12, 12, 10, 10);
+            // Style propre a l'overlay (marges internes) : ceux de GuiKit sont partages.
+            if (_panelStyle == null)
+            {
+                _panelStyle = new GUIStyle(GuiKit.Style(13, FontStyle.Normal, TextAnchor.UpperLeft));
+                _panelStyle.padding = new RectOffset(12, 12, 10, 10);
+            }
+
+            GUIStyle style = _panelStyle;
 
             Color previous = GUI.contentColor;
             GUI.contentColor = _text;
@@ -247,6 +255,11 @@ namespace UberBagarre.UI
         private void AppendInputs()
         {
             _builder.AppendLine("=== UBER BAGARRE - DEBUG (F1) ===");
+            _builder.AppendLine("Images/s : " + CameraDiagnostics.Fps.ToString("0") +
+                                "   pire image : " + CameraDiagnostics.WorstFrameMs.ToString("0") + " ms" +
+                                "   GC/10 s : " + CameraDiagnostics.GcPerTenSeconds);
+            _builder.AppendLine("Sauts de camera : " + CameraDiagnostics.Jumps + "  (dernier : " +
+                                CameraDiagnostics.LastJump + ")");
 
             if (_input == null)
             {

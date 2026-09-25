@@ -640,6 +640,30 @@ namespace UberBagarre.EditorTools
         /// pouvoir blesser personne, même par un bug de câblage. Le collider en capsule, lui,
         /// reste : c'est lui qui fait mur autour de la fosse.
         /// </summary>
+        /// <summary>
+        /// Des passants de la nuit, pour les foules qui se forment dehors autour d'une bagarre :
+        /// memes corps et memes reactions que le public du club, caches jusqu'a ce qu'on les appelle.
+        /// </summary>
+        internal static Spectator[] BuildPassersby(Transform parent, NightMaterialFactory.Palette night,
+            BuildMaterials body, int count, int seed)
+        {
+            Materials m = CreateMaterials(night);
+            Spectator[] members = new Spectator[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                float temperament = 0.3f + ((i * 7 + seed) % 10) * 0.06f;
+
+                members[i] = AddSpectator(parent, body, m, i * 3 + seed, new Vector3(i * 0.8f, 0f, 0f), 0f,
+                    Spectator.Mood.Spectateur, null, temperament, seed * 1.7f + i * 2.3f, true);
+
+                members[i].name = "Badaud " + (i + 1);
+                members[i].gameObject.SetActive(false);
+            }
+
+            return members;
+        }
+
         private static Spectator AddSpectator(Transform parent, BuildMaterials body, Materials m, int look,
             Vector3 localPosition, float yaw, Spectator.Mood mood, Transform focus, float temperament, float seed,
             bool castShadows)

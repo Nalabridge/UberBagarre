@@ -21,7 +21,7 @@ namespace UberBagarre.View
         // Le suffixe de version change quand les valeurs par defaut changent de nature : les
         // anciens reglages sauvegardes (grain et aberration a fond) ne doivent pas ressusciter
         // le bruit qu'on vient justement de retirer.
-        private const string PrefsPrefix = "UberBagarre.Gfx3.";
+        private const string PrefsPrefix = "UberBagarre.Gfx4.";
 
         public enum Preset
         {
@@ -45,12 +45,22 @@ namespace UberBagarre.View
         [SerializeField, Range(0f, 0.5f)] private float _grain;
         [SerializeField, Range(0f, 4f)] private float _aberration;
         [SerializeField, Range(0f, 3f)] private float _volumetric = 1f;
-        // MSAA par defaut : le TAA faisait trembler l'image en combat (secousses, mouvements
-        // rapides de la main au premier plan) sur certaines machines.
-        [SerializeField] private UberPostProcess.AntiAliasingMode _antiAliasing = UberPostProcess.AntiAliasingMode.Msaa;
+        // FXAA par defaut, en rendu differe. Le MSAA oblige au rendu AVANT : avec une trentaine
+        // de lampes dans la rue, chaque objet est redessine par lampe (au plus dix, les autres
+        // passent « par sommet » et l'eclairage saute quand on bouge), et x8 par-dessus. Le cout
+        // faisait chuter les images par seconde exactement la ou il y a le plus de monde : en
+        // combat. Le TAA, lui, tremblait. MSAA et TAA restent dans le menu.
+        [SerializeField] private UberPostProcess.AntiAliasingMode _antiAliasing = UberPostProcess.AntiAliasingMode.Fxaa;
         [SerializeField] private bool _postEnabled = true;
         [SerializeField] private bool _reflectionsEnabled = true;
-        [SerializeField, Range(1, 8)] private int _reflectionDownsample = 1;
+        // Demi-resolution : le reflet est un second rendu complet de la scene, et sur un sol
+        // mouille et bossele, sa pleine resolution ne se voit pas.
+        [SerializeField, Range(1, 8)] private int _reflectionDownsample = 2;
+
+        [SerializeField]
+        [Tooltip("Synchronisation verticale. Sans elle, l'image se « dechire » en bandes quand la " +
+                 "vue bouge vite — exactement ce qui arrive en combat.")]
+        private bool _vSync = true;
         [SerializeField, Range(0f, 1f)] private float _day;
 
         [Header("Persistance")]
@@ -89,6 +99,8 @@ namespace UberBagarre.View
         }
 
         public float Day { get { return _day; } set { _day = Mathf.Clamp01(value); Push(); } }
+
+        public bool VSync { get { return _vSync; } set { _vSync = value; Push(); } }
 
         private void Start()
         {
@@ -134,6 +146,11 @@ namespace UberBagarre.View
             }
 
             if (_timeOfDay != null) _timeOfDay.Day = _day;
+
+            // Dans l'editeur, c'est l'option « VSync » de la vue Game qui decide ; dans un jeu
+            // compile, c'est ce reglage.
+            QualitySettings.vSyncCount = _vSync ? 1 : 0;
+            Application.targetFrameRate = _vSync ? -1 : 240;
         }
 
         /// <summary>
@@ -201,6 +218,7 @@ namespace UberBagarre.View
             PlayerPrefs.SetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0);
             PlayerPrefs.SetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0);
             PlayerPrefs.SetInt(PrefsPrefix + "refletsQualite", _reflectionDownsample);
+            PlayerPrefs.SetInt(PrefsPrefix + "vsync", _vSync ? 1 : 0);
             PlayerPrefs.Save();
         }
 
@@ -221,6 +239,7 @@ namespace UberBagarre.View
             _postEnabled = PlayerPrefs.GetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0) != 0;
             _reflectionsEnabled = PlayerPrefs.GetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0) != 0;
             _reflectionDownsample = PlayerPrefs.GetInt(PrefsPrefix + "refletsQualite", _reflectionDownsample);
+            _vSync = PlayerPrefs.GetInt(PrefsPrefix + "vsync", _vSync ? 1 : 0) != 0;
         }
 
         public static void ClearSaved()
@@ -228,7 +247,7 @@ namespace UberBagarre.View
             string[] keys =
             {
                 "bloom", "seuil", "expo", "satu", "contraste", "vignette", "grain",
-                "aberration", "volumetrique", "aa", "jour", "post", "reflets", "refletsQualite"
+                "aberration", "volumetrique", "aa", "jour", "post", "reflets", "refletsQualite", "vsync"
             };
 
             for (int i = 0; i < keys.Length; i++) PlayerPrefs.DeleteKey(PrefsPrefix + keys[i]);

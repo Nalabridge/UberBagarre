@@ -1,4 +1,5 @@
 using UberBagarre.Combat;
+using UberBagarre.Story;
 using UnityEngine;
 
 namespace UberBagarre.UI
@@ -100,6 +101,9 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
+            // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
+            if (FightIntro.AnyPlaying) return;
+
             if (_combatant == null || _combatant.Health == null) return;
             if (!_combatant.Health.IsAlive) return;
 

@@ -1,4 +1,6 @@
+using UberBagarre.Phone;
 using UberBagarre.Player;
+using UberBagarre.Story;
 using UberBagarre.UI;
 using UnityEngine;
 
@@ -22,6 +24,10 @@ namespace UberBagarre.World
         [Header("References")]
         [SerializeField] private PlayerInputReader _input;
         [SerializeField] private Camera _camera;
+
+        [SerializeField]
+        [Tooltip("Optionnel : telephone sorti, E lui appartient et le decor ne reagit plus.")]
+        private PhoneDevice _phone;
 
         [Header("Detection")]
         [SerializeField, Min(0.5f)] private float _maxDistance = 3.2f;
@@ -61,7 +67,10 @@ namespace UberBagarre.World
 
         private void Update()
         {
-            _focused = _active ? FindFocused() : null;
+            // Telephone sorti : E appartient au telephone (ouvrir une appli, repondre). Une porte
+            // ne doit pas s'ouvrir parce qu'on a lance la galerie devant elle.
+            bool phoneUp = _phone != null && _phone.IsRaised;
+            _focused = _active && !phoneUp && !FightIntro.AnyPlaying ? FindFocused() : null;
 
             _visibility = Mathf.MoveTowards(_visibility, _focused != null ? 1f : 0f,
                 Time.unscaledDeltaTime * 6f);

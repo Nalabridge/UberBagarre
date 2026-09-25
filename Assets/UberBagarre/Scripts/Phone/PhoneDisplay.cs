@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UberBagarre.Story;
 using UberBagarre.UI;
 using UnityEngine;
@@ -12,18 +13,13 @@ namespace UberBagarre.Phone
     /// du poignet, le balancement et la vibration — l'interface appartient à l'objet au lieu
     /// d'être collée par-dessus.
     ///
-    /// Une décision technique mérite d'être expliquée, parce qu'elle a l'air d'un détail et
-    /// qu'elle décide en réalité de la LISIBILITÉ : l'espace de mise en page n'est pas une
-    /// résolution fixe, c'est la taille PROJETÉE en pixels. Avec une résolution de maquette
-    /// fixe, la matrice d'affichage vaudrait par exemple 0,6 sur un écran donné, et toutes les
-    /// polices seraient réduites d'autant — un texte écrit en corps 14 s'afficherait en 8
-    /// pixels, illisible, et personne ne saurait pourquoi. En travaillant à l'échelle 1, un
-    /// corps 14 fait 14 pixels quel que soit l'écran, et c'est la mise en page qui s'adapte.
-    /// Toutes les dimensions sont donc exprimées en fraction de la hauteur de l'écran.
+    /// L'espace de mise en page n'est pas une résolution fixe, c'est la taille PROJETÉE en
+    /// pixels : un corps 14 fait 14 pixels quel que soit l'écran, et c'est la mise en page qui
+    /// s'adapte. Toutes les dimensions sont donc exprimées en fraction de la hauteur de l'écran.
     ///
-    /// La contrepartie assumée : une transformation affine représente exactement un
-    /// parallélogramme, pas un trapèze. L'inclinaison de la pose levée reste donc faible, et
-    /// l'interface garde une marge intérieure qui l'empêche de déborder du cadre.
+    /// Ce qui est affiché vient de <see cref="PhoneOS"/> : l'écran d'accueil, les applis, et les
+    /// écrans de l'histoire quand elle en impose un. Le thème est SOMBRE, et la luminosité suit
+    /// les réglages du téléphone : de nuit, un écran se baisse, il n'éblouit pas.
     /// </summary>
     [RequireComponent(typeof(PhoneDevice))]
     public class PhoneDisplay : MonoBehaviour
@@ -37,6 +33,10 @@ namespace UberBagarre.Phone
         [Tooltip("Progression du joueur : niveau, argent, reputation. Optionnelle — sans elle, " +
                  "l'ecran de profil affiche un compte vierge.")]
         private PlayerProgress _progress;
+
+        [SerializeField]
+        [Tooltip("Le systeme du telephone. Sans lui, seul l'ecran impose par l'histoire est affiche.")]
+        private PhoneOS _os;
 
         [Header("Dalle")]
         [SerializeField, Min(0.005f)]
@@ -52,8 +52,8 @@ namespace UberBagarre.Phone
 
         [Header("Couleurs")]
         [SerializeField] private Color _background = new Color(0.035f, 0.035f, 0.05f);
-        [SerializeField] private Color _ink = new Color(0.95f, 0.95f, 0.97f);
-        [SerializeField] private Color _dim = new Color(0.62f, 0.64f, 0.70f);
+        [SerializeField] private Color _ink = new Color(0.93f, 0.93f, 0.95f);
+        [SerializeField] private Color _dim = new Color(0.60f, 0.62f, 0.68f);
         [SerializeField] private Color _brand = new Color(1f, 0.20f, 0.62f);
         [SerializeField] private Color _good = new Color(0.36f, 0.95f, 0.52f);
         [SerializeField] private Color _bad = new Color(1f, 0.32f, 0.30f);
@@ -66,6 +66,7 @@ namespace UberBagarre.Phone
 
         private float _w;
         private float _h;
+        private readonly GUIContent _content = new GUIContent();
 
         /// <summary>
         /// La course affichée. Le scénario la change d'un chapitre à l'autre : le téléphone
@@ -86,6 +87,7 @@ namespace UberBagarre.Phone
         private void Awake()
         {
             if (_device == null) _device = GetComponent<PhoneDevice>();
+            if (_os == null) _os = GetComponent<PhoneOS>();
         }
 
         private void OnGUI()
@@ -94,9 +96,13 @@ namespace UberBagarre.Phone
 
             // Seuil franc plutot qu'un fondu : GuiKit.Fill impose sa propre couleur a chaque
             // appel, donc un GUI.color global ne ferait pas fondre les aplats — seulement le
-            // texte. Un ecran a moitie fondu ou seules les lettres s'attenuent serait pire
-            // qu'un allumage net, qui se lit comme un ecran qui se reveille.
+            // texte. Un allumage net se lit comme un ecran qui se reveille.
             if (_device.RaiseAmount < 0.45f) return;
+
+            // En mode photo, l'image entiere est le viseur : c'est PhoneCamera qui dessine. Pendant
+            // une cinematique, la camera du joueur est eteinte : projeter l'ecran depuis une autre
+            // camera le ferait flotter n'importe ou.
+            if (_device.CameraMode || FightIntro.AnyPlaying) return;
 
             Transform dalle = _device.ScreenTransform;
             if (dalle == null) return;
@@ -148,7 +154,7 @@ namespace UberBagarre.Phone
 
         private int Font(float fraction)
         {
-            return Mathf.Max(8, Mathf.RoundToInt(_h * fraction));
+            return Mathf.Max(10, Mathf.RoundToInt(_h * fraction));
         }
 
         private void DrawScreen(Rect screen)
@@ -159,17 +165,44 @@ namespace UberBagarre.Phone
             Rect safe = new Rect(screen.x + inset, screen.y + inset,
                 screen.width - inset * 2f, screen.height - inset * 2f);
 
+            bool home = _os != null && _os.Current == PhoneOS.App.Accueil &&
+                        _device.Current != PhoneDevice.Screen.Installation && !_device.IsRinging;
+
+            if (home) DrawWallpaper(screen);
+
             DrawStatusBar(safe);
 
             Rect body = new Rect(safe.x, safe.y + U(0.045f), safe.width, safe.height - U(0.085f));
 
+            if (_os == null) DrawStory(body);
+            else DrawOS(body);
+
+            string toast = _os != null ? _os.Toast : null;
+            if (!string.IsNullOrEmpty(toast)) DrawToast(body, toast);
+
+            // La barre de geste en bas : deux pixels de haut, et le rectangle cesse d'etre un
+            // rectangle pour devenir un telephone.
+            GuiKit.Fill(new Rect(screen.center.x - U(0.09f), screen.yMax - U(0.022f),
+                U(0.18f), U(0.006f)), new Color(1f, 1f, 1f, 0.35f));
+
+            // Luminosite et mode nuit, appliques a TOUT l'ecran, texte compris : c'est un
+            // voile, comme le vrai reglage d'un telephone.
+            float brightness = _os != null ? _os.Brightness : 0.6f;
+            GuiKit.Fill(screen, new Color(0f, 0f, 0f, (1f - brightness) * 0.62f));
+
+            if (_os != null && _os.NightMode) GuiKit.Fill(screen, new Color(1f, 0.55f, 0.2f, 0.06f));
+        }
+
+        /// <summary>Ce que l'histoire impose, sans système autour (scène ancienne, sans PhoneOS).</summary>
+        private void DrawStory(Rect body)
+        {
             switch (_device.Current)
             {
                 case PhoneDevice.Screen.AppelEntrant: DrawIncomingCall(body); break;
                 case PhoneDevice.Screen.EnAppel: DrawOngoingCall(body); break;
                 case PhoneDevice.Screen.Lien: DrawLink(body); break;
                 case PhoneDevice.Screen.Installation: DrawInstall(body); break;
-                case PhoneDevice.Screen.Accueil: DrawHome(body); break;
+                case PhoneDevice.Screen.Accueil: DrawContract(body); break;
                 case PhoneDevice.Screen.Cible: DrawTarget(body); break;
                 case PhoneDevice.Screen.Mission: DrawMission(body); break;
                 case PhoneDevice.Screen.Photo: DrawCamera(body); break;
@@ -177,11 +210,28 @@ namespace UberBagarre.Phone
                 case PhoneDevice.Screen.Profil: DrawProfile(body); break;
                 default: DrawLock(body); break;
             }
+        }
 
-            // La barre de geste en bas : deux pixels de haut, et le rectangle cesse d'etre un
-            // rectangle pour devenir un telephone.
-            GuiKit.Fill(new Rect(screen.center.x - U(0.09f), screen.yMax - U(0.022f),
-                U(0.18f), U(0.006f)), new Color(1f, 1f, 1f, 0.35f));
+        private void DrawOS(Rect body)
+        {
+            if (_device.Current == PhoneDevice.Screen.Installation)
+            {
+                DrawInstall(body);
+                return;
+            }
+
+            switch (_os.Current)
+            {
+                case PhoneOS.App.RdvBaston: DrawRdv(body); break;
+                case PhoneOS.App.Messages: DrawMessages(body); break;
+                case PhoneOS.App.Appels: DrawCalls(body); break;
+                case PhoneOS.App.Photo: DrawCameraSplash(body); break;
+                case PhoneOS.App.Galerie: DrawGallery(body); break;
+                case PhoneOS.App.Banque: DrawBank(body); break;
+                case PhoneOS.App.Carte: DrawMap(body); break;
+                case PhoneOS.App.Reglages: DrawSettings(body); break;
+                default: DrawHomeScreen(body); break;
+            }
         }
 
         private void DrawStatusBar(Rect safe)
@@ -211,7 +261,626 @@ namespace UberBagarre.Phone
                 charge < 0.2f ? _bad : _good);
         }
 
-        // ------------------------------------------------------------------ écrans
+        // ------------------------------------------------------------------ accueil
+
+        private void DrawWallpaper(Rect screen)
+        {
+            // Degrade vertical en bandes : violet nuit en haut, bleu encre en bas.
+            Color top = new Color(0.10f, 0.05f, 0.14f);
+            Color bottom = new Color(0.03f, 0.05f, 0.10f);
+            const int bands = 12;
+
+            for (int i = 0; i < bands; i++)
+            {
+                float t = i / (float)(bands - 1);
+                GuiKit.Fill(new Rect(screen.x, screen.y + screen.height * i / bands, screen.width,
+                    screen.height / bands + 1f), Color.Lerp(top, bottom, t));
+            }
+
+            // Un halo de neon rose, bas et large : la ville la nuit, vue d'un ecran.
+            GuiKit.Disc(new Rect(screen.x - screen.width * 0.4f, screen.yMax - screen.width * 0.9f,
+                screen.width * 1.8f, screen.width * 1.4f), new Color(_brand.r, _brand.g, _brand.b, 0.10f));
+        }
+
+        private void DrawHomeScreen(Rect body)
+        {
+            Label(new Rect(body.x, body.y + U(0.02f), body.width, U(0.085f)), _clock,
+                Font(0.075f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
+
+            Label(new Rect(body.x, body.y + U(0.105f), body.width, U(0.035f)), _date,
+                Font(0.022f), FontStyle.Normal, TextAnchor.MiddleCenter, _dim);
+
+            IList<PhoneOS.App> apps = _os.Apps;
+
+            float cell = body.width / 3f;
+            float icon = Mathf.Min(cell * 0.62f, U(0.078f));
+            float rowHeight = U(0.125f);
+            float top = body.y + U(0.175f);
+
+            for (int i = 0; i < apps.Count; i++)
+            {
+                int col = i % 3;
+                int row = i / 3;
+
+                Rect slot = new Rect(body.x + col * cell, top + row * rowHeight, cell, rowHeight);
+                Rect iconRect = new Rect(slot.center.x - icon * 0.5f, slot.y + U(0.008f), icon, icon);
+
+                bool selected = i == _os.HomeSelection;
+
+                if (selected)
+                {
+                    GuiKit.Disc(new Rect(iconRect.x - icon * 0.35f, iconRect.y - icon * 0.35f, icon * 1.7f, icon * 1.7f),
+                        new Color(1f, 1f, 1f, 0.10f));
+                }
+
+                DrawIcon(apps[i], iconRect);
+
+                if (selected) GuiKit.Outline(iconRect, Mathf.Max(1.5f, U(0.004f)), new Color(1f, 1f, 1f, 0.9f));
+
+                int badge = _os.Badge(apps[i]);
+                if (badge > 0)
+                {
+                    float size = U(0.026f);
+                    Rect dot = new Rect(iconRect.xMax - size * 0.6f, iconRect.y - size * 0.4f, size, size);
+                    GuiKit.Disc(dot, new Color(0.95f, 0.18f, 0.20f));
+                    GuiKit.Disc(new Rect(dot.x + size * 0.2f, dot.y + size * 0.2f, size * 0.6f, size * 0.6f),
+                        new Color(0.95f, 0.18f, 0.20f));
+                    Label(dot, badge.ToString(), Font(0.018f), FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
+                }
+
+                Label(new Rect(slot.x, iconRect.yMax + U(0.006f), slot.width, U(0.03f)), PhoneOS.AppName(apps[i]),
+                    Font(0.0175f), selected ? FontStyle.Bold : FontStyle.Normal, TextAnchor.UpperCenter,
+                    selected ? _ink : _dim);
+            }
+
+            Label(new Rect(body.x, body.yMax - U(0.075f), body.width, U(0.07f)),
+                "FLECHES / MOLETTE : choisir\nENTREE / CLIC / E : ouvrir   —   RETOUR : ranger",
+                Font(0.0165f), FontStyle.Normal, TextAnchor.MiddleCenter, new Color(1f, 1f, 1f, 0.38f), true);
+        }
+
+        /// <summary>
+        /// Les icônes, dessinées avec des rectangles et des disques : aucune image, aucune police
+        /// d'icônes. Un pictogramme simple et net vaut mieux qu'une lettre dans un carré.
+        /// </summary>
+        private void DrawIcon(PhoneOS.App app, Rect r)
+        {
+            Color color = PhoneOS.AppColor(app);
+
+            // Carre arrondi : un aplat et quatre disques aux coins.
+            float round = r.width * 0.22f;
+            GuiKit.Fill(new Rect(r.x + round * 0.5f, r.y, r.width - round, r.height), color);
+            GuiKit.Fill(new Rect(r.x, r.y + round * 0.5f, r.width, r.height - round), color);
+            Corner(new Rect(r.x, r.y, round, round), color);
+            Corner(new Rect(r.xMax - round, r.y, round, round), color);
+            Corner(new Rect(r.x, r.yMax - round, round, round), color);
+            Corner(new Rect(r.xMax - round, r.yMax - round, round, round), color);
+
+            // Reflet haut : un peu de volume.
+            GuiKit.Fill(new Rect(r.x + round * 0.5f, r.y, r.width - round, r.height * 0.18f), new Color(1f, 1f, 1f, 0.10f));
+
+            Color white = new Color(1f, 1f, 1f, 0.95f);
+            float w = r.width;
+            float cx = r.center.x;
+            float cy = r.center.y;
+
+            switch (app)
+            {
+                case PhoneOS.App.RdvBaston:
+                    GuiKit.Disc(new Rect(cx - w * 0.36f, cy - w * 0.36f, w * 0.72f, w * 0.72f), new Color(1f, 1f, 1f, 0.25f));
+                    Label(r, "U", Mathf.Max(10, Mathf.RoundToInt(w * 0.55f)), FontStyle.Bold, TextAnchor.MiddleCenter, white);
+                    break;
+
+                case PhoneOS.App.Messages:
+                    GuiKit.Fill(new Rect(cx - w * 0.30f, cy - w * 0.20f, w * 0.60f, w * 0.34f), white);
+                    GuiKit.Disc(new Rect(cx - w * 0.36f, cy - w * 0.22f, w * 0.20f, w * 0.38f), white);
+                    GuiKit.Disc(new Rect(cx + w * 0.16f, cy - w * 0.22f, w * 0.20f, w * 0.38f), white);
+                    GuiKit.Fill(new Rect(cx - w * 0.22f, cy + w * 0.12f, w * 0.09f, w * 0.12f), white);
+                    break;
+
+                case PhoneOS.App.Appels:
+                {
+                    Matrix4x4 saved = BeginRotate(new Vector2(cx, cy), -40f);
+                    GuiKit.Fill(new Rect(cx - w * 0.07f, cy - w * 0.26f, w * 0.14f, w * 0.52f), white);
+                    GuiKit.Fill(new Rect(cx - w * 0.07f, cy - w * 0.30f, w * 0.26f, w * 0.12f), white);
+                    GuiKit.Fill(new Rect(cx - w * 0.07f, cy + w * 0.18f, w * 0.26f, w * 0.12f), white);
+                    GUI.matrix = saved;
+                    break;
+                }
+
+                case PhoneOS.App.Photo:
+                    GuiKit.Fill(new Rect(cx - w * 0.32f, cy - w * 0.16f, w * 0.64f, w * 0.40f), white);
+                    GuiKit.Fill(new Rect(cx - w * 0.12f, cy - w * 0.25f, w * 0.24f, w * 0.10f), white);
+                    GuiKit.Disc(new Rect(cx - w * 0.17f, cy - w * 0.13f, w * 0.34f, w * 0.34f), color);
+                    GuiKit.Disc(new Rect(cx - w * 0.10f, cy - w * 0.06f, w * 0.20f, w * 0.20f), new Color(0.12f, 0.12f, 0.16f));
+                    break;
+
+                case PhoneOS.App.Galerie:
+                    GuiKit.Fill(new Rect(cx - w * 0.30f, cy - w * 0.26f, w * 0.60f, w * 0.52f), white);
+                    GuiKit.Fill(new Rect(cx - w * 0.25f, cy - w * 0.21f, w * 0.50f, w * 0.42f), new Color(0.30f, 0.55f, 0.90f));
+                    GuiKit.Disc(new Rect(cx + w * 0.04f, cy - w * 0.18f, w * 0.14f, w * 0.14f), new Color(1f, 0.92f, 0.5f));
+                    GuiKit.Fill(new Rect(cx - w * 0.25f, cy + w * 0.04f, w * 0.50f, w * 0.17f), new Color(0.24f, 0.62f, 0.32f));
+                    break;
+
+                case PhoneOS.App.Banque:
+                    Label(r, "€", Mathf.Max(10, Mathf.RoundToInt(w * 0.58f)), FontStyle.Bold, TextAnchor.MiddleCenter, white);
+                    break;
+
+                case PhoneOS.App.Carte:
+                {
+                    GuiKit.Disc(new Rect(cx - w * 0.18f, cy - w * 0.30f, w * 0.36f, w * 0.36f), white);
+                    Matrix4x4 saved = BeginRotate(new Vector2(cx, cy + w * 0.02f), 45f);
+                    GuiKit.Fill(new Rect(cx - w * 0.12f, cy - w * 0.10f, w * 0.24f, w * 0.24f), white);
+                    GUI.matrix = saved;
+                    GuiKit.Disc(new Rect(cx - w * 0.07f, cy - w * 0.19f, w * 0.14f, w * 0.14f), color);
+                    break;
+                }
+
+                case PhoneOS.App.Reglages:
+                    for (int i = 0; i < 8; i++)
+                    {
+                        float a = i * Mathf.PI / 4f;
+                        float px = cx + Mathf.Cos(a) * w * 0.25f;
+                        float py = cy + Mathf.Sin(a) * w * 0.25f;
+                        GuiKit.Fill(new Rect(px - w * 0.06f, py - w * 0.06f, w * 0.12f, w * 0.12f), white);
+                    }
+
+                    GuiKit.Disc(new Rect(cx - w * 0.29f, cy - w * 0.29f, w * 0.58f, w * 0.58f), white);
+                    GuiKit.Disc(new Rect(cx - w * 0.11f, cy - w * 0.11f, w * 0.22f, w * 0.22f), color);
+                    break;
+            }
+        }
+
+        private static void Corner(Rect rect, Color color)
+        {
+            // Un disque dur : GuiKit.Disc est doux, on le double pour un bord net.
+            GuiKit.Disc(rect, color);
+            GuiKit.Disc(rect, color);
+            GuiKit.Disc(new Rect(rect.x + rect.width * 0.15f, rect.y + rect.height * 0.15f,
+                rect.width * 0.7f, rect.height * 0.7f), color);
+        }
+
+        /// <summary>Tourne le dessin autour d'un point. Rendre ensuite la matrice renvoyée à GUI.matrix.</summary>
+        private static Matrix4x4 BeginRotate(Vector2 pivot, float angle)
+        {
+            Matrix4x4 previous = GUI.matrix;
+            GUIUtility.RotateAroundPivot(angle, pivot);
+            return previous;
+        }
+
+        // ------------------------------------------------------------------ applis : cadre
+
+        /// <summary>Barre de titre d'une appli. Renvoie la zone de contenu en dessous.</summary>
+        private Rect Header(Rect body, string title, Color accent)
+        {
+            Label(new Rect(body.x, body.y, body.width * 0.7f, U(0.045f)), title,
+                Font(0.030f), FontStyle.Bold, TextAnchor.MiddleLeft, _ink);
+
+            Label(new Rect(body.x + body.width * 0.5f, body.y, body.width * 0.5f, U(0.045f)), "< retour",
+                Font(0.017f), FontStyle.Normal, TextAnchor.MiddleRight, new Color(1f, 1f, 1f, 0.35f));
+
+            GuiKit.Fill(new Rect(body.x, body.y + U(0.05f), body.width, Mathf.Max(1f, U(0.003f))),
+                new Color(accent.r, accent.g, accent.b, 0.8f));
+
+            return new Rect(body.x, body.y + U(0.065f), body.width, body.height - U(0.065f));
+        }
+
+        private void DrawToast(Rect body, string text)
+        {
+            Rect pill = new Rect(body.x + U(0.01f), body.yMax - U(0.15f), body.width - U(0.02f), U(0.07f));
+            GuiKit.Fill(pill, new Color(0.14f, 0.15f, 0.20f, 0.96f));
+            GuiKit.Outline(pill, Mathf.Max(1f, U(0.002f)), new Color(1f, 1f, 1f, 0.2f));
+
+            Label(new Rect(pill.x + U(0.015f), pill.y, pill.width - U(0.03f), pill.height), text,
+                Font(0.019f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink, true);
+        }
+
+        private void Selection(Rect row, bool selected, Color accent)
+        {
+            if (!selected) return;
+
+            GuiKit.Fill(row, new Color(1f, 1f, 1f, 0.09f));
+            GuiKit.Fill(new Rect(row.x, row.y, Mathf.Max(2f, U(0.005f)), row.height), accent);
+        }
+
+        // ------------------------------------------------------------------ RDV BASTON
+
+        private void DrawRdv(Rect body)
+        {
+            // Onglets : la course (ce que l'histoire affiche) et le profil.
+            float half = body.width * 0.5f;
+            string[] tabs = { "COURSE", "PROFIL" };
+
+            for (int i = 0; i < 2; i++)
+            {
+                Rect tab = new Rect(body.x + i * half, body.y, half, U(0.04f));
+                bool active = _os.RdvTab == i;
+
+                Label(tab, tabs[i], Font(0.021f), FontStyle.Bold, TextAnchor.MiddleCenter, active ? _ink : _dim);
+
+                if (active)
+                {
+                    GuiKit.Fill(new Rect(tab.x + half * 0.2f, tab.yMax, half * 0.6f, Mathf.Max(2f, U(0.004f))), _brand);
+                }
+            }
+
+            Rect content = new Rect(body.x, body.y + U(0.06f), body.width, body.height - U(0.06f));
+
+            if (_os.RdvTab == 1)
+            {
+                DrawProfile(content);
+                return;
+            }
+
+            PhoneDevice.Screen view = IsRdvScreen(_device.Current) ? _device.Current : _os.LastRdvScreen;
+
+            switch (view)
+            {
+                case PhoneDevice.Screen.Accueil: DrawContract(content); break;
+                case PhoneDevice.Screen.Cible: DrawTarget(content); break;
+                case PhoneDevice.Screen.Mission: DrawMission(content); break;
+                case PhoneDevice.Screen.Valide: DrawValidated(content); break;
+                case PhoneDevice.Screen.Profil: DrawProfile(content); break;
+                default:
+                    Logo(new Rect(content.center.x - U(0.12f), content.y + U(0.10f), U(0.24f), U(0.24f)), 0.6f);
+                    Label(new Rect(content.x, content.y + U(0.38f), content.width, U(0.12f)),
+                        "Aucune course.\nReste joignable : une commande peut tomber a tout moment.",
+                        Font(0.021f), FontStyle.Normal, TextAnchor.UpperCenter, _dim, true);
+                    break;
+            }
+        }
+
+        private static bool IsRdvScreen(PhoneDevice.Screen screen)
+        {
+            return screen == PhoneDevice.Screen.Accueil || screen == PhoneDevice.Screen.Cible ||
+                   screen == PhoneDevice.Screen.Mission || screen == PhoneDevice.Screen.Valide ||
+                   screen == PhoneDevice.Screen.Profil;
+        }
+
+        // ------------------------------------------------------------------ messages
+
+        private void DrawMessages(Rect body)
+        {
+            if (_os.OpenThread >= 0)
+            {
+                DrawThread(body, _os.OpenThread);
+                return;
+            }
+
+            Rect list = Header(body, "Messages", PhoneOS.AppColor(PhoneOS.App.Messages));
+            float rowHeight = U(0.085f);
+
+            for (int i = 0; i < _os.ThreadCount; i++)
+            {
+                Rect row = new Rect(list.x, list.y + i * rowHeight, list.width, rowHeight - U(0.006f));
+                bool selected = i == _os.ListSelection;
+                bool unread = _os.Unread(i);
+
+                Selection(row, selected, PhoneOS.AppColor(PhoneOS.App.Messages));
+
+                float avatar = U(0.052f);
+                Rect disc = new Rect(row.x + U(0.012f), row.center.y - avatar * 0.5f, avatar, avatar);
+                GuiKit.Disc(disc, PhoneOS.ThreadColor(i));
+                GuiKit.Disc(disc, PhoneOS.ThreadColor(i));
+
+                string name = PhoneOS.ThreadName(i);
+                Label(disc, name.Substring(0, 1), Font(0.024f), FontStyle.Bold, TextAnchor.MiddleCenter, Color.white);
+
+                float x = disc.xMax + U(0.014f);
+
+                Label(new Rect(x, row.y + U(0.008f), row.width - (x - row.x) - U(0.02f), U(0.03f)), name,
+                    Font(0.021f), unread ? FontStyle.Bold : FontStyle.Normal, TextAnchor.MiddleLeft, _ink);
+
+                IList<PhoneOS.Message> thread = _os.Messages(i);
+                string preview = thread.Count > 0 ? thread[thread.Count - 1].Text : "";
+                if (preview.Length > 30) preview = preview.Substring(0, 29) + "…";
+
+                Label(new Rect(x, row.y + U(0.040f), row.width - (x - row.x) - U(0.02f), U(0.03f)), preview,
+                    Font(0.0175f), FontStyle.Normal, TextAnchor.MiddleLeft, unread ? _ink : _dim);
+
+                if (unread)
+                {
+                    float dot = U(0.014f);
+                    GuiKit.Disc(new Rect(row.xMax - dot - U(0.01f), row.center.y - dot * 0.5f, dot, dot), _good);
+                }
+            }
+        }
+
+        private void DrawThread(Rect body, int index)
+        {
+            Rect area = Header(body, PhoneOS.ThreadName(index), PhoneOS.ThreadColor(index));
+
+            IList<PhoneOS.Message> messages = _os.Messages(index);
+            int count = messages.Count;
+
+            float maxWidth = area.width * 0.78f;
+            float padding = U(0.012f);
+            float gap = U(0.012f);
+            int fontSize = Font(0.0195f);
+            GUIStyle style = GuiKit.Style(fontSize, FontStyle.Normal, TextAnchor.UpperLeft, true);
+
+            // Les bulles partent du bas, la plus recente en dernier ; le defilement remonte.
+            float y = area.yMax - U(0.02f);
+            int last = count - 1 - _os.ThreadScroll;
+
+            for (int i = last; i >= 0; i--)
+            {
+                PhoneOS.Message message = messages[i];
+
+                float textWidth = maxWidth - padding * 2f;
+                _content.text = message.Text;
+                float height = style.CalcHeight(_content, textWidth) + padding * 2f;
+                if (message.IsLink) height += U(0.07f);
+
+                y -= height;
+                if (y < area.y) break;
+
+                float width = message.IsLink ? maxWidth : Mathf.Min(maxWidth,
+                    style.CalcSize(_content).x + padding * 2f + 2f);
+
+                float x = message.Mine ? area.xMax - width : area.x;
+                Color fill = message.Mine ? new Color(_brand.r * 0.55f, _brand.g * 0.55f, _brand.b * 0.6f)
+                                          : new Color(0.16f, 0.17f, 0.22f);
+
+                Rect bubble = new Rect(x, y, width, height);
+                GuiKit.Fill(bubble, fill);
+
+                Label(new Rect(bubble.x + padding, bubble.y + padding, textWidth, height - padding * 2f),
+                    message.Text, fontSize, message.IsLink ? FontStyle.Bold : FontStyle.Normal,
+                    TextAnchor.UpperLeft, message.IsLink ? new Color(0.55f, 0.8f, 1f) : _ink, true);
+
+                if (message.IsLink) DrawLinkAction(bubble, padding);
+
+                y -= gap;
+            }
+        }
+
+        /// <summary>Le lien de Sami : le bouton d'installation tant que l'appli n'est pas là.</summary>
+        private void DrawLinkAction(Rect bubble, float padding)
+        {
+            Rect button = new Rect(bubble.x + padding, bubble.yMax - U(0.065f), bubble.width - padding * 2f, U(0.052f));
+
+            if (_device.AppInstalled)
+            {
+                Label(button, "INSTALLEE", Font(0.018f), FontStyle.Bold, TextAnchor.MiddleLeft, _good);
+                return;
+            }
+
+            // L'avertissement est le coeur de la scene : l'application est illegale, et le jeu
+            // doit le dire avant que le joueur ne l'installe, pas apres.
+            Label(new Rect(button.x, button.y - U(0.03f), button.width, U(0.028f)), "Source inconnue — non referencee",
+                Font(0.016f), FontStyle.Italic, TextAnchor.MiddleLeft, _warn);
+
+            float pulse = 0.5f + 0.5f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3.4f));
+            GuiKit.Fill(button, new Color(_brand.r, _brand.g, _brand.b, 0.25f + 0.35f * pulse));
+            GuiKit.Outline(button, Mathf.Max(1f, U(0.003f)), _brand);
+
+            Label(button, "E — INSTALLER", Font(0.020f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
+        }
+
+        // ------------------------------------------------------------------ appels
+
+        private void DrawCalls(Rect body)
+        {
+            if (_device.IsRinging)
+            {
+                DrawIncomingCall(body);
+                return;
+            }
+
+            if (_device.Current == PhoneDevice.Screen.EnAppel)
+            {
+                DrawOngoingCall(body);
+                return;
+            }
+
+            Rect list = Header(body, "Appels", PhoneOS.AppColor(PhoneOS.App.Appels));
+            IList<PhoneOS.Call> calls = _os.Calls;
+            float rowHeight = U(0.075f);
+
+            for (int i = 0; i < calls.Count; i++)
+            {
+                Rect row = new Rect(list.x, list.y + i * rowHeight, list.width, rowHeight - U(0.006f));
+                Selection(row, i == _os.ListSelection, PhoneOS.AppColor(PhoneOS.App.Appels));
+
+                PhoneOS.Call call = calls[i];
+
+                Label(new Rect(row.x + U(0.02f), row.y + U(0.006f), row.width - U(0.04f), U(0.032f)), call.Name,
+                    Font(0.022f), FontStyle.Bold, TextAnchor.MiddleLeft, call.Missed ? _bad : _ink);
+
+                Label(new Rect(row.x + U(0.02f), row.y + U(0.036f), row.width - U(0.04f), U(0.028f)), call.Detail,
+                    Font(0.0175f), FontStyle.Normal, TextAnchor.MiddleLeft, _dim);
+            }
+        }
+
+        // ------------------------------------------------------------------ photo et galerie
+
+        /// <summary>Le temps que le téléphone monte à l'œil : un écran d'ouverture sobre.</summary>
+        private void DrawCameraSplash(Rect body)
+        {
+            GuiKit.Fill(body, new Color(0f, 0f, 0f, 0.8f));
+            Label(body, "PHOTO", Font(0.03f), FontStyle.Bold, TextAnchor.MiddleCenter, _dim);
+        }
+
+        private void DrawGallery(Rect body)
+        {
+            int count = PhoneGallery.Count;
+
+            if (_os.OpenPhoto >= 0 && _os.OpenPhoto < count)
+            {
+                Rect area = Header(body, "Photo " + (_os.OpenPhoto + 1) + " / " + count, PhoneOS.AppColor(PhoneOS.App.Galerie));
+                Texture2D photo = PhoneGallery.Get(_os.OpenPhoto);
+
+                if (photo != null)
+                {
+                    Rect frame = new Rect(area.x, area.y + U(0.1f), area.width, area.width * photo.height / photo.width);
+                    GUI.DrawTexture(frame, photo, ScaleMode.ScaleToFit);
+                }
+
+                Label(new Rect(area.x, area.yMax - U(0.06f), area.width, U(0.04f)), "< >  photo precedente / suivante",
+                    Font(0.017f), FontStyle.Normal, TextAnchor.MiddleCenter, _dim);
+                return;
+            }
+
+            Rect grid = Header(body, "Galerie", PhoneOS.AppColor(PhoneOS.App.Galerie));
+
+            if (count == 0)
+            {
+                Label(new Rect(grid.x, grid.y + U(0.2f), grid.width, U(0.12f)),
+                    "Aucune photo.\nOuvre Photo, puis clic gauche.", Font(0.021f), FontStyle.Normal,
+                    TextAnchor.UpperCenter, _dim, true);
+                return;
+            }
+
+            float cell = grid.width / 3f;
+
+            for (int i = 0; i < count; i++)
+            {
+                Rect slot = new Rect(grid.x + (i % 3) * cell, grid.y + (i / 3) * cell, cell, cell);
+                if (slot.yMax > grid.yMax) break;
+
+                Rect thumb = new Rect(slot.x + 2f, slot.y + 2f, slot.width - 4f, slot.height - 4f);
+                Texture2D photo = PhoneGallery.Get(i);
+                if (photo != null) GUI.DrawTexture(thumb, photo, ScaleMode.ScaleAndCrop);
+
+                if (i == _os.ListSelection) GuiKit.Outline(thumb, Mathf.Max(1.5f, U(0.004f)), Color.white);
+            }
+        }
+
+        // ------------------------------------------------------------------ banque, carte, reglages
+
+        private void DrawBank(Rect body)
+        {
+            Rect area = Header(body, "Banque", PhoneOS.AppColor(PhoneOS.App.Banque));
+            PlayerProgress progress = _os.Progress;
+            int wallet = progress != null ? progress.Money : 10;
+
+            Rect account = new Rect(area.x, area.y, area.width, U(0.11f));
+            GuiKit.Fill(account, new Color(1f, 1f, 1f, 0.06f));
+            Label(new Rect(account.x + U(0.02f), account.y + U(0.01f), account.width, U(0.03f)), "COMPTE COURANT",
+                Font(0.017f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
+            Label(new Rect(account.x + U(0.02f), account.y + U(0.045f), account.width - U(0.04f), U(0.05f)), "-1 240,18 €",
+                Font(0.034f), FontStyle.Bold, TextAnchor.MiddleLeft, _bad);
+
+            Rect cash = new Rect(area.x, account.yMax + U(0.015f), area.width, U(0.11f));
+            GuiKit.Fill(cash, new Color(1f, 1f, 1f, 0.06f));
+            Label(new Rect(cash.x + U(0.02f), cash.y + U(0.01f), cash.width, U(0.03f)), "PORTEFEUILLE UB SERVICES",
+                Font(0.017f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
+            Label(new Rect(cash.x + U(0.02f), cash.y + U(0.045f), cash.width - U(0.04f), U(0.05f)), wallet + ",00 €",
+                Font(0.034f), FontStyle.Bold, TextAnchor.MiddleLeft, _good);
+
+            float y = cash.yMax + U(0.03f);
+            Label(new Rect(area.x, y, area.width, U(0.03f)), "DERNIERES OPERATIONS", Font(0.017f), FontStyle.Bold,
+                TextAnchor.MiddleLeft, _dim);
+            y += U(0.04f);
+
+            int contracts = progress != null ? progress.Contracts : 0;
+            if (contracts > 0) Row(new Rect(area.x, y, area.width, U(0.04f)), "VIR. UB SERVICES x" + contracts, "reçu", _good);
+            if (contracts > 0) y += U(0.045f);
+
+            Row(new Rect(area.x, y, area.width, U(0.04f)), "PRLV LOYER", "rejeté", _bad);
+            y += U(0.045f);
+            Row(new Rect(area.x, y, area.width, U(0.04f)), "FRAIS DE REJET", "-20,00", _bad);
+            y += U(0.045f);
+            Row(new Rect(area.x, y, area.width, U(0.04f)), "VIR. MAMAN", "+20,00", _good);
+        }
+
+        private void DrawMap(Rect body)
+        {
+            Rect area = Header(body, "Carte", PhoneOS.AppColor(PhoneOS.App.Carte));
+            Rect map = new Rect(area.x, area.y, area.width, area.height - U(0.08f));
+
+            GuiKit.Fill(map, new Color(0.07f, 0.08f, 0.10f));
+
+            // Des rues : quelques bandes grises, et le fleuve en diagonale.
+            Color road = new Color(0.20f, 0.21f, 0.25f);
+            GuiKit.Fill(new Rect(map.x, map.y + map.height * 0.42f, map.width, U(0.012f)), road);
+            GuiKit.Fill(new Rect(map.x, map.y + map.height * 0.72f, map.width, U(0.01f)), road);
+            GuiKit.Fill(new Rect(map.x + map.width * 0.35f, map.y, U(0.01f), map.height), road);
+            GuiKit.Fill(new Rect(map.x + map.width * 0.72f, map.y, U(0.012f), map.height), road);
+
+            Matrix4x4 saved = BeginRotate(new Vector2(map.center.x, map.center.y), -28f);
+            GuiKit.Fill(new Rect(map.x - map.width * 0.2f, map.center.y + map.height * 0.2f, map.width * 1.4f, U(0.018f)),
+                new Color(0.12f, 0.20f, 0.32f));
+            GUI.matrix = saved;
+
+            string here = _os.LocationName;
+
+            Pin(map, new Vector2(0.24f, 0.78f), "PLANQUE", here == "Maison");
+            Pin(map, new Vector2(0.58f, 0.36f), "LE VERTIGO", here == "Rue" || here == "Club");
+            Pin(map, new Vector2(0.82f, 0.52f), "PARKING", here == "Parking");
+
+            Label(new Rect(area.x, area.yMax - U(0.07f), area.width, U(0.06f)),
+                string.IsNullOrEmpty(here) ? "Position inconnue" : "Tu es ici : " + here,
+                Font(0.019f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
+        }
+
+        private void Pin(Rect map, Vector2 at, string name, bool here)
+        {
+            Vector2 p = new Vector2(map.x + map.width * at.x, map.y + map.height * at.y);
+            float size = U(here ? 0.034f : 0.024f);
+
+            if (here)
+            {
+                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 4f);
+                float halo = size * (1.8f + pulse);
+                GuiKit.Disc(new Rect(p.x - halo * 0.5f, p.y - halo * 0.5f, halo, halo), new Color(0.3f, 0.6f, 1f, 0.35f));
+            }
+
+            GuiKit.Disc(new Rect(p.x - size * 0.5f, p.y - size * 0.5f, size, size), here ? new Color(0.35f, 0.65f, 1f) : _brand);
+            GuiKit.Disc(new Rect(p.x - size * 0.5f, p.y - size * 0.5f, size, size), here ? new Color(0.35f, 0.65f, 1f) : _brand);
+
+            Label(new Rect(p.x - U(0.12f), p.y + size * 0.6f, U(0.24f), U(0.03f)), name, Font(0.016f),
+                FontStyle.Bold, TextAnchor.UpperCenter, _ink);
+        }
+
+        private void DrawSettings(Rect body)
+        {
+            Rect area = Header(body, "Réglages", PhoneOS.AppColor(PhoneOS.App.Reglages));
+            float rowHeight = U(0.08f);
+            Color accent = PhoneOS.AppColor(PhoneOS.App.Reglages);
+
+            // Luminosite : quatre crans.
+            Rect row = new Rect(area.x, area.y, area.width, rowHeight - U(0.006f));
+            Selection(row, _os.SettingSelection == 0, accent);
+            Label(new Rect(row.x + U(0.02f), row.y, row.width * 0.5f, row.height), "Luminosité",
+                Font(0.021f), FontStyle.Normal, TextAnchor.MiddleLeft, _ink);
+
+            float segment = U(0.03f);
+            for (int i = 0; i < 4; i++)
+            {
+                Rect seg = new Rect(row.xMax - U(0.02f) - (4 - i) * (segment + U(0.006f)), row.center.y - U(0.008f), segment, U(0.016f));
+                GuiKit.Fill(seg, i <= _os.BrightnessLevel ? _warn : new Color(1f, 1f, 1f, 0.15f));
+            }
+
+            row.y += rowHeight;
+            Selection(row, _os.SettingSelection == 1, accent);
+            Label(new Rect(row.x + U(0.02f), row.y, row.width * 0.6f, row.height), "Mode nuit",
+                Font(0.021f), FontStyle.Normal, TextAnchor.MiddleLeft, _ink);
+            Toggle(row, _os.NightMode);
+
+            row.y += rowHeight;
+            Selection(row, _os.SettingSelection == 2, accent);
+            Label(new Rect(row.x + U(0.02f), row.y, row.width * 0.6f, row.height), "Sonnerie",
+                Font(0.021f), FontStyle.Normal, TextAnchor.MiddleLeft, _ink);
+            Toggle(row, _os.Ringer);
+
+            Label(new Rect(area.x, row.yMax + U(0.04f), area.width, U(0.1f)),
+                "HAUT / BAS : choisir\nGAUCHE / DROITE / ENTREE : changer",
+                Font(0.017f), FontStyle.Normal, TextAnchor.UpperCenter, _dim, true);
+        }
+
+        private void Toggle(Rect row, bool on)
+        {
+            Rect pill = new Rect(row.xMax - U(0.02f) - U(0.07f), row.center.y - U(0.017f), U(0.07f), U(0.034f));
+            GuiKit.Fill(pill, on ? new Color(_good.r * 0.7f, _good.g * 0.7f, _good.b * 0.7f) : new Color(1f, 1f, 1f, 0.15f));
+
+            float knob = U(0.028f);
+            float x = on ? pill.xMax - knob - U(0.003f) : pill.x + U(0.003f);
+            GuiKit.Disc(new Rect(x, pill.center.y - knob * 0.5f, knob, knob), Color.white);
+            GuiKit.Disc(new Rect(x, pill.center.y - knob * 0.5f, knob, knob), Color.white);
+        }
+
+        // ------------------------------------------------------------------ écrans de l'histoire
 
         private void DrawLock(Rect body)
         {
@@ -378,7 +1047,7 @@ namespace UberBagarre.Phone
                 new Color(1f, 1f, 1f, 0.32f), true);
         }
 
-        private void DrawHome(Rect body)
+        private void DrawContract(Rect body)
         {
             // Le logo en fond, tres attenue : l'interface epuree avec un logo en fond decrite
             // dans le dossier. Il occupe l'espace sans se disputer la lecture avec le contrat.
@@ -420,7 +1089,7 @@ namespace UberBagarre.Phone
             Rect button = new Rect(body.x, body.yMax - U(0.115f), body.width, U(0.075f));
             GuiKit.Fill(button, new Color(_brand.r, _brand.g, _brand.b, 0.3f + 0.4f * pulse));
 
-            Label(button, "E — ACCEPTER LA COURSE", Font(0.026f), FontStyle.Bold,
+            Label(button, "E / ENTREE — ACCEPTER", Font(0.026f), FontStyle.Bold,
                 TextAnchor.MiddleCenter, _ink);
         }
 
@@ -706,8 +1375,7 @@ namespace UberBagarre.Phone
         {
             if (string.IsNullOrEmpty(text)) return;
 
-            GUIStyle gui = GuiKit.Style(fontSize, style, anchor);
-            gui.wordWrap = wrap;
+            GUIStyle gui = GuiKit.Style(fontSize, style, anchor, wrap);
 
             GuiKit.OutlinedLabel(rect, text, gui, color, new Color(0f, 0f, 0f, 0.75f), 1f);
         }

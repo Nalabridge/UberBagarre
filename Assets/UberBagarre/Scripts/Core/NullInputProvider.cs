@@ -18,5 +18,6 @@ namespace UberBagarre.Core
         public bool GetPressedThisFrame(InputBinding binding) { return false; }
         public bool GetReleasedThisFrame(InputBinding binding) { return false; }
         public Vector2 GetLookDelta() { return Vector2.zero; }
+        public float GetScrollDelta() { return 0f; }
     }
 }

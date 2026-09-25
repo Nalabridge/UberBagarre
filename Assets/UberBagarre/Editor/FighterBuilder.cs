@@ -266,7 +266,11 @@ namespace UberBagarre.EditorTools
         /// </summary>
         private static Transform BuildHand(Transform wrist, HandSide side, Skin skin)
         {
-            float sign = side == HandSide.Left ? -1f : 1f;
+            // Paume vers le bas (-Y), doigts vers l'avant (+Z) : le pouce d'une main DROITE est
+            // du cote -X. Le signe etait inverse, et chaque main etait construite comme la main
+            // opposee — le pouce du poing droit sortait du cote exterieur, et aucune prise (un
+            // telephone, une bouteille) ne pouvait avoir l'air naturelle.
+            float sign = side == HandSide.Left ? 1f : -1f;
             string prefix = side == HandSide.Left ? "Left" : "Right";
 
             // La paume et les phalanges ne portent plus de pièces rigides : la peau est un seul

@@ -68,6 +68,10 @@ namespace UberBagarre.View
         private float _targetGrip = 1f;
         private bool _restCaptured;
 
+        private Vector3[] _poseCurls;
+        private Vector3 _thumbRotation;
+        private float _poseWeight;
+
         public HandSide Side { get { return _side; } }
         public Transform Palm { get { return _palm; } }
 
@@ -86,6 +90,21 @@ namespace UberBagarre.View
 
         /// <summary>Fermeture réellement appliquée (lissée). Sert à valider un impact poing fermé.</summary>
         public float CurrentGrip { get { return _grip; } }
+
+        /// <summary>
+        /// Une prise précise, doigt par doigt, au lieu d'une fermeture globale : tenir un
+        /// téléphone n'est pas « un poing à moitié fermé ». Les quatre doigts s'enroulent autour
+        /// du bord, le pouce s'écarte et se pose sur l'écran — des courbures que le seul curseur
+        /// de fermeture ne peut pas produire. <paramref name="curls"/> : (base, milieu, bout) en
+        /// degrés, dans l'ordre des doigts de la main ; <paramref name="thumbRotation"/> :
+        /// rotation supplémentaire de la base du pouce. Poids 0 = la fermeture normale reprend.
+        /// </summary>
+        public void SetPoseOverride(float weight, Vector3[] curls, Vector3 thumbRotation)
+        {
+            _poseWeight = Mathf.Clamp01(weight);
+            if (curls != null) _poseCurls = curls;
+            _thumbRotation = thumbRotation;
+        }
 
         private void Awake()
         {
@@ -119,11 +138,17 @@ namespace UberBagarre.View
 
             for (int i = 0; i < _fingers.Length; i++)
             {
-                ApplyFinger(_fingers[i]);
+                ApplyFinger(_fingers[i], i);
             }
         }
 
-        private void ApplyFinger(Finger finger)
+        private static bool IsThumb(Finger finger, int index)
+        {
+            string name = finger.name ?? string.Empty;
+            return name.Contains("Pouce") || name.Contains("Thumb") || name.Contains("thumb") || index == 4;
+        }
+
+        private void ApplyFinger(Finger finger, int index)
         {
             if (finger == null) return;
 
@@ -136,19 +161,37 @@ namespace UberBagarre.View
             float amount = delayed * finger.curlScale;
             Vector3 axis = finger.curlAxis.sqrMagnitude > 1e-6f ? finger.curlAxis.normalized : Vector3.right;
 
+            float proximal = finger.proximalCurl * amount;
+            float middle = finger.middleCurl * amount;
+            float distal = finger.distalCurl * amount;
+            Quaternion spread = Quaternion.identity;
+
+            if (_poseWeight > 0.001f && _poseCurls != null && index < _poseCurls.Length)
+            {
+                Vector3 pose = _poseCurls[index];
+                proximal = Mathf.Lerp(proximal, pose.x, _poseWeight);
+                middle = Mathf.Lerp(middle, pose.y, _poseWeight);
+                distal = Mathf.Lerp(distal, pose.z, _poseWeight);
+
+                if (IsThumb(finger, index))
+                {
+                    spread = Quaternion.Slerp(Quaternion.identity, Quaternion.Euler(_thumbRotation), _poseWeight);
+                }
+            }
+
             if (finger.proximal != null)
             {
-                finger.proximal.localRotation = finger.ProximalRest * Quaternion.AngleAxis(finger.proximalCurl * amount, axis);
+                finger.proximal.localRotation = finger.ProximalRest * spread * Quaternion.AngleAxis(proximal, axis);
             }
 
             if (finger.middle != null)
             {
-                finger.middle.localRotation = finger.MiddleRest * Quaternion.AngleAxis(finger.middleCurl * amount, axis);
+                finger.middle.localRotation = finger.MiddleRest * Quaternion.AngleAxis(middle, axis);
             }
 
             if (finger.distal != null)
             {
-                finger.distal.localRotation = finger.DistalRest * Quaternion.AngleAxis(finger.distalCurl * amount, axis);
+                finger.distal.localRotation = finger.DistalRest * Quaternion.AngleAxis(distal, axis);
             }
         }
 

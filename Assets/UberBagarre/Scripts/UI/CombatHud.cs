@@ -1,6 +1,7 @@
 using UberBagarre.Combat;
 using UberBagarre.Feedback;
 using UberBagarre.Player;
+using UberBagarre.Story;
 using UnityEngine;
 
 namespace UberBagarre.UI
@@ -132,6 +133,9 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
+            // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
+            if (FightIntro.AnyPlaying) return;
+
             if (!_visible) return;
 
             DrawCrosshair();

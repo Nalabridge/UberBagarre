@@ -121,8 +121,7 @@ namespace UberBagarre.Story
             float width = Screen.width * _widthFraction;
             float x = (Screen.width - width) * 0.5f;
 
-            GUIStyle textStyle = GuiKit.Style(_fontSize, FontStyle.Normal, TextAnchor.UpperCenter);
-            textStyle.wordWrap = true;
+            GUIStyle textStyle = GuiKit.Style(_fontSize, FontStyle.Normal, TextAnchor.UpperCenter, true);
 
             float textHeight = textStyle.CalcHeight(new GUIContent(_current.Text), width - 28f);
             float speakerHeight = string.IsNullOrEmpty(_current.Speaker) ? 0f : 20f;

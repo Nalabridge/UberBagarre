@@ -163,7 +163,8 @@ namespace UberBagarre.EditorTools
 
         private static Mesh Generate(Transform space, Transform palm, Finger[] fingers, HandSide side)
         {
-            float sign = side == HandSide.Left ? -1f : 1f;
+            // Meme convention que FighterBuilder.BuildHand : pouce de la main droite en -X.
+            float sign = side == HandSide.Left ? 1f : -1f;
             Builder b = new Builder();
 
             BuildPalm(b, space, palm, fingers, sign);

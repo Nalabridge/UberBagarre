@@ -155,14 +155,42 @@ namespace UberBagarre.UI
             GUI.contentColor = previousContent;
         }
 
+        private static readonly System.Collections.Generic.Dictionary<int, GUIStyle> Styles =
+            new System.Collections.Generic.Dictionary<int, GUIStyle>(64);
+
+        /// <summary>
+        /// Un style de texte PARTAGÉ : ne jamais le modifier après l'avoir reçu.
+        ///
+        /// Il était recréé à chaque appel : une vingtaine d'affichages, plusieurs styles
+        /// chacun, deux passages d'OnGUI par image — des centaines d'objets par seconde, avec
+        /// finaliseur natif, que le ramasse-miettes devait nettoyer. Ses passages faisaient
+        /// saccader l'image, et d'autant plus en combat, où les chiffres de dégâts, les barres
+        /// et les combos s'affichent tous en même temps.
+        /// </summary>
         public static GUIStyle Style(int fontSize, FontStyle fontStyle, TextAnchor anchor)
         {
-            GUIStyle style = new GUIStyle(GUI.skin.label);
+            return Style(fontSize, fontStyle, anchor, false);
+        }
+
+        /// <summary>Même chose, avec retour à la ligne automatique si <paramref name="wordWrap"/>.</summary>
+        public static GUIStyle Style(int fontSize, FontStyle fontStyle, TextAnchor anchor, bool wordWrap)
+        {
+            int key = (Mathf.Clamp(fontSize, 0, 4095))
+                      | ((int)fontStyle << 12)
+                      | ((int)anchor << 16)
+                      | (wordWrap ? 1 << 24 : 0);
+
+            GUIStyle style;
+            if (Styles.TryGetValue(key, out style) && style != null) return style;
+
+            style = new GUIStyle(GUI.skin.label);
             style.fontSize = fontSize;
             style.fontStyle = fontStyle;
             style.alignment = anchor;
-            style.wordWrap = false;
+            style.wordWrap = wordWrap;
             style.padding = new RectOffset(0, 0, 0, 0);
+
+            Styles[key] = style;
             return style;
         }
 

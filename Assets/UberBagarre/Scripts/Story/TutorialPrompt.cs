@@ -85,6 +85,9 @@ namespace UberBagarre.Story
 
         private void OnGUI()
         {
+            // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
+            if (FightIntro.AnyPlaying) return;
+
             if (_visibility <= 0.01f || string.IsNullOrEmpty(_instruction)) return;
 
             const float height = 62f;
@@ -106,8 +109,7 @@ namespace UberBagarre.Story
                 new Color(_keyColor.r, _keyColor.g, _keyColor.b, _visibility),
                 new Color(0f, 0f, 0f, 0.85f * _visibility), 1f);
 
-            GUIStyle text = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft);
-            text.wordWrap = true;
+            GUIStyle text = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft, true);
 
             GuiKit.OutlinedLabel(new Rect(keyRect.xMax + 12f, y + 8f, _width - keyRect.width - 30f, 34f),
                 _instruction, text,
