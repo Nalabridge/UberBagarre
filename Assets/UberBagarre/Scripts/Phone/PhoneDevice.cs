@@ -1,5 +1,6 @@
 using System;
 using UberBagarre.Player;
+using UberBagarre.UI;
 using UberBagarre.View;
 using UnityEngine;
 
@@ -295,7 +296,7 @@ namespace UberBagarre.Phone
         {
             _screenAge += Time.unscaledDeltaTime;
 
-            if (_input != null && _input.PhonePressed && _available) Toggle();
+            if (_input != null && _input.PhonePressed && _available && !ModalScreen.Active) Toggle();
 
             // Scene sans systeme de telephone (generee avant lui) : E, telephone leve, valide
             // l'ecran affiche, comme avant.

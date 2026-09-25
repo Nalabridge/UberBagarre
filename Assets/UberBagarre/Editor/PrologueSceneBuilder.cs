@@ -724,6 +724,10 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(story, "_subtitles", subtitles);
             SerializedWiring.SetObject(story, "_objectives", objectives);
 
+            // Le courrier, ouvert et lu a l'ecran.
+            LetterReader letterReader = root.AddComponent<LetterReader>();
+            SerializedWiring.SetObject(letterReader, "_input", input);
+
             // --- interaction, sur le joueur : elle vise depuis sa caméra.
             InteractionSystem interaction = player.AddComponent<InteractionSystem>();
             SerializedWiring.SetObject(interaction, "_input", input);
@@ -804,6 +808,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(prologue, "_locations", locations);
             SerializedWiring.SetObject(prologue, "_finder", finder);
             SerializedWiring.SetObject(prologue, "_letters", house.Letters);
+            SerializedWiring.SetObject(prologue, "_letterReader", letterReader);
             SerializedWiring.SetObject(prologue, "_carAtHouse", house.Car);
             SerializedWiring.SetObject(prologue, "_carAtClub", clubCar);
 

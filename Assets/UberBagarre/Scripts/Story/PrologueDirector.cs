@@ -60,6 +60,11 @@ namespace UberBagarre.Story
                  "et la seule qui explique pourquoi le personnage va accepter.")]
         private Interactable _letters;
 
+        [SerializeField]
+        [Tooltip("Optionnel : ouvre les lettres a l'ecran (enveloppe, pliage, texte). Sans lui, " +
+                 "le courrier est lu d'un coup.")]
+        private LetterReader _letterReader;
+
         [SerializeField] private Interactable _carAtHouse;
         [SerializeField] private Interactable _carAtClub;
 
@@ -1774,7 +1779,14 @@ namespace UberBagarre.Story
 
         private void OnLettersRead(Interactable source)
         {
-            _lettersRead = true;
+            if (_letterReader == null)
+            {
+                _lettersRead = true;
+                return;
+            }
+
+            // L'etape passe quand le joueur REPOSE le courrier, pas quand il le prend.
+            _letterReader.Open(delegate { _lettersRead = true; });
         }
 
         private void OnCarAtHouse(Interactable source)
