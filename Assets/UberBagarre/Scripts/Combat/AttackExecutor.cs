@@ -816,7 +816,7 @@ namespace UberBagarre.Combat
             _contacted = true;
 
             // L'état d'attaque doit couvrir le gel, sinon il expire avant la fin du geste.
-            if (_combatant != null)
+            if (_combatant != null && _combatant.State.Current == CombatantState.Attacking)
             {
                 float remaining = Mathf.Max(0.02f, TotalDuration - _elapsed) + _hitLag;
                 _combatant.State.Enter(CombatantState.Attacking, remaining);

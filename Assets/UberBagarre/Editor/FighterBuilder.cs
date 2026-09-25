@@ -151,7 +151,30 @@ namespace UberBagarre.EditorTools
             result.Renderer = built.Renderer;
 
             // Le joueur voit ses bras de tout près : ombres propres, pas de sauts de qualité.
-            if (!withHead) built.Renderer.updateWhenOffscreen = true;
+            if (!withHead)
+            {
+                built.Renderer.updateWhenOffscreen = true;
+
+                // Son corps visible n'a pas de tête (on est dedans) — mais son OMBRE en a une.
+                // Un second rendu, ombre seulement, porte le corps entier ; le corps visible ne
+                // projette rien. Sans ça, une silhouette sans tête marche à côté de toi au sol.
+                System.Collections.Generic.List<string> shadowSlots;
+                Mesh whole = CorpsImporter.BuildMesh(data, skin.Top, true, out shadowSlots);
+                Material[] shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, skin.Shirt, skin.Pants, skin.Shoe);
+
+                GameObject shadowGo = new GameObject("Ombre");
+                shadowGo.transform.SetParent(result.Body.transform, false);
+                SkinnedMeshRenderer shadow = shadowGo.AddComponent<SkinnedMeshRenderer>();
+                shadow.sharedMesh = whole;
+                shadow.bones = built.Bones;
+                shadow.rootBone = built["Pelvis"];
+                shadow.sharedMaterials = shadowMaterials;
+                shadow.localBounds = built.Renderer.localBounds;
+                shadow.updateWhenOffscreen = true;
+                shadow.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+
+                built.Renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            }
 
             Transform pelvis = built["Pelvis"];
             Transform spine = built["Spine"];
