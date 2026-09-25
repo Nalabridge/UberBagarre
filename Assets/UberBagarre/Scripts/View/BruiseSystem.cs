@@ -11,49 +11,86 @@ namespace UberBagarre.View
     /// barre de vie est une abstraction : les bleus, eux, racontent où on a frappé. Ils rendent
     /// aussi lisible qu'on travaille au corps plutôt qu'à la tête.
     ///
-    /// Chaque marque est attachée au MORCEAU DE CORPS VISIBLE le plus proche du point d'impact,
-    /// et posée sur sa surface. C'est le point crucial, et la première version s'est trompée
-    /// dessus : le point d'impact transporté par le coup est calculé sur la zone touchable, dont
-    /// le rayon est volontairement généreux — 38 cm pour le torse, alors que le torse visible en
-    /// fait 19. Les marques apparaissaient donc à une vingtaine de centimètres de la peau, en
-    /// suspension dans le vide à côté du personnage. Elles étaient bien là, simplement nulle part
-    /// où on pouvait les voir.
+    /// Les marques sont PEINTES dans la surface, pas posées dessus. La première version collait
+    /// des ovales en relief sur le corps : de près on voyait une pastille, de loin une verrue.
+    /// Ici, aucun objet n'est créé. Chaque morceau de corps porte la matière « UberBagarre/Peau »,
+    /// et reçoit par un bloc de propriétés jusqu'à huit points d'impact (centre dans son espace
+    /// propre, rayon, intensité) ; le shader assombrit la peau autour, avec un contour irrégulier
+    /// et une marbrure. La marque suit le membre, puisqu'elle est dans son espace.
     ///
-    /// On reprojette donc le point sur la boîte englobante du rendu le plus proche. Ça ne demande
-    /// aucun collider sur la chair, et ça marche aussi avec un modèle 3D importé.
+    /// Sur un vêtement, la même marque est une trace sombre (poussière, sueur), pas un bleu : un
+    /// tee-shirt ne se violace pas. Un coup qui retombe au même endroit fonce la marque et
+    /// l'élargit au lieu d'en empiler une deuxième.
+    ///
+    /// Les matières d'origine (Standard) sont converties au démarrage, une copie par matière et
+    /// par combattant : n'importe quel corps en profite, y compris un modèle 3D importé.
     /// </summary>
     public class BruiseSystem : MonoBehaviour
     {
+        private const int MarksPerSurface = 8;
+        private const string ShaderName = "UberBagarre/Peau";
+
+        private class Surface
+        {
+            public Renderer Renderer;
+            public readonly Vector4[] Marks = new Vector4[MarksPerSurface];
+            public readonly Vector4[] Info = new Vector4[MarksPerSurface];
+            public readonly float[] Target = new float[MarksPerSurface];
+            public int Count;
+            public int Oldest;
+            public bool Animating;
+        }
+
         [Header("References")]
         [SerializeField] private Combatant _combatant;
         [SerializeField] private BodyRig _rig;
-        [SerializeField] private Material _bruiseMaterial;
+
+        [SerializeField]
+        [Tooltip("Le shader « UberBagarre/Peau ». Reference ici pour etre inclus dans les builds.")]
+        private Shader _markShader;
 
         [Header("Apparence")]
-        [SerializeField, Min(0.01f)] private float _minSize = 0.085f;
-        [SerializeField, Min(0.01f)] private float _maxSize = 0.170f;
+        [SerializeField, Min(0.01f)] private float _minRadius = 0.045f;
+        [SerializeField, Min(0.01f)] private float _maxRadius = 0.085f;
 
-        [SerializeField, Min(0f)]
-        [Tooltip("Decalage vers l'exterieur, pour eviter que la marque ne disparaisse dans la peau.")]
-        private float _surfaceOffset = 0.008f;
-
-        [SerializeField, Min(1)] private int _maxBruises = 16;
+        [SerializeField] private Color _skinTint = new Color(0.62f, 0.36f, 0.50f);
+        [SerializeField] private Color _skinCore = new Color(0.55f, 0.22f, 0.30f);
+        [SerializeField] private Color _clothTint = new Color(0.72f, 0.70f, 0.68f);
+        [SerializeField] private Color _clothCore = new Color(0.62f, 0.58f, 0.56f);
 
         [SerializeField, Min(0.05f)]
         [Tooltip("Temps d'apparition. Un bleu ne surgit pas instantanement.")]
-        private float _fadeInDuration = 0.5f;
+        private float _fadeInDuration = 0.6f;
 
-        private readonly List<Transform> _bruises = new List<Transform>();
-        private readonly List<Renderer> _surfaces = new List<Renderer>();
-        private readonly List<float> _ages = new List<float>();
-        private readonly List<Vector3> _targetScales = new List<Vector3>();
+        private static readonly int MarksId = Shader.PropertyToID("_Marks");
+        private static readonly int InfoId = Shader.PropertyToID("_MarkInfo");
+        private static readonly int CountId = Shader.PropertyToID("_MarkCount");
+        private static readonly int TintId = Shader.PropertyToID("_MarkTint");
+        private static readonly int CoreId = Shader.PropertyToID("_MarkCore");
+
+        private readonly List<Surface> _surfaces = new List<Surface>();
+        private readonly List<Surface> _animating = new List<Surface>();
+        private readonly Dictionary<Material, Material> _converted = new Dictionary<Material, Material>();
+        private MaterialPropertyBlock _block;
+        private bool _ready;
 
         private void Awake()
         {
             if (_combatant == null) _combatant = GetComponent<Combatant>();
             if (_rig == null) _rig = GetComponentInChildren<BodyRig>(true);
+            if (_markShader == null) _markShader = Shader.Find(ShaderName);
+
+            _block = new MaterialPropertyBlock();
+
+            if (_markShader == null)
+            {
+                Debug.LogWarning("[UberBagarre] BruiseSystem sur " + name + " : shader « " + ShaderName +
+                                 " » introuvable, les coups ne marqueront pas la peau.", this);
+                return;
+            }
 
             CollectSurfaces();
+            _ready = _surfaces.Count > 0;
         }
 
         private void OnEnable()
@@ -66,26 +103,50 @@ namespace UberBagarre.View
             if (_combatant != null) _combatant.Damaged -= OnDamaged;
         }
 
+        private void OnDestroy()
+        {
+            foreach (Material material in _converted.Values)
+            {
+                if (material != null) Destroy(material);
+            }
+
+            _converted.Clear();
+        }
+
         /// <summary>
-        /// Tous les morceaux de corps visibles. On cherche une SURFACE, pas un os.
-        ///
-        /// Le rendu le plus proche du point d'impact donne à la fois l'endroit où coller la
-        /// marque et le transform auquel l'accrocher, donc elle suit forcément le mouvement du
-        /// membre touché. Chercher l'os le plus proche laissait le choix de la position ouvert,
-        /// et c'est là que la première version posait les marques dans le vide.
+        /// Tous les morceaux de corps visibles, passés à la matière qui sait porter des marques.
         /// </summary>
         private void CollectSurfaces()
         {
             Transform root = _rig != null ? _rig.transform : transform;
-
             Renderer[] found = root.GetComponentsInChildren<Renderer>(true);
 
             for (int i = 0; i < found.Length; i++)
             {
-                if (found[i] == null) continue;
-                if (found[i].GetComponent<ParticleSystem>() != null) continue;
+                Renderer renderer = found[i];
+                if (renderer == null) continue;
+                if (!(renderer is MeshRenderer) && !(renderer is SkinnedMeshRenderer)) continue;
 
-                _surfaces.Add(found[i]);
+                Material[] materials = renderer.sharedMaterials;
+                bool any = false;
+
+                for (int m = 0; m < materials.Length; m++)
+                {
+                    Material converted = Convert(materials[m]);
+                    if (converted == null) continue;
+
+                    materials[m] = converted;
+                    any = true;
+                }
+
+                if (!any) continue;
+
+                renderer.sharedMaterials = materials;
+
+                Surface surface = new Surface();
+                surface.Renderer = renderer;
+                _surfaces.Add(surface);
+                Push(surface);
             }
 
             if (_surfaces.Count == 0)
@@ -95,143 +156,217 @@ namespace UberBagarre.View
             }
         }
 
+        /// <summary>Une copie de la matière avec le shader à marques. Une seule copie par matière d'origine.</summary>
+        private Material Convert(Material source)
+        {
+            if (source == null) return null;
+            if (source.shader == _markShader) return source;
+
+            Material converted;
+            if (_converted.TryGetValue(source, out converted)) return converted;
+
+            converted = new Material(_markShader);
+            converted.CopyPropertiesFromMaterial(source);
+            converted.name = source.name + " (marques)";
+
+            // La peau bleuit ; le reste (tissu, cuir) se salit.
+            bool skin = IsSkin(source);
+            converted.SetColor(TintId, skin ? _skinTint : _clothTint);
+            converted.SetColor(CoreId, skin ? _skinCore : _clothCore);
+
+            _converted[source] = converted;
+            return converted;
+        }
+
+        private static bool IsSkin(Material material)
+        {
+            string name = material.name.ToLowerInvariant();
+            return name.Contains("skin") || name.Contains("peau") || name.Contains("flesh") || name.Contains("chair");
+        }
+
+        // --------------------------------------------------------------- coups
+
         private void OnDamaged(Combatant combatant, DamageInfo info)
         {
-            if (_bruiseMaterial == null || _surfaces.Count == 0) return;
+            if (!_ready) return;
             if (info.Point == Vector3.zero) return;
 
             // Un coup pris sur les avant-bras ne marque pas la peau.
             if (info.Blocked) return;
 
-            Vector3 surfacePoint;
-            Renderer surface = NearestSurface(info.Point, out surfacePoint);
-            if (surface == null) return;
+            Vector3 centre;
+            if (!NearestSurfacePoint(info.Point, out centre)) return;
 
-            SpawnBruise(AttachPointOf(surface), surfacePoint, info);
+            float severity = Mathf.Clamp01(info.Amount / 20f);
+            float radius = Mathf.Lerp(_minRadius, _maxRadius, severity);
+            float intensity = Mathf.Lerp(0.6f, 1f, severity);
+            float seed = Random.value * 10f;
+
+            // La marque est posee sur TOUS les morceaux qu'elle touche : un coup a la machoire
+            // marque la tete et le cou d'une seule tache, sans couture a la jonction.
+            for (int i = 0; i < _surfaces.Count; i++)
+            {
+                Surface surface = _surfaces[i];
+                if (surface.Renderer == null) continue;
+                if (surface.Renderer.bounds.SqrDistance(centre) > radius * radius) continue;
+
+                AddMark(surface, centre, radius, intensity, seed);
+            }
         }
 
         /// <summary>
-        /// Le morceau de corps visible dont la surface est la plus proche du point d'impact, et
-        /// le point de cette surface où poser la marque.
+        /// Le point de la surface visible le plus proche de l'impact.
+        ///
+        /// Le point transporté par le coup est calculé sur la zone touchable, volontairement plus
+        /// large que le corps (38 cm pour le torse, qui en fait 19) : sans cette reprojection, la
+        /// marque serait posée dans le vide à côté de la peau. On projette sur l'ellipsoïde inscrit
+        /// dans la boîte du maillage, qui épouse les formes arrondies du corps.
         /// </summary>
-        private Renderer NearestSurface(Vector3 worldPoint, out Vector3 surfacePoint)
+        private bool NearestSurfacePoint(Vector3 world, out Vector3 best)
         {
-            Renderer best = null;
-            surfacePoint = worldPoint;
+            best = world;
             float bestSqr = float.MaxValue;
+            bool found = false;
 
             for (int i = 0; i < _surfaces.Count; i++)
             {
-                Renderer renderer = _surfaces[i];
-                if (renderer == null) continue;
+                Renderer renderer = _surfaces[i].Renderer;
+                if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
 
-                Vector3 candidate = renderer.bounds.ClosestPoint(worldPoint);
-                float sqr = (candidate - worldPoint).sqrMagnitude;
+                Vector3 candidate = ProjectOnSurface(renderer, world);
+                float sqr = (candidate - world).sqrMagnitude;
                 if (sqr >= bestSqr) continue;
 
                 bestSqr = sqr;
-                surfacePoint = candidate;
-                best = renderer;
+                best = candidate;
+                found = true;
             }
 
-            return best;
+            return found;
         }
 
-        /// <summary>
-        /// À quel transform accrocher la marque : l'OS qui porte le visuel, pas le visuel.
-        ///
-        /// Les morceaux de chair sont des maillages unitaires mis à l'échelle — un torse, c'est la
-        /// boîte adoucie redimensionnée en (0,34 ; 0,30 ; 0,22). Accrocher la marque dessus la
-        /// ferait hériter de cette échelle non uniforme : elle serait étirée en largeur et écrasée
-        /// en profondeur, et d'autant plus déformée qu'elle est posée en biais. Les os, eux, sont
-        /// à l'échelle 1.
-        /// </summary>
-        private static Transform AttachPointOf(Renderer surface)
+        private static Vector3 ProjectOnSurface(Renderer renderer, Vector3 world)
         {
-            Transform visual = surface.transform;
-            return visual.parent != null ? visual.parent : visual;
+            Transform t = renderer.transform;
+            Bounds bounds = renderer.localBounds;
+            Vector3 extents = bounds.extents;
+
+            if (extents.x < 1e-5f || extents.y < 1e-5f || extents.z < 1e-5f) return renderer.bounds.ClosestPoint(world);
+
+            Vector3 local = t.InverseTransformPoint(world) - bounds.center;
+            Vector3 direction = new Vector3(local.x / extents.x, local.y / extents.y, local.z / extents.z);
+            if (direction.sqrMagnitude < 1e-6f) direction = Vector3.forward;
+            direction.Normalize();
+
+            return t.TransformPoint(bounds.center + Vector3.Scale(direction, extents));
         }
 
-        private void SpawnBruise(Transform surface, Vector3 surfacePoint, DamageInfo info)
+        private void AddMark(Surface surface, Vector3 worldCentre, float radius, float intensity, float seed)
         {
-            GameObject bruise = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            bruise.name = "Bleu";
+            Vector3 local = surface.Renderer.transform.InverseTransformPoint(worldCentre);
+            Vector3 scale = surface.Renderer.transform.lossyScale;
 
-            Collider collider = bruise.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
-
-            MeshRenderer renderer = bruise.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = _bruiseMaterial;
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            // On repousse legerement la marque vers l'exterieur, sinon elle se noie dans la
-            // surface et devient invisible sous certains angles. La direction vient du coup
-            // lui-meme : c'est la normale la plus juste qu'on ait sans collider sur la chair.
-            Vector3 outward = -info.Direction;
-            if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
-            outward.Normalize();
-
-            // Le parent est pris APRES avoir fixe la pose monde, pour que l'echelle locale du
-            // membre ne deforme pas la marque.
-            bruise.transform.position = surfacePoint + outward * _surfaceOffset;
-            bruise.transform.rotation = Quaternion.LookRotation(outward, Vector3.up);
-            bruise.transform.SetParent(surface, true);
-
-            float severity = Mathf.Clamp01(info.Amount / 20f);
-            float size = Mathf.Lerp(_minSize, _maxSize, severity);
-
-            // Aplatie contre la peau plutot que spherique : une bosse ferait verrue.
-            Vector3 target = new Vector3(size, size * 0.85f, size * 0.30f);
-            bruise.transform.localScale = Vector3.zero;
-
-            _bruises.Add(bruise.transform);
-            _ages.Add(0f);
-            _targetScales.Add(target);
-
-            TrimOldest();
-        }
-
-        private void TrimOldest()
-        {
-            while (_bruises.Count > _maxBruises)
+            // Un coup qui retombe sur une marque existante la fonce et l'elargit.
+            for (int i = 0; i < surface.Count; i++)
             {
-                if (_bruises[0] != null) Destroy(_bruises[0].gameObject);
+                Vector4 mark = surface.Marks[i];
+                Vector3 offset = Vector3.Scale((Vector3)mark - local, scale);
+                if (offset.magnitude > mark.w * 0.6f) continue;
 
-                _bruises.RemoveAt(0);
-                _ages.RemoveAt(0);
-                _targetScales.RemoveAt(0);
+                surface.Marks[i] = new Vector4(mark.x, mark.y, mark.z, Mathf.Min(_maxRadius * 1.6f, mark.w * 1.12f));
+                surface.Target[i] = Mathf.Min(1.15f, surface.Target[i] + intensity * 0.3f);
+                StartAnimating(surface);
+                return;
             }
+
+            // Sinon, une nouvelle marque ; pleine, on remplace la plus ancienne.
+            int index;
+            if (surface.Count < MarksPerSurface)
+            {
+                index = surface.Count++;
+            }
+            else
+            {
+                index = surface.Oldest;
+                surface.Oldest = (surface.Oldest + 1) % MarksPerSurface;
+            }
+
+            surface.Marks[index] = new Vector4(local.x, local.y, local.z, radius);
+            surface.Info[index] = new Vector4(0f, seed, 0f, 0f);
+            surface.Target[index] = intensity;
+            StartAnimating(surface);
+        }
+
+        private void StartAnimating(Surface surface)
+        {
+            if (surface.Animating) return;
+
+            surface.Animating = true;
+            _animating.Add(surface);
         }
 
         private void Update()
         {
-            float dt = Time.deltaTime;
+            if (_animating.Count == 0) return;
 
-            for (int i = 0; i < _bruises.Count; i++)
+            // Temps de jeu : un ralenti d'impact ralentit aussi l'apparition du bleu.
+            float step = Time.deltaTime / _fadeInDuration;
+
+            for (int s = _animating.Count - 1; s >= 0; s--)
             {
-                if (_bruises[i] == null) continue;
-                if (_ages[i] >= _fadeInDuration) continue;
+                Surface surface = _animating[s];
+                bool moving = false;
 
-                _ages[i] += dt;
-                float t = Mathf.Clamp01(_ages[i] / _fadeInDuration);
+                for (int i = 0; i < surface.Count; i++)
+                {
+                    float current = surface.Info[i].x;
+                    float target = surface.Target[i];
+                    if (Mathf.Approximately(current, target)) continue;
 
-                // Depassement puis retour : la marque "gonfle" comme un vrai hematome.
-                float overshoot = 1f + Mathf.Sin(t * Mathf.PI) * 0.25f;
-                _bruises[i].localScale = _targetScales[i] * (t * overshoot);
+                    surface.Info[i].x = Mathf.MoveTowards(current, target, step * Mathf.Max(0.3f, target));
+                    moving = true;
+                }
+
+                Push(surface);
+
+                if (moving) continue;
+
+                surface.Animating = false;
+                _animating.RemoveAt(s);
             }
+        }
+
+        private void Push(Surface surface)
+        {
+            if (surface.Renderer == null) return;
+
+            surface.Renderer.GetPropertyBlock(_block);
+            _block.SetVectorArray(MarksId, surface.Marks);
+            _block.SetVectorArray(InfoId, surface.Info);
+            _block.SetFloat(CountId, surface.Count);
+            surface.Renderer.SetPropertyBlock(_block);
         }
 
         /// <summary>Efface toutes les marques. Appelé à la relance d'un combat.</summary>
         public void Clear()
         {
-            for (int i = 0; i < _bruises.Count; i++)
+            for (int i = 0; i < _surfaces.Count; i++)
             {
-                if (_bruises[i] != null) Destroy(_bruises[i].gameObject);
+                Surface surface = _surfaces[i];
+                surface.Count = 0;
+                surface.Oldest = 0;
+                surface.Animating = false;
+
+                for (int m = 0; m < MarksPerSurface; m++)
+                {
+                    surface.Info[m] = Vector4.zero;
+                    surface.Target[m] = 0f;
+                }
+
+                Push(surface);
             }
 
-            _bruises.Clear();
-            _ages.Clear();
-            _targetScales.Clear();
+            _animating.Clear();
         }
     }
 }

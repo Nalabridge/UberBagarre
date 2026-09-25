@@ -1057,7 +1057,10 @@ namespace UberBagarre.EditorTools
             BruiseSystem bruises = go.AddComponent<BruiseSystem>();
             SerializedWiring.SetObject(bruises, "_combatant", combatant);
             SerializedWiring.SetObject(bruises, "_rig", body.Rig);
-            SerializedWiring.SetObject(bruises, "_bruiseMaterial", materials.Bruise);
+            // Les bleus sont peints dans la peau par ce shader ; la reference l'emmene dans
+            // les builds, ou Shader.Find ne trouverait pas un shader que rien ne cite.
+            SerializedWiring.SetObject(bruises, "_markShader",
+                AssetDatabase.LoadAssetAtPath<Shader>("Assets/UberBagarre/Art/Shaders/UberSkin.shader"));
             return bruises;
         }
 
