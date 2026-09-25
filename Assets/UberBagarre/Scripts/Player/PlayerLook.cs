@@ -47,6 +47,24 @@ namespace UberBagarre.Player
         /// </summary>
         public float SensitivityScale { get; set; }
 
+        /// <summary>
+        /// Réglage de sensibilité du JOUEUR (menu Graphismes et commandes), sauvegardé. Distinct
+        /// de <see cref="SensitivityScale"/>, que le zoom de l'appareil photo modifie et remet à 1
+        /// en sortant : les deux se multiplient.
+        /// </summary>
+        public float UserSensitivity
+        {
+            get { return _userSensitivity; }
+            set
+            {
+                _userSensitivity = Mathf.Clamp(value, 0.1f, 4f);
+                PlayerPrefs.SetFloat(UserSensitivityKey, _userSensitivity);
+            }
+        }
+
+        public const string UserSensitivityKey = "UberBagarre.Menu.sensibilite";
+        private float _userSensitivity = 1f;
+
         /// <summary>La tête (le point de vue) : sert aux mises en scène qui orientent le regard.</summary>
         public Transform Head
         {
@@ -60,6 +78,7 @@ namespace UberBagarre.Player
         {
             LookEnabled = true;
             SensitivityScale = 1f;
+            _userSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(UserSensitivityKey, 1f), 0.1f, 4f);
 
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_yawTransform == null) _yawTransform = transform;
@@ -78,7 +97,7 @@ namespace UberBagarre.Player
         {
             if (!LookEnabled || _input == null) return;
 
-            Vector2 rawDelta = _input.LookDelta * (_sensitivity * Mathf.Clamp(SensitivityScale, 0.05f, 4f));
+            Vector2 rawDelta = _input.LookDelta * (_sensitivity * Mathf.Clamp(SensitivityScale, 0.05f, 4f) * _userSensitivity);
 
             if (_smoothingTime > 0.0001f)
             {

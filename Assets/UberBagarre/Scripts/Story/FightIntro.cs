@@ -141,6 +141,9 @@ namespace UberBagarre.Story
 
         private void Update()
         {
+            // Jeu en pause : rien ne bouge derriere le menu, pas meme ce qui compte en temps reel.
+            if (UberBagarre.UI.GameMenu.IsPaused) return;
+
             // Les bandes descendent et remontent en 0,35 s ; pendant la cinematique elles
             // remontent juste avant la fin, sur le « BAGARRE ! ».
             float bars = _playing ? (_time < End - 0.35f ? 1f : 0f) : (Bars ? 1f : 0f);

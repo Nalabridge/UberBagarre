@@ -48,6 +48,14 @@ namespace UberBagarre.EditorTools
 
             /// <summary>La voiture dans l'allée.</summary>
             public Interactable Car;
+
+            /// <summary>
+            /// Le plan de l'écran titre : un lent travelling de l'autre côté de la rue, de
+            /// <see cref="MenuFrom"/> à <see cref="MenuTo"/>, qui regarde <see cref="MenuTarget"/>.
+            /// </summary>
+            public Transform MenuFrom;
+            public Transform MenuTo;
+            public Transform MenuTarget;
         }
 
         public class Palette
@@ -102,6 +110,13 @@ namespace UberBagarre.EditorTools
             // Le décor doit faire le travail avant que le premier objectif ne s'affiche.
             arrival.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             result.Arrival = arrival.transform;
+
+            // L'ecran titre filme la maison depuis le trottoir d'en face : la facade, le porche
+            // allume, la voiture sur l'allee, les lampadaires.
+            GameObject shot = EditorBuildUtility.CreateEmpty("Plan de l'ecran titre", root.transform, Vector3.zero);
+            result.MenuFrom = EditorBuildUtility.CreateEmpty("Depart", shot.transform, new Vector3(12.5f, 1.45f, -22.3f)).transform;
+            result.MenuTo = EditorBuildUtility.CreateEmpty("Arrivee", shot.transform, new Vector3(4.2f, 1.8f, -21.9f)).transform;
+            result.MenuTarget = EditorBuildUtility.CreateEmpty("Visee", shot.transform, new Vector3(3.4f, 1.9f, -0.5f)).transform;
 
             return result;
         }

@@ -137,8 +137,9 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
-            // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
-            if (FightIntro.AnyPlaying) return;
+            // La cinematique d'avant-combat et l'ecran titre prennent l'ecran : pas d'interface
+            // de jeu par-dessus.
+            if (FightIntro.AnyPlaying || GameMenu.ShowingTitle) return;
 
             if (!_visible) return;
 

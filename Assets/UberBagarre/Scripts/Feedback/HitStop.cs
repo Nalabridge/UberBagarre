@@ -98,6 +98,9 @@ namespace UberBagarre.Feedback
 
         private void Update()
         {
+            // Jeu en pause : rien ne bouge derriere le menu, pas meme ce qui compte en temps reel.
+            if (UberBagarre.UI.GameMenu.IsPaused) return;
+
             if (_cooldownTimer > 0f) _cooldownTimer -= Time.unscaledDeltaTime;
             if (_timer <= 0f) return;
 

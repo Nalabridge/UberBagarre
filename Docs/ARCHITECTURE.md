@@ -1955,3 +1955,95 @@ Le code est désormais compilé à chaque étape par Roslyn (le compilateur C# o
 assemblages de référence d'Unity 2021.3 et un environnement .NET 8 récupérés sur NuGet — jeu et
 éditeur. Seules les API apparues après 2021.3 (`linearVelocity`) sont renommées le temps de la
 vérification.
+
+## 23. Un jeu qui s'ouvre, des bagarres qui se parlent, une maison qui existe
+
+Demande : *« un menu dans le jeu avec les graphismes, et un menu pour lancer le jeu ; la maison un peu
+plus détaillée ; quand on sélectionne les factures, une animation puis les lettres à l'écran ; hors
+combat, les mains pas en position de combat, pas de dash, pas de barre de vie ; la voiture sur une
+allée comme une maison normale ; du dialogue avant la baston, comme les sous-titres du début ; les
+bleus en texture là où on tape, pas un ovale collé ; et comment intégrer des modèles 3D. »*
+
+### 23.1 Être en combat, ou pas
+
+`CombatPresence` (sur le joueur) répond à une seule question : **est-on en train de se battre ?** Oui
+si un adversaire vivant, hostile et ENGAGÉ (cerveau allumé, rien ne le retient) est à moins de 11 m,
+ou si on vient soi-même de frapper, garder ou encaisser (6 s de rémanence). La réponse est lissée
+(`Weight` : la garde monte en ~0,2 s, redescend en ~0,8 s) et tout le reste la lit : les mains
+(`FirstPersonHands.RelaxedWeight` mélange la garde et une pose bras le long du corps), l'esquive et la
+glissade (`PlayerCombat` les refuse hors combat), le HUD (`GuiKit.Alpha` porte la visibilité), les
+barres au-dessus des têtes, et les PNJ (`EnemyAvatarDriver` baisse les bras tant que le cerveau dort).
+
+### 23.2 Le face-à-face
+
+Le moteur d'étapes a gagné deux verbes : `During(action)` (appelé à chaque image de l'étape) et
+`SkipWhen(condition)` (étape sautée si la condition est vraie en y entrant). Un face-à-face est donc une
+étape ordinaire (`PrologueDirector.FaceOffBeat`) : `Freeze`, bandes noires (`FightIntro.Bars`, que la
+cinématique reprend sans à-coup), répliques doublées, et pendant ce temps `FaceOff` fait avancer les
+adversaires au pas (`EnemyMotor.SetMoveIntent`, sans IA) jusqu'à distance de conversation et glisse le
+regard du joueur vers eux (`PlayerLook.SetLookAngles`, amorti). `SkipWhen` sur « le joueur a frappé le
+premier ». Le combat lui-même démarre à l'étape suivante, qu'il y ait eu dialogue ou non.
+
+### 23.3 Le courrier
+
+`LetterReader` dessine tout en IMGUI avec trois textures générées (papier, poche d'enveloppe entaillée
+en V, rabat triangulaire) : l'enveloppe monte, le rabat se retourne, la lettre sort pliée en trois
+(format DL), se déplie en A4, puis le texte **s'imprime**. L'astuce du texte qui s'écrit sans que les
+mots sautent d'une ligne à l'autre : on affiche toujours le texte complet, dont la fin est rendue
+transparente par une balise `<color=#00000000>` — la mise en page est celle du texte final dès la
+première lettre. Le montant apparaît, puis le tampon tombe (échelle 1,9 → 1 en 110 ms, choc sourd).
+
+`ModalScreen` : un écran plein (lettre, menu) se déclare, et l'interaction (E) et la touche du
+téléphone se taisent tant qu'il est ouvert. Un verrou par propriétaire, comme les verrous d'entrée.
+
+### 23.4 La maison et l'allée
+
+Le toit à deux pans demandait une forme qu'Unity ne fournit pas : un **prisme triangulaire**
+(`NightMeshFactory.Gable`, une face par sommet pour garder les arêtes franches) ferme les pignons ; les
+pans sont des boîtes inclinées dont la face inférieure passe exactement par le haut des murs. Le reste
+est de la composition (`HouseBuilder` : `Roof`, `Door`, `Porch`, `Window`, `InteriorWalls`, `Sofa`…).
+La voiture est posée sur une allée le long du flanc droit, le nez vers le fond du terrain ; la portière
+conducteur (côté maison) porte l'interaction. La clôture a enfin un collider par pan : entre deux
+poteaux, on traversait le grillage. Une rue, un trottoir et les voisins ferment le décor, bordés de
+murs invisibles.
+
+### 23.5 Les bleus dans la peau
+
+Les ovales en relief (une sphère aplatie par coup, accrochée à l'os) ont disparu. `BruiseSystem`
+convertit au démarrage chaque matière du corps vers le shader `UberBagarre/Peau` (une copie par matière
+d'origine et par combattant, propriétés recopiées), puis, à chaque coup, pousse dans un
+`MaterialPropertyBlock` propre au morceau touché jusqu'à huit marques : centre dans l'espace de l'objet,
+rayon en mètres, intensité, graine de forme. Le shader mesure la distance **après application de
+l'échelle de l'objet** (les morceaux de corps sont des maillages unitaires étirés : sans ça, un bleu
+rond deviendrait une ellipse sur le torse), la déforme par deux octaves de bruit, et multiplie l'albédo
+par une teinte de halo et une teinte de cœur. Peau (nom de matière contenant *skin* / *peau*) : violet ;
+le reste : trace sombre. Le point d'impact est reprojeté sur l'ellipsoïde inscrit dans la boîte du
+maillage (le point transporté par le coup est sur la zone touchable, plus large que le corps), et la
+marque est posée sur tous les morceaux qu'elle touche. Limite connue : sur un modèle importé à
+**maillage déformé** (SkinnedMeshRenderer), l'espace de l'objet est celui du personnage entier ; une
+marque sur un avant-bras qui bouge glisserait. Le prototype n'a que des morceaux rigides.
+
+### 23.6 Le menu
+
+`GameMenu` porte les deux écrans : le titre (au lancement de la scène d'histoire, `PrologueDirector`
+n'y démarre plus seul) et la pause (Échap). Le titre filme la maison avec la caméra de cinéma, en
+travelling aller-retour entre deux points posés par `HouseBuilder` ; la musique est synthétisée à
+l'ouverture (quatre accords, nappes désaccordées, basse pulsée, fondus aux changements).
+
+La pause arrête `Time.timeScale` et `AudioListener.pause` — mais une bonne partie du jeu compte en
+temps réel (dialogues, cinématique, téléphone, lettres, ralenti d'impact) : ces `Update` testent
+`GameMenu.IsPaused` et rendent la main. Le ralenti d'impact en particulier aurait sinon remis le temps à
+1 derrière le menu. Au retour, le temps reprend à `HitStop.BaseTimeScale` (le ralenti de triche survit).
+
+Les réglages graphiques passent par `GraphicsDirector` (déjà sauvegardé) ; le menu ajoute la qualité
+Unity, le plein écran, la résolution, le champ de vision, la sensibilité (`PlayerLook.UserSensitivity`,
+distincte du multiplicateur que le zoom de l'appareil photo remet à 1), le volume et le compteur
+d'images. Tout est dessiné en IMGUI, avec des widgets maison (barre cliquable et glissable, flèches),
+et piloté au clavier comme à la souris.
+
+### 23.7 Des modèles 3D à la place des formes générées
+
+Voir `Docs/MODELE_3D.md`, complété : personnage **Humanoid** (Mixamo, etc.) branché par l'outil
+existant, objets rigides (voiture, meubles) posés à la place des boîtes générées. Les bleus suivent
+d'office, puisque la conversion des matières se fait au démarrage.
+

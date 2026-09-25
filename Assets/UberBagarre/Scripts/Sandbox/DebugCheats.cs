@@ -182,6 +182,9 @@ namespace UberBagarre.Sandbox
 
         private void Update()
         {
+            // Jeu en pause : rien ne bouge derriere le menu, pas meme ce qui compte en temps reel.
+            if (UberBagarre.UI.GameMenu.IsPaused) return;
+
             if (_input != null && _input.Provider != null)
             {
                 if (_noclipKey.IsAssigned && _input.Provider.GetPressedThisFrame(_noclipKey)) Noclip = !Noclip;

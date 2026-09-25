@@ -93,6 +93,7 @@ namespace UberBagarre.Phone
         private void OnGUI()
         {
             if (_device == null) return;
+            if (UberBagarre.UI.GameMenu.ShowingTitle) return;
 
             // Seuil franc plutot qu'un fondu : GuiKit.Fill impose sa propre couleur a chaque
             // appel, donc un GUI.color global ne ferait pas fondre les aplats — seulement le

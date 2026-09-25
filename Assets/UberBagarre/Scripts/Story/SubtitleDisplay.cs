@@ -90,6 +90,9 @@ namespace UberBagarre.Story
 
         private void Update()
         {
+            // Jeu en pause : rien ne bouge derriere le menu, pas meme ce qui compte en temps reel.
+            if (UberBagarre.UI.GameMenu.IsPaused) return;
+
             if (!_hasCurrent && _queue.Count > 0)
             {
                 _current = _queue.Dequeue();

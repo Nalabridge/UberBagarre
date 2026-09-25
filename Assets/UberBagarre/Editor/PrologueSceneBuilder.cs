@@ -5,6 +5,7 @@ using UberBagarre.Phone;
 using UberBagarre.Player;
 using UberBagarre.Sandbox;
 using UberBagarre.Story;
+using UberBagarre.UI;
 using UberBagarre.View;
 using UberBagarre.World;
 using UnityEditor;
@@ -135,6 +136,7 @@ namespace UberBagarre.EditorTools
             WireChapterTwo(player, briefingThree, club, champion, clubDoor);
             WireFightStaging(player, night, materials, street, parking);
             BuildTestTools(player, graphics);
+            BuildTitleScreen(player, graphics, gameCamera, observerCamera, house);
 
             // Le club reste eteint jusqu'a ce qu'on y entre : sa musique, sa foule et ses
             // lyres ne tournent pas pendant qu'on est a la planque.
@@ -361,6 +363,29 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(menu, "_cheats", cheats);
             SerializedWiring.SetBool(menu, "_storyMode", true);
             SerializedWiring.Verify(menu, "_cursor");
+        }
+
+        /// <summary>
+        /// L'écran titre : le jeu ne démarre plus directement sur le réveil dans la planque, il
+        /// s'ouvre sur la maison filmée depuis la rue, et c'est « Nouvelle partie » (ou un
+        /// chapitre) qui lance l'histoire.
+        /// </summary>
+        private static void BuildTitleScreen(GameObject player, GraphicsDirector graphics, Camera gameCamera,
+            Camera observerCamera, HouseBuilder.Result house)
+        {
+            GameMenu gameMenu = SandboxSceneBuilder.BuildGameMenu(player, graphics, gameCamera, observerCamera);
+            PrologueDirector prologue = Object.FindAnyObjectByType<PrologueDirector>();
+
+            SerializedWiring.SetObject(gameMenu, "_prologue", prologue);
+            SerializedWiring.SetObject(gameMenu, "_fader", Object.FindAnyObjectByType<ScreenFader>());
+            SerializedWiring.SetBool(gameMenu, "_titleOnStart", true);
+            SerializedWiring.SetObject(gameMenu, "_shotFrom", house.MenuFrom);
+            SerializedWiring.SetObject(gameMenu, "_shotTo", house.MenuTo);
+            SerializedWiring.SetObject(gameMenu, "_shotTarget", house.MenuTarget);
+            SerializedWiring.Verify(gameMenu, "_prologue");
+
+            // L'histoire attend le gameMenu.
+            if (prologue != null) SerializedWiring.SetBool(prologue, "_playOnStart", false);
         }
 
         /// <summary>Le club devient un lieu, et le chapitre 2 reçoit tout ce qu'il pilote.</summary>

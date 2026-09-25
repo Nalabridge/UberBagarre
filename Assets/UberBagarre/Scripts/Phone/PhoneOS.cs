@@ -383,6 +383,9 @@ namespace UberBagarre.Phone
 
         private void Update()
         {
+            // Jeu en pause : rien ne bouge derriere le menu, pas meme ce qui compte en temps reel.
+            if (UberBagarre.UI.GameMenu.IsPaused) return;
+
             if (_device == null) return;
 
             SyncStory();

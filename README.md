@@ -7,7 +7,8 @@ Le dépôt contient **deux scènes**, générées par le menu **Uber Bagarre** :
 - **LE JEU** (`Prologue.unity`, menu **3 - Construire le JEU (histoire complete)**) — toute l'histoire :
   le prologue (la planque, l'appel de Sami, l'appli illégale, la course à une étoile, le groupe devant
   le club, la photo), le chapitre 1 (les frères Kovac au parking) et le chapitre 2 (l'intérieur du
-  Vertigo, la fosse et son public). **C'est cette scène qu'il faut lancer pour jouer.**
+  Vertigo, la fosse et son public). **C'est cette scène qu'il faut lancer pour jouer** : elle s'ouvre
+  sur l'**écran titre** (Nouvelle partie, Chapitres, Bac à sable, Graphismes, Commandes).
 - **Le bac à sable** (`CombatSandbox.unity`, menu **2**) — l'établi de combat, sans histoire, tous les
   réglages sous la main. Même là, l'adversaire attend qu'on ait **accepté la course au téléphone**.
 
@@ -91,7 +92,7 @@ Dans l'ordre :
    regardes l'éditeur, pas le jeu. Dans l'onglet Game, menu déroulant en haut : choisis
    **Play Focused** (ou *Play Maximized*).
 3. **Clique une fois dans l'image.** Tant que le jeu n'a pas la main, il affiche
-   « CLIQUE DANS LA FENÊTRE POUR JOUER ». Échap rend la souris.
+   « CLIQUE DANS LA FENÊTRE POUR JOUER ». Échap ouvre la pause et rend la souris.
 4. **Linux : ouvre une session X11 (Xorg), pas Wayland.** L'éditeur Unity sous Linux est prévu
    pour X11 ; sous Wayland la capture de la souris peut échouer et le curseur sort de la fenêtre.
    Sur l'écran de connexion (roue dentée), choisis par exemple « Ubuntu sur Xorg ». Le jeu
@@ -154,7 +155,8 @@ Dans l'ordre :
 | **F3** | **Caméra d'observation** — orbite autour de toi, et le combat continue |
 | **+** / **-** | Zoom de la caméra d'observation |
 | **R** | Relancer le combat (tout le monde à plein, retour au spawn) |
-| **Échap** | Libérer le curseur (pour revenir à l'éditeur) |
+| **Échap** | **Pause** : reprendre, chapitres, graphismes, commandes, menu principal, quitter. Rend aussi la souris |
+| **E** / **Retour arrière** | Courrier ouvert : lettre suivante / tout reposer |
 | Clic dans la vue | Recapturer le curseur |
 
 Toutes les touches sont dans un seul asset : `Assets/UberBagarre/Settings/InputBindings.asset`.
@@ -194,7 +196,8 @@ Tu peux les changer sans toucher à une ligne de code.
 | 24 | Vraies mains (maillage continu déformé par les os), anti-spam, épuisement, TAA, anti-chute | ✅ |
 | 25 | Voix des personnages, ambiances sonores par lieu, caméra stable, combat nerveux, adversaire toujours lisible, menu de triche dans le jeu | ✅ |
 | 26 | Téléphone avec un vrai système (8 applis), appareil photo plein écran, prise en main réaliste, cinématique d'avant-combat, foule qui se forme, garde et coups en vrille, mouchard de caméra | ✅ |
-| 27 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 27 | Écran titre et pause avec réglages graphiques, face-à-face dialogués avant chaque bagarre, courrier animé, maison détaillée et voiture sur l'allée, bleus peints dans la peau, mains au repos hors combat | ✅ |
+| 28 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -204,7 +207,7 @@ Tu peux les changer sans toucher à une ligne de code.
 Assets/UberBagarre/
   Scripts/
     Core/        input (backend-agnostique), interfaces partagées
-    Player/      déplacement, visée, curseur, head bob, pilotage des mains
+    Player/      déplacement, visée, curseur, head bob, pilotage des mains, présence en combat
     View/        squelette, IK deux os, cycle de marche, mains articulées, marques de coup,
                  physique des coups par os (BodyImpactPhysics), lumiere volumetrique,
                  lumieres au tempo (BeatLight), lyres (SweepingLight)
@@ -213,10 +216,12 @@ Assets/UberBagarre/
     Enemy/       moteur, IA, répertoire de coups, garde réactive, séquence de test
     Feedback/    camera shake, recul, arrêt sur impact, vignette progressive, reflets du
                  soleil, réglages de rendu, sons générés
-    UI/          HUD de combat, indicateur de garde, overlay de debug (F1)
+    UI/          HUD de combat, indicateur de garde, overlay de debug (F1), écran titre et
+                 pause (GameMenu), écrans pleins (ModalScreen)
     Sandbox/     points de spawn, directeur de spawn, menu de réglage, vagues, statistiques
     Story/       moteur d'étapes, sous-titres, objectifs, fondu, tutoriel, scénario du prologue
-                 et du chapitre 1, progression (argent, XP, niveaux, avis)
+                 et des chapitres, face-à-face, courrier à l'écran (LetterReader),
+                 progression (argent, XP, niveaux, avis)
     Phone/       le téléphone tenu en main, ses écrans, son appareil photo
     World/       interaction (E), lieux, groupe devant le club, identification de la cible,
                  objets physiques (frapper, pousser, ramasser, lancer), public anime
@@ -225,10 +230,11 @@ Assets/UberBagarre/
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
   Art/
-    Shaders/     UberPost (bloom + tonemap), UberNeon, UberGlow, UberWetGround, UberRain
+    Shaders/     UberPost (bloom + tonemap), UberNeon, UberGlow, UberWetGround, UberRain,
+                 UberSkin (peau et vêtements qui gardent les bleus)
     Materials/   matériaux générés
     Textures/    textures générées (bitume, flaques, briques, grilles de fenêtres)
-    Meshes/      maillages générés (corps, tête, cônes de lumière)
+    Meshes/      maillages générés (corps, tête, cônes de lumière, pignon de toit)
 Docs/
   ARCHITECTURE.md   pourquoi le code est organisé comme ça + comment l'étendre
 ```
@@ -313,7 +319,7 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
   menton juste avant. Matraquer la même touche finit par ne plus rien donner.
 - **Ce que tu lui fais se voit.** Il recule réellement (25 cm sur un direct, un bon demi-mètre sur
   un crochet, plus d'un mètre sur un coup de pied), il tombe, il se relève en deux temps, et les
-  **bleus** restent là où tu as frappé.
+  **bleus** restent là où tu as frappé — peints dans la peau, pas collés dessus (voir plus bas).
 - **Et quand il meurt, il s'effondre pour de vrai.** Un ragdoll physique articulé se construit à
   l'instant du K.O. — 11 segments, articulations, masses. Le coup fatal marque la zone qu'il a
   touchée, donc aucune mort ne ressemble à la précédente sans une seule animation.
@@ -330,12 +336,13 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 
 | | |
 |---|---|
-| **02:47, la planque** | Un matelas par terre, deux meubles de cuisine, des bouteilles là où elles sont tombées. Sur la table du salon : trois relances d'impayés. Les lire est le premier objectif, et c'est la seule chose qui explique la suite. |
+| **02:47, la planque** | Un matelas par terre, un canapé défoncé face à la télé, des taches d'humidité, des bouteilles là où elles sont tombées. Sur la table du salon : trois relances d'impayés. **Les lire** ouvre chaque enveloppe à l'écran : elle arrive, se décachette, la lettre en sort pliée en trois, se déplie, le texte s'imprime jusqu'au montant et le tampon rouge tombe (loyer, électricité, banque). |
 | **L'appel** | Sami. Quatre phrases, pas une de plus — l'appli, le principe, la paie, l'illégalité. Il envoie le lien. |
 | **L'installation** | « Source inconnue. Application non référencée. Diffusion interdite sur le territoire. » Et un bouton **INSTALLER QUAND MÊME**. |
 | **La course** | RDV BASTON, une étoile sur cinq, 150 €. Puis la fiche du sujet : antécédents, localisation approximative, et surtout le **signalement**. |
 | **Le trajet** | Monter dans la vieille bagnole rouillée. Fondu au noir, « 20 minutes plus tard ». |
 | **Le groupe** | Cinq personnes devant le club. Aucune n'est marquée. Il faut les **dévisager** une par une et comparer avec le signalement. |
+| **Le face-à-face** | On va voir Bruno Moretti. Bandes noires, il s'avance, on se regarde, et la conversation tourne mal en sous-titres (E pour avancer). Frapper le premier saute le dialogue. |
 | **La bagarre** | Quatre consignes qui attendent une réussite, pas un délai : deux directs, un crochet, une garde, un coup à la tête. Puis le K.O. |
 | **La preuve** | Sortir le téléphone, cadrer le corps au sol, déclencher. Photo hors cadre = photo refusée. |
 | **Le retour** | Course validée, 150 €, et le premier avis client. « Propre et rapide. Il a rien dit, il a fait. » |
@@ -442,6 +449,18 @@ Pour y aller directement : coche **`Start At Chapter Two`** sur `PrologueDirecto
 ---
 
 ## Les bagarres commencent comme au cinéma
+
+**D'abord, on se parle.** Personne ne cogne un inconnu en arrivant : on va voir la cible, le jeu se
+fige, les **bandes noires** descendent, l'adversaire s'avance au pas et se tourne vers toi, ta vue se
+pose sur lui, et l'échange tourne mal en sous-titres doublés — Moretti qui finit son service, les
+Kovac qui trouvent que tu as « une tête d'appli », le Taureau qui compte déjà son douzième K.O.
+**E** passe à la réplique suivante. Si tu frappes le premier, le dialogue saute : on ne fait pas la
+conversation à quelqu'un qu'on vient de cogner.
+
+**Hors combat, tu n'es pas en garde.** Tant qu'aucun adversaire n'est engagé, les mains pendent le
+long du corps, l'esquive et la glissade sont rangées, et ni le HUD de combat ni les barres de vie
+au-dessus des têtes ne s'affichent (juste une fine jauge d'endurance si tu cours). Dès qu'un
+adversaire s'engage — ou que tu frappes, gardes ou encaisses — la garde monte et tout revient.
 
 Quand un combat démarre (Bruno Moretti devant le club, les frères Kovac au parking, le Taureau dans la
 fosse, l'adversaire du bac à sable), la caméra quitte tes yeux pendant quatre secondes : **bandes
@@ -577,6 +596,28 @@ l'emploi — **Sobre**, **Cinéma**, **Bâtard** (qui pousse volontairement au-d
 
 Si ça rame : couper **REFLETS** en premier, c'est le seul réglage qui vaut un rendu complet de la scène.
 
+### La planque
+
+Une maison de lotissement, en plus pauvre : **toit à deux pans** en tuiles avec pignons, gouttières,
+cheminée et antenne ; porte d'entrée entrouverte sous un **porche éclairé** ; fenêtres avec cadres,
+vitres, appuis, **volets** (dont un qui pend) et un carreau bouché au carton. Dedans : plinthes,
+taches d'humidité, papier peint qui se décolle, canapé face à la télé, radiateur froid, porte-manteau,
+vaisselle dans l'évier, micro-ondes, calendrier jamais tourné.
+
+**La voiture n'est plus devant la porte** : elle dort sur une **allée en béton** le long du flanc de la
+maison, le nez vers le fond du terrain, une tache d'huile dessous et une applique qui l'éclaire. Un
+chemin de dalles mène du portillon à la porte ; devant la clôture, un trottoir, une chaussée mouillée
+et les maisons des voisins (une fenêtre allumée). La boîte aux lettres déborde.
+
+### Les bleus
+
+Ils ne sont plus des ovales en relief collés sur le corps. Chaque morceau de corps porte le shader
+**`UberBagarre/Peau`** (`Art/Shaders/UberSkin.shader`), qui reçoit jusqu'à huit points d'impact et
+**assombrit la peau autour** : contour irrégulier, marbrure, cœur plus foncé et légèrement brillant
+(gonflé). La marque suit le membre, se prolonge sur les morceaux voisins (un coup à la mâchoire marque
+la tête et le cou d'une seule tache), apparaît en une demi-seconde et **fonce si on retape au même
+endroit**. Sur un vêtement, c'est une trace sombre (poussière, sueur), pas un bleu violet.
+
 ### Espace colorimétrique
 
 À la fin de la génération, l'outil propose de passer le projet en **linéaire** s'il est en gamma.
@@ -585,6 +626,25 @@ déjà encodées pour l'écran. Deux lampes d'intensité 1 donnent beaucoup plus
 éclairées virent au blanc laiteux et les dégradés autour des lampadaires cassent en bandes. Avec une
 trentaine de sources dans la rue, ça se voit immédiatement. Le post-traitement fonctionne dans les
 deux cas, mais il ne peut pas rattraper un éclairage calculé faux en amont.
+
+---
+
+## Le menu du jeu
+
+**L'écran titre** s'ouvre sur la maison, filmée lentement depuis le trottoir d'en face, sous la bruine,
+avec une nappe de synthé composée par le code : **Nouvelle partie**, **Chapitres** (prologue,
+chapitre 1, chapitre 2), **Bac à sable**, **Graphismes**, **Commandes**, **Quitter**.
+
+**Échap en jeu = pause** : le temps, le son, les dialogues, la cinématique et le téléphone se figent
+vraiment. Reprendre, Chapitres, Graphismes, Commandes, Menu principal, Quitter.
+
+**Graphismes** : préréglage (Sobre / Cinéma / Bâtard), qualité, plein écran, résolution, synchro
+verticale, anticrénelage (aucun, FXAA, TAA, MSAA), reflets du sol et leur finesse, lumière dans l'air,
+luminosité, halo, contraste, saturation, vignette, grain — puis **champ de vision**, **sensibilité de
+la souris**, **volume** et un **compteur d'images**. Tout est sauvegardé.
+
+Au clavier : **↑ ↓** choisir, **← →** régler, **Entrée** valider, **Échap** retour. À la souris :
+survol, clic, clic ou glisser sur une barre, molette pour défiler.
 
 ---
 

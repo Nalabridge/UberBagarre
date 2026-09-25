@@ -71,6 +71,9 @@ namespace UberBagarre.Player
 
         private void Update()
         {
+            // Menu du jeu ouvert (titre ou pause) : il a la main sur le clavier.
+            if (UberBagarre.UI.GameMenu.IsOpen) return;
+
             if (_input != null && _input.ToggleObserverPressed) SetActive(!_active);
             if (!_active) return;
 

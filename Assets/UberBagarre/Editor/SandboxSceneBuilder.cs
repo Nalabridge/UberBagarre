@@ -90,6 +90,7 @@ namespace UberBagarre.EditorTools
             GraphicsDirector graphics = BuildRendering(sun, moon, street, gameCamera, observerCamera);
             WireHudAndDebug(player, enemy, attacks.Straight);
             BuildSpawnSystem(player, enemy, graphics);
+            BuildGameMenu(player, graphics, gameCamera, observerCamera);
             BuildOrder(night, player, gameCamera, enemy,
                 BuildFightCrowd(street.Root, night, materials, 9, 11, "Badauds (bac a sable)"));
 
@@ -1062,6 +1063,29 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(bruises, "_markShader",
                 AssetDatabase.LoadAssetAtPath<Shader>("Assets/UberBagarre/Art/Shaders/UberSkin.shader"));
             return bruises;
+        }
+
+        /// <summary>
+        /// Le menu du jeu (pause sur Échap, graphismes, commandes). La scène de l'histoire y
+        /// ajoute l'écran titre et les chapitres.
+        /// </summary>
+        internal static GameMenu BuildGameMenu(GameObject player, GraphicsDirector graphics, Camera gameCamera,
+            Camera observerCamera)
+        {
+            GameObject go = new GameObject("Menu du jeu");
+            GameMenu gameMenu = go.AddComponent<GameMenu>();
+
+            SerializedWiring.SetObject(gameMenu, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(gameMenu, "_cursor", player.GetComponent<CursorLockController>());
+            SerializedWiring.SetObject(gameMenu, "_graphics", graphics);
+            SerializedWiring.SetObject(gameMenu, "_look", player.GetComponent<PlayerLook>());
+            SerializedWiring.SetObject(gameMenu, "_gameCamera", gameCamera);
+            SerializedWiring.SetObject(gameMenu, "_menuCamera", observerCamera);
+            SerializedWiring.SetObject(gameMenu, "_observer", player.GetComponent<ObserverCamera>());
+            SerializedWiring.SetObject(gameMenu, "_devMenu", Object.FindAnyObjectByType<SandboxMenu>());
+            SerializedWiring.Verify(gameMenu, "_input");
+
+            return gameMenu;
         }
 
         internal static void WireHudAndDebug(GameObject player, GameObject enemy, AttackData testAttack)
