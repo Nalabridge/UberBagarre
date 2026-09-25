@@ -1674,3 +1674,81 @@ clameurs filtrées sur les formants d'une voyelle — qui répond aux coups.
 n'étaient pas de la lumière (des cônes). Dans la rue, la correction n'a presque rien ajouté : elle a
 rendu les lampes existantes réelles, et fait dériver tout le reste — faisceaux, reflets, ambiance —
 de ces lampes-là.
+
+---
+
+## 20. Des mains, pas des saucisses ; un rythme, pas du martelage
+
+Demande : *« on tombe dans le vide après la voiture ; quand on n'a plus d'endurance il faut un
+délai ; un plus grand délai entre chaque coup, on ne doit pas pouvoir spammer ; les persos sont
+brillants ; l'anticrénelage bugue ; change le modèle des mains pour de vraies mains, pas des
+saucisses sur un Rubik's cube. »*
+
+### 20.1 La main : une surface, pas un assemblage
+
+L'ancienne main était une paume presque cubique (8 × 7 × 7,6 cm), un cube à chaque jointure et
+quinze cylindres de rayon constant. Le défaut n'était pas le nombre de polygones : des pièces
+rigides posées côte à côte ne peuvent pas ressembler à de la peau, parce que la peau est continue
+et qu'elle se plie.
+
+`HandMeshBuilder` construit une seule surface, liée aux os existants par un
+`SkinnedMeshRenderer` (poignet, paume, quinze phalanges). Aux articulations, les sommets sont
+partagés entre les deux phalanges : quand le doigt se ferme, la peau se plie au lieu de s'ouvrir
+en deux cylindres. Le squelette ne change pas — poses de poing, de garde et de prise intactes.
+
+Ce qui fait lire une main :
+
+- une paume plate (2,6 cm aux jointures, 3,5 cm au poignet), plus large aux jointures, dont le
+  bord avant suit la rangée des jointures (index et majeur en avant, auriculaire en retrait) ;
+- les éminences du pouce et de l'auriculaire côté paume, les jointures sous la peau côté dos ;
+- des doigts à section ovale (plus larges qu'épais, plus plats sur le dos), qui s'affinent, avec
+  un renflement à chaque articulation, une pulpe au bout et un ongle ;
+- des doigts de 1,9 cm de large à la base : les jointures du squelette sont espacées de 1,7 cm, un
+  doigt plus large chevaucherait son voisin.
+
+La géométrie a été vérifiée hors d'Unity, par une reproduction en Python : orientation de toutes
+les faces vers l'extérieur, main ouverte, et poing fermé déformé avec les mêmes poids d'os.
+
+### 20.2 Le rythme des coups
+
+Trois règles, qui se complètent :
+
+- **un coup = un appui** : maintenir le clic n'enchaîne plus (seuls les coups lourds se chargent) ;
+- **un intervalle minimal** : 0,5 s entre deux coups, ou la durée du coup plus 0,2 s de
+  récupération si elle est plus longue — un coup de pied lourd expose plus longtemps qu'un direct ;
+- **un appui trop tôt est ignoré** : seul l'appui fait dans le dernier tampon avant la fin de la
+  récupération est gardé. Marteler ne fait donc rien partir de plus ; frapper en rythme, si.
+
+### 20.3 L'épuisement
+
+Arrivé à zéro, un combattant est **épuisé** : aucune action coûteuse (coup, esquive, glissade)
+pendant au moins 1,2 s, sans régénération pendant ce temps, et jusqu'à ce que 30 % de l'endurance
+soient revenus. Sans cet état, une barre vide ne coûtait rien : on regagnait quelques points en une
+fraction de seconde et on refrappait. L'interface l'annonce (« ÉPUISÉ — REPRENDS TON SOUFFLE ») tant
+qu'il dure, même quand la barre remonte. La règle vaut aussi pour les adversaires.
+
+### 20.4 La chute dans le vide
+
+Le passage d'un lieu à l'autre est durci à trois niveaux, parce qu'une chute hors du décor laisse le
+scénario sans issue :
+
+- `Physics.SyncTransforms()` après l'activation du lieu : ses colliders existent dans la simulation
+  avant que le joueur y soit posé ;
+- le point d'arrivée est reposé sur le **vrai sol** par un rayon vers le bas (un autre personnage
+  ne compte pas comme un sol) ;
+- un **filet** : sous 12 m sous l'arrivée du lieu courant, le joueur y est ramené, et le cas est
+  journalisé avec la position — pour savoir où le sol manquait.
+
+### 20.5 Brillance et anticrénelage
+
+Le reflet rasant (effet de Fresnel) monte avec le lissage du matériau. Avec des sondes de
+réflexion pleines de néons, une peau à 0,30 et des tissus à 0,10 brillaient au bord comme du
+vinyle. Peau à 0,16, tissus à 0,03–0,05.
+
+Le FXAA ne voit qu'une image : il adoucit les escaliers mais laisse scintiller tout ce qui est plus
+fin qu'un pixel (câbles, barreaux, reflets) dès qu'on bouge. Le **TAA** décale la caméra d'une
+fraction de pixel à chaque image (suite de Halton), reprojette l'historique avec les vecteurs de
+mouvement, et le borne par les couleurs voisines de l'image courante pour éviter les traînées. Le
+mouvement est lu sur le pixel le plus proche du voisinage, et le calcul se fait sur des couleurs
+compressées pour qu'un néon isolé ne clignote pas. MSAA ×8 (en rendu avant) et FXAA restent
+disponibles depuis le menu.

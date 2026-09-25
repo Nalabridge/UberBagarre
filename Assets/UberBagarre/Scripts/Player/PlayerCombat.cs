@@ -85,10 +85,19 @@ namespace UberBagarre.Player
         private float _inputBuffer = 0.22f;
 
         [SerializeField]
-        [Tooltip("Maintenir la touche enchaine le coup. Sans ca, la cadence de frappe depend de la " +
-                 "vitesse a laquelle le joueur arrive a cliquer, ce qui n'est pas une competence " +
-                 "de jeu de combat.")]
-        private bool _repeatWhileHeld = true;
+        [Tooltip("Maintenir la touche enchaine le coup. Desactive : un coup = un appui, sinon il " +
+                 "suffit de garder le clic enfonce pour marteler.")]
+        private bool _repeatWhileHeld;
+
+        [Header("Cadence")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Intervalle minimal entre deux coups, en secondes, quel que soit le coup.")]
+        private float _minAttackInterval = 0.5f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Temps de recuperation ajoute apres la duree de chaque coup. Un coup lourd " +
+                 "immobilise donc plus longtemps qu'un direct.")]
+        private float _attackRecovery = 0.2f;
 
         [Header("Effet sur le deplacement")]
         [SerializeField, Range(0f, 1f)]
@@ -115,6 +124,7 @@ namespace UberBagarre.Player
         private float _currentSpeedMultiplier = 1f;
         private AttackData _buffered;
         private float _bufferedUntil;
+        private float _nextAttackAllowed;
 
         /// <summary>
         /// Nombre de coups dont l'asset date d'une version antérieure du code.
@@ -313,15 +323,28 @@ namespace UberBagarre.Player
 
             if (requested != null)
             {
-                _buffered = requested;
-                _bufferedUntil = Time.time + _inputBuffer;
+                // Anti-martelage : un appui fait TROP tot n'est pas memorise. Seul l'appui fait
+                // juste avant la fin de la recuperation est garde (le tampon), ce qui recompense
+                // le rythme et pas la vitesse du doigt.
+                if (Time.time >= _nextAttackAllowed - _inputBuffer)
+                {
+                    _buffered = requested;
+                    _bufferedUntil = Time.time + _inputBuffer;
+                }
             }
 
             if (_buffered == null) return;
 
+            if (Time.time < _nextAttackAllowed)
+            {
+                if (Time.time > _bufferedUntil) _buffered = null;
+                return;
+            }
+
             if (_executor.TryPlay(_buffered))
             {
                 _buffered = null;
+                LockNextAttack();
                 return;
             }
 
@@ -340,7 +363,8 @@ namespace UberBagarre.Player
         /// </summary>
         private bool UpdateCharging()
         {
-            AttackData held = ReadChargeableHeld();
+            // Pas de nouvelle charge pendant la recuperation du coup precedent.
+            AttackData held = !_executor.IsCharging && Time.time < _nextAttackAllowed ? null : ReadChargeableHeld();
 
             if (held != null)
             {
@@ -349,9 +373,25 @@ namespace UberBagarre.Player
             }
 
             // Touche relachee : le coup part avec la charge accumulee.
-            if (_executor.IsCharging) return _executor.ReleaseCharge();
+            if (_executor.IsCharging)
+            {
+                bool released = _executor.ReleaseCharge();
+                if (_executor.IsAttacking) LockNextAttack();
+                return released;
+            }
 
             return false;
+        }
+
+        /// <summary>
+        /// Fixe le moment où le prochain coup pourra partir : jamais avant l'intervalle minimal,
+        /// et jamais avant la fin du coup en cours plus sa récupération. Un coup de pied lourd
+        /// laisse donc le joueur exposé plus longtemps qu'un direct.
+        /// </summary>
+        private void LockNextAttack()
+        {
+            float duration = _executor != null ? _executor.EffectiveDuration : 0f;
+            _nextAttackAllowed = Time.time + Mathf.Max(_minAttackInterval, duration + _attackRecovery);
         }
 
         /// <summary>Le coup chargeable dont la touche est actuellement maintenue, s'il y en a un.</summary>

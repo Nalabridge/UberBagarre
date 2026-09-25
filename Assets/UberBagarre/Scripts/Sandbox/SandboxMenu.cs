@@ -823,11 +823,14 @@ namespace UberBagarre.Sandbox
 
             ry += 36f;
 
-            if (Button(new Rect(right, ry, half, 28f),
-                    _graphics.Fxaa ? "ANTICRENELAGE : ON" : "ANTICRENELAGE : OFF",
-                    _graphics.Fxaa ? _playerAccent : _enemyAccent))
+            // Un bouton qui fait defiler les quatre modes : TAA (le plus stable), MSAA (aretes
+            // nettes en rendu avant), FXAA (le plus leger), aucun.
+            UberPostProcess.AntiAliasingMode aa = _graphics.AntiAliasing;
+
+            if (Button(new Rect(right, ry, column, 28f), "ANTICRENELAGE : " + AntiAliasingLabel(aa),
+                    aa == UberPostProcess.AntiAliasingMode.Aucun ? _enemyAccent : _playerAccent))
             {
-                _graphics.Fxaa = !_graphics.Fxaa;
+                _graphics.AntiAliasing = NextAntiAliasing(aa);
                 _graphics.Save();
             }
 
@@ -974,7 +977,8 @@ namespace UberBagarre.Sandbox
                 { "V", "Coup de pied bas  (chargeable)" },
                 { "", "" },
                 { "Maintenir un coup lourd", "CHARGE : jusqu'a x2,2 degats" },
-                { "Maintenir un coup rapide", "Enchaine tout seul" },
+                { "Cadence", "Un coup = un appui, 0,5 s mini entre deux" },
+                { "Endurance a zero", "EPUISE : plus rien pendant 1,2 s" },
                 { "", "" },
                 { "En sprintant", "Charge d'epaule" },
                 { "En l'air", "Coup plongeant" },
@@ -1012,6 +1016,28 @@ namespace UberBagarre.Sandbox
         }
 
         // ------------------------------------------------------------------ primitives
+
+        private static string AntiAliasingLabel(UberPostProcess.AntiAliasingMode mode)
+        {
+            switch (mode)
+            {
+                case UberPostProcess.AntiAliasingMode.Taa: return "TAA";
+                case UberPostProcess.AntiAliasingMode.Msaa: return "MSAA x8";
+                case UberPostProcess.AntiAliasingMode.Fxaa: return "FXAA";
+                default: return "AUCUN";
+            }
+        }
+
+        private static UberPostProcess.AntiAliasingMode NextAntiAliasing(UberPostProcess.AntiAliasingMode mode)
+        {
+            switch (mode)
+            {
+                case UberPostProcess.AntiAliasingMode.Taa: return UberPostProcess.AntiAliasingMode.Msaa;
+                case UberPostProcess.AntiAliasingMode.Msaa: return UberPostProcess.AntiAliasingMode.Fxaa;
+                case UberPostProcess.AntiAliasingMode.Fxaa: return UberPostProcess.AntiAliasingMode.Aucun;
+                default: return UberPostProcess.AntiAliasingMode.Taa;
+            }
+        }
 
         private static bool Changed(float a, float b)
         {

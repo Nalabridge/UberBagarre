@@ -146,7 +146,7 @@ namespace UberBagarre.EditorTools
                     "T_Public_Haut" + i, 128, shirts[i], 3, 0.10f, 900 + i * 37);
 
                 Material shirt = EditorBuildUtility.CreateOrUpdateMaterial(folder, "M_Public_Haut" + i,
-                    Color.white, 0.14f, 0f, weave, new Vector2(10f, 10f));
+                    Color.white, 0.05f, 0f, weave, new Vector2(10f, 10f));
                 shirt.enableInstancing = true;
                 m.Shirts.Add(shirt);
             }
@@ -160,7 +160,7 @@ namespace UberBagarre.EditorTools
             for (int i = 0; i < pants.Length; i++)
             {
                 Material pant = EditorBuildUtility.CreateOrUpdateMaterial(folder, "M_Public_Bas" + i,
-                    pants[i], 0.10f, 0f);
+                    pants[i], 0.03f, 0f);
                 pant.enableInstancing = true;
                 m.Pants.Add(pant);
             }

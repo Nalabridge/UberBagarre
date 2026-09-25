@@ -376,7 +376,9 @@ namespace UberBagarre.UI
 
             if (_playerStamina != null)
             {
-                bool empty = _playerStamina.IsEmpty;
+                // Epuise = a bout de souffle, meme quand la barre remonte : tant que l'etat dure,
+                // rien ne part, et la barre doit le dire jusqu'au bout.
+                bool empty = _playerStamina.IsEmpty || _playerStamina.IsExhausted;
 
                 // Endurance vide = coups refuses, sprint coupe, glissade interdite. C'est la
                 // premiere cause de "je ne peux plus rien faire", et elle etait signalee par une
@@ -395,7 +397,7 @@ namespace UberBagarre.UI
                 GUIStyle small = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
 
                 GuiKit.OutlinedLabel(new Rect(barX, panel.y + 78f, 200f, 16f),
-                    empty ? "ENDURANCE EPUISEE" : "ENDURANCE  " + Mathf.CeilToInt(_playerStamina.Current),
+                    empty ? "EPUISE — REPRENDS TON SOUFFLE" : "ENDURANCE  " + Mathf.CeilToInt(_playerStamina.Current),
                     small,
                     empty ? new Color(1f, 0.45f, 0.38f, blink) : new Color(1f, 1f, 1f, 0.5f),
                     new Color(0f, 0f, 0f, 0.8f), 1f);

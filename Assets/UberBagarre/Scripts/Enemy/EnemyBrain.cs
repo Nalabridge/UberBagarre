@@ -50,8 +50,8 @@ namespace UberBagarre.Enemy
         private float _attackRange = 1.10f;
 
         [Header("Rythme")]
-        [SerializeField, Min(0f)] private float _attackDelayMin = 0.30f;
-        [SerializeField, Min(0f)] private float _attackDelayMax = 0.85f;
+        [SerializeField, Min(0f)] private float _attackDelayMin = 0.45f;
+        [SerializeField, Min(0f)] private float _attackDelayMax = 1.05f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Temps d'immobilite apres un coup, avant de reprendre l'initiative. Resserre en " +

@@ -13,7 +13,8 @@ Le dépôt contient **deux scènes**, générées par le menu **Uber Bagarre** :
 
 Le rendu est en **différé** (toutes les lampes calculées par pixel, avec leurs ombres), avec une
 lumière **volumétrique** calculée à partir des vraies lampes, des matériaux **PBR** (cartes de relief,
-sondes de réflexion) et un anticrénelage FXAA.
+sondes de réflexion) et un anticrénelage temporel (TAA). Les mains sont un vrai maillage de main,
+continu, qui se plie aux articulations.
 
 ---
 
@@ -111,7 +112,9 @@ Dans l'ordre :
 | **F** | **Coup de pied de face** — lourd, lent, il repousse franchement |
 | **V** | **Coup de pied bas** — peu de dégâts, mais c'est lui qui fait **tomber** |
 | **Maintenir** molette / F / V | **CHARGE** le coup lourd : jusqu'à ×2,2 dégâts, ×2,8 recul, +45 % de chute |
-| **Maintenir** clic gauche / droit | Enchaîne tout seul — les coups rapides se répètent, les lourds se chargent |
+| **Maintenir** molette / F / V | Charge le coup lourd. Les coups rapides, eux, ne se répètent **plus** en maintenant : un coup = un appui |
+| *Cadence* | Au moins **0,5 s** entre deux coups, plus la durée du coup lourd. Un appui fait trop tôt est **ignoré** : on frappe en rythme, pas en martelant |
+| *Endurance à zéro* | **Épuisé** : plus aucun coup, esquive ni glissade pendant au moins 1,2 s, et tant que 30 % de l'endurance ne sont pas revenus |
 | **En sprintant** + attaque | **Charge d'épaule** — 14 de force d'impact, 45 % de chute |
 | **En l'air** + attaque | **Coup plongeant** — 24 dégâts, 75 % de chute |
 | **En glissade** + attaque | **Balayage** — 85 % de chute |
@@ -166,9 +169,10 @@ Tu peux les changer sans toucher à une ligne de code.
 | 19 | Prologue jouable : maison, téléphone en main, application, identification, tutoriel, photo | ✅ |
 | 20 | Physique des coups par os, décor qui bouge, coup de tête, bousculade, objets à lancer | ✅ |
 | 21 | Progression (argent, XP, niveaux, avis), chapitre 1 : les frères Kovac au parking | ✅ |
-| 22 | Rendu différé, lumière volumétrique réelle, PBR (relief, sondes), FXAA, bruit d'image supprimé | ✅ |
+| 22 | Rendu différé, lumière volumétrique réelle, PBR (relief, sondes), TAA, bruit d'image supprimé | ✅ |
 | 23 | Chapitre 2 : intérieur du Vertigo, public animé, musique générée, la commande déclenche le combat | ✅ |
-| 24 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 24 | Vraies mains (maillage continu déformé par les os), anti-spam, épuisement, TAA, anti-chute | ✅ |
+| 25 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -412,7 +416,13 @@ Pour y aller directement : coche **`Start At Chapter Two`** sur `PrologueDirecto
   métal ; **sondes de réflexion** dans chaque lieu (le chrome et le béton ciré reflètent les néons au
   lieu du ciel noir).
 - **Bruit supprimé** : plus de grain animé ni d'aberration par défaut, reflet du sol en pleine
-  résolution avec MSAA, ondulations des flaques éteintes au loin, pluie plus discrète, **FXAA**.
+  résolution avec MSAA, ondulations des flaques éteintes au loin, pluie plus discrète.
+- **Anticrénelage** : **TAA** par défaut (la caméra est décalée d'une fraction de pixel à chaque
+  image et l'historique est accumulé : les arêtes fines et les reflets ne scintillent plus en
+  mouvement). Le bouton de **TAB → Graphismes** fait défiler **TAA → MSAA ×8** (rendu avant, arêtes
+  très nettes, moins de lampes par pixel) **→ FXAA → aucun**.
+- **Personnages mats** : peau et vêtements beaucoup moins lisses — le reflet rasant des néons
+  faisait briller le bord des corps comme du vinyle.
 - Réglages : **TAB → Graphismes** (*Lumière dans l'air*, *Anticrénelage*). Les anciens réglages
   sauvegardés sont ignorés : on repart des nouvelles valeurs.
 

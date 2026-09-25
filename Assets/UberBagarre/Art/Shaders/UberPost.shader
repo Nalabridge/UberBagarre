@@ -6,7 +6,7 @@
 // pour cette raison qu'une scene de nuit parait "cheap" : ce n'est pas la
 // geometrie, c'est qu'aucune source lumineuse ne se comporte comme une source.
 //
-// Six passes :
+// Sept passes :
 //   0 - Prefiltre  : isole ce qui depasse le seuil, avec genou doux et moyenne
 //                    de Karis (sinon un seul pixel tres brillant devient une
 //                    etoile clignotante des que la camera bouge).
@@ -18,6 +18,7 @@
 //   4 - Volumetrique : la lumiere diffusee par l'air humide, calculee a partir des
 //                    VRAIES lampes de la scene (position, cone, couleur, portee).
 //   5 - FXAA       : anticrenelage sur l'image finale.
+//   6 - TAA        : anticrenelage temporel, sur l'image HDR avant tout le reste.
 Shader "UberBagarre/Post"
 {
     Properties
@@ -543,6 +544,124 @@ Shader "UberBagarre/Post"
                 float3 result = (lumaB < lumaMin || lumaB > lumaMax) ? rgbA : rgbB;
 
                 return float4(result, center.a);
+            }
+            ENDCG
+        }
+
+        // ------------------------------------------------------------- 6 : TAA
+        //
+        // Anticrenelage temporel. La camera est decalee d'une fraction de pixel differente a
+        // chaque image (voir UberPostProcess) ; on accumule ces images dans un historique,
+        // reprojete grace aux vecteurs de mouvement. Resultat : les aretes fines, les reflets
+        // et les neons ne scintillent plus quand on bouge — ce que ni le FXAA ni le MSAA ne
+        // savent faire, puisqu'ils ne voient qu'une image a la fois.
+        //
+        // Deux gardes-fous contre les trainees :
+        // - l'historique est BORNE par les couleurs voisines de l'image courante : une couleur
+        //   qui n'existe plus autour du pixel est rejetee ;
+        // - le mouvement est lu sur le pixel le plus PROCHE du voisinage, pour que le bord d'un
+        //   objet au premier plan emporte son propre mouvement et pas celui du fond.
+        //
+        // Le calcul se fait sur des couleurs COMPRESSEES (c / (1 + c)) : sans cela, un seul
+        // pixel de neon a 40 domine la moyenne et clignote.
+        Pass
+        {
+            CGPROGRAM
+            #pragma vertex VertPost
+            #pragma fragment FragTaa
+            #pragma target 3.0
+
+            sampler2D _HistoryTex;
+            sampler2D_float _CameraDepthTexture;
+            sampler2D_half _CameraMotionVectorsTexture;
+
+            // xy = decalage de l'image courante, en coordonnees de texture
+            float4 _Jitter;
+
+            // x = poids de l'historique a l'arret, y = en mouvement, z = nettete
+            float4 _TaaParams;
+
+            float3 Compress(float3 c)
+            {
+                return c / (1.0 + Brightness(c));
+            }
+
+            float3 Expand(float3 c)
+            {
+                return c / max(1e-4, 1.0 - Brightness(c));
+            }
+
+            #if defined(UNITY_REVERSED_Z)
+                #define TAA_CLOSER(a, b) step(b, a)
+            #else
+                #define TAA_CLOSER(a, b) step(a, b)
+            #endif
+
+            float2 ClosestFragment(float2 uv)
+            {
+                float2 k = abs(_MainTex_TexelSize.xy);
+
+                float4 around = float4(
+                    SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv - k),
+                    SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv + float2(k.x, -k.y)),
+                    SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv + float2(-k.x, k.y)),
+                    SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv + k));
+
+                float3 result = float3(0.0, 0.0, SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv));
+                result = lerp(result, float3(-1.0, -1.0, around.x), TAA_CLOSER(around.x, result.z));
+                result = lerp(result, float3( 1.0, -1.0, around.y), TAA_CLOSER(around.y, result.z));
+                result = lerp(result, float3(-1.0,  1.0, around.z), TAA_CLOSER(around.z, result.z));
+                result = lerp(result, float3( 1.0,  1.0, around.w), TAA_CLOSER(around.w, result.z));
+
+                return uv + result.xy * k;
+            }
+
+            float4 FragTaa(v2f_post i) : SV_Target
+            {
+                float2 uv = i.uv;
+                float2 k = abs(_MainTex_TexelSize.xy);
+
+                // Profondeur et mouvement sont dans l'orientation de la camera ; l'image source
+                // peut etre retournee sur certaines plateformes.
+                float2 uvScene = uv;
+                float flip = 1.0;
+                #if UNITY_UV_STARTS_AT_TOP
+                if (_MainTex_TexelSize.y < 0.0)
+                {
+                    uvScene.y = 1.0 - uvScene.y;
+                    flip = -1.0;
+                }
+                #endif
+
+                float2 motion = tex2D(_CameraMotionVectorsTexture, ClosestFragment(uvScene)).xy;
+                motion.y *= flip;
+
+                float2 uvCurrent = uv - _Jitter.xy;
+
+                float3 color = Compress(SampleSafe(_MainTex, uvCurrent));
+                float3 top = Compress(SampleSafe(_MainTex, uvCurrent + float2(0.0, k.y)));
+                float3 bottom = Compress(SampleSafe(_MainTex, uvCurrent - float2(0.0, k.y)));
+                float3 left = Compress(SampleSafe(_MainTex, uvCurrent - float2(k.x, 0.0)));
+                float3 right = Compress(SampleSafe(_MainTex, uvCurrent + float2(k.x, 0.0)));
+
+                float3 minimum = min(color, min(min(top, bottom), min(left, right)));
+                float3 maximum = max(color, max(max(top, bottom), max(left, right)));
+
+                // Legere accentuation : l'accumulation adoucit, on rend un peu de nettete.
+                float3 blurred = (top + bottom + left + right) * 0.25;
+                color = clamp(color + (color - blurred) * _TaaParams.z, minimum, maximum);
+
+                float2 historyUv = uv - motion;
+                float3 history = Compress(SampleSafe(_HistoryTex, historyUv));
+                history = clamp(history, minimum, maximum);
+
+                float pixelsMoved = length(motion * abs(_MainTex_TexelSize.zw));
+                float weight = lerp(_TaaParams.x, _TaaParams.y, saturate(pixelsMoved / 6.0));
+
+                // Historique hors de l'ecran : rien a reprendre.
+                if (historyUv.x < 0.0 || historyUv.y < 0.0 || historyUv.x > 1.0 || historyUv.y > 1.0) weight = 0.0;
+
+                return float4(Expand(lerp(color, history, weight)), 1.0);
             }
             ENDCG
         }

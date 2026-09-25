@@ -32,11 +32,39 @@ namespace UberBagarre.Combat
         [Tooltip("Autorise l'action meme s'il ne reste pas tout le cout, puis descend a zero.")]
         private bool _allowPartialSpend = true;
 
+        [Header("Epuisement")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Arrive a zero, le combattant est EPUISE pendant au moins ce temps : aucun coup, " +
+                 "aucune esquive, aucune glissade, et la regeneration ne reprend qu'apres.")]
+        private float _exhaustionDuration = 1.2f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part de l'endurance a recuperer avant de pouvoir agir a nouveau.")]
+        private float _recoverThreshold = 0.3f;
+
         private float _current;
         private float _regenBlockedUntil;
+        private float _exhaustedUntil;
+        private bool _exhausted;
 
         public event Action<float> Spent;
         public event Action Depleted;
+
+        /// <summary>Déclenché quand l'épuisement prend fin.</summary>
+        public event Action Recovered;
+
+        /// <summary>
+        /// Vrai tant que le combattant est à bout de souffle.
+        ///
+        /// Sans cet état, vider sa barre ne coûtait rien : on retombait à zéro, on regagnait
+        /// dix points en une fraction de seconde, on refrappait — et on pouvait marteler
+        /// indéfiniment avec une barre qui clignotait au ras du sol. L'épuisement rend la barre
+        /// vide PUNITIVE : on reste les bras ballants le temps de reprendre son souffle.
+        /// </summary>
+        public bool IsExhausted
+        {
+            get { return _exhausted; }
+        }
 
         public float Max { get { return _maxStamina; } }
         public float Current { get { return _current; } }
@@ -61,6 +89,7 @@ namespace UberBagarre.Combat
         public bool CanSpend(float amount)
         {
             if (amount <= 0f) return true;
+            if (_exhausted) return false;
             return _allowPartialSpend ? _current > 0.01f : _current >= amount;
         }
 
@@ -76,6 +105,13 @@ namespace UberBagarre.Combat
 
             if (_current <= 0.01f)
             {
+                _current = 0f;
+                _exhausted = true;
+                _exhaustedUntil = Time.time + _exhaustionDuration;
+
+                // Le souffle ne revient qu'apres la pause : pas de regeneration pendant l'epuisement.
+                _regenBlockedUntil = Mathf.Max(_regenBlockedUntil, _exhaustedUntil);
+
                 Action depleted = Depleted;
                 if (depleted != null) depleted();
             }
@@ -86,6 +122,7 @@ namespace UberBagarre.Combat
         public void Refill()
         {
             _current = _maxStamina;
+            _exhausted = false;
         }
 
         /// <summary>Rend une partie de l'endurance, par exemple en récompense d'une parade réussie.</summary>
@@ -97,9 +134,18 @@ namespace UberBagarre.Combat
 
         private void Update()
         {
-            if (_current >= _maxStamina || Time.time < _regenBlockedUntil) return;
+            if (_current < _maxStamina && Time.time >= _regenBlockedUntil)
+            {
+                _current = Mathf.Min(_maxStamina, _current + _regenPerSecond * Time.deltaTime);
+            }
 
-            _current = Mathf.Min(_maxStamina, _current + _regenPerSecond * Time.deltaTime);
+            if (!_exhausted) return;
+            if (Time.time < _exhaustedUntil || _current < _maxStamina * _recoverThreshold) return;
+
+            _exhausted = false;
+
+            Action recovered = Recovered;
+            if (recovered != null) recovered();
         }
     }
 }

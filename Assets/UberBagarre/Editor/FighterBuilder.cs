@@ -269,11 +269,9 @@ namespace UberBagarre.EditorTools
             float sign = side == HandSide.Left ? -1f : 1f;
             string prefix = side == HandSide.Left ? "Left" : "Right";
 
-            Bone(prefix + "WristVisual", wrist, Quaternion.identity, 0.034f, 0.036f, skin.Flesh);
-
+            // La paume et les phalanges ne portent plus de pièces rigides : la peau est un seul
+            // maillage déformable, posé à la fin (voir HandMeshBuilder).
             GameObject palm = EditorBuildUtility.CreateEmpty(prefix + "Palm", wrist, new Vector3(0f, 0f, 0.038f));
-            Box(prefix + "PalmVisual", palm.transform, Vector3.zero,
-                new Vector3(0.082f, 0.070f, 0.076f), skin.Flesh);
 
             GameObject knuckles = EditorBuildUtility.CreateEmpty(prefix + "Knuckles", palm.transform,
                 new Vector3(0f, -0.004f, 0.042f));
@@ -288,13 +286,11 @@ namespace UberBagarre.EditorTools
             };
 
             Transform[,] joints = new Transform[specs.Length, 3];
+            HandMeshBuilder.Finger[] chains = new HandMeshBuilder.Finger[specs.Length];
 
             for (int i = 0; i < specs.Length; i++)
             {
                 FingerSpec spec = specs[i];
-
-                Box(prefix + spec.Name + "Knuckle", palm.transform, spec.Base,
-                    Vector3.one * (spec.Radius * 2.5f), skin.Flesh);
 
                 GameObject proximal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "1", palm.transform, spec.Base);
                 proximal.transform.localRotation = Quaternion.Euler(spec.BaseEuler);
@@ -304,14 +300,22 @@ namespace UberBagarre.EditorTools
                 GameObject distal = EditorBuildUtility.CreateEmpty(prefix + spec.Name + "3", middle.transform,
                     new Vector3(0f, 0f, spec.Middle));
 
-                Bone(prefix + spec.Name + "1Visual", proximal.transform, Quaternion.identity, spec.Proximal, spec.Radius, skin.Flesh);
-                Bone(prefix + spec.Name + "2Visual", middle.transform, Quaternion.identity, spec.Middle, spec.Radius * 0.93f, skin.Flesh);
-                Bone(prefix + spec.Name + "3Visual", distal.transform, Quaternion.identity, spec.Distal, spec.Radius * 0.86f, skin.Flesh);
-
                 joints[i, 0] = proximal.transform;
                 joints[i, 1] = middle.transform;
                 joints[i, 2] = distal.transform;
+
+                HandMeshBuilder.Finger chain = new HandMeshBuilder.Finger();
+                chain.Proximal = proximal.transform;
+                chain.Middle = middle.transform;
+                chain.Distal = distal.transform;
+                chain.DistalLength = spec.Distal;
+                chain.Radius = spec.Radius;
+                chain.IsThumb = spec.Name == "Pouce";
+                chains[i] = chain;
             }
+
+            // La peau, posée sur les os en position de repos (doigts tendus).
+            HandMeshBuilder.Dress(wrist, palm.transform, chains, side, skin.Flesh);
 
             HandRig handRig = wrist.gameObject.AddComponent<HandRig>();
             SerializedWiring.SetEnum(handRig, "_side", side == HandSide.Left ? 0 : 1);

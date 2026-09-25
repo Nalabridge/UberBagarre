@@ -75,26 +75,30 @@ namespace UberBagarre.EditorTools
                 new Color(0.10f, 0.10f, 0.11f), 0.05f, 0.06f, 0.018f, 0.085f, 515);
 
             // La peau accroche un peu la lumiere : une peau parfaitement mate ressemble a de la
-            // craie. Un peu seulement — trop, et ca devient du plastique.
+            // craie. Un peu seulement — trop, et ca devient du plastique. 0,30 etait trop : sous
+            // les neons et avec les sondes de reflexion, le bord des corps brillait comme du
+            // vinyle (le reflet rasant monte avec le lissage). 0,16 garde un velouté.
             m.Skin = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Skin",
-                Color.white, 0.30f, 0f, skinGrain, new Vector2(10f, 10f));
+                Color.white, 0.16f, 0f, skinGrain, new Vector2(10f, 10f));
 
+            // Le tissu ne reflete rien : tout lissage au-dessus de quelques pourcents se voit
+            // comme un vernis sur les epaules, a contre-jour.
             m.Shirt = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Shirt",
-                Color.white, 0.10f, 0f, shirtWeave, new Vector2(12f, 12f));
+                Color.white, 0.04f, 0f, shirtWeave, new Vector2(12f, 12f));
 
             m.Pants = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Pants",
-                Color.white, 0.08f, 0f, denim, new Vector2(14f, 14f));
+                Color.white, 0.03f, 0f, denim, new Vector2(14f, 14f));
 
             m.Shoe = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Shoe",
-                Color.white, 0.34f, 0f, leather, new Vector2(8f, 8f));
+                Color.white, 0.20f, 0f, leather, new Vector2(8f, 8f));
 
             // L'ennemi est teinte differemment : en plein combat, il faut le distinguer
             // instantanement de ses propres mains.
             m.EnemySkin = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_EnemySkin",
-                Color.white, 0.30f, 0f, enemySkinGrain, new Vector2(10f, 10f));
+                Color.white, 0.16f, 0f, enemySkinGrain, new Vector2(10f, 10f));
 
             m.EnemyShirt = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_EnemyShirt",
-                Color.white, 0.12f, 0f, enemyShirtWeave, new Vector2(12f, 12f));
+                Color.white, 0.05f, 0f, enemyShirtWeave, new Vector2(12f, 12f));
 
             // Hematome : violet sombre tirant sur le rouge, et mat. Un bleu brillant ferait
             // tache de peinture ; c'est l'absence de reflet qui le fait lire comme de la peau.

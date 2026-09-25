@@ -45,7 +45,7 @@ namespace UberBagarre.View
         [SerializeField, Range(0f, 0.5f)] private float _grain;
         [SerializeField, Range(0f, 4f)] private float _aberration;
         [SerializeField, Range(0f, 3f)] private float _volumetric = 1f;
-        [SerializeField] private bool _fxaa = true;
+        [SerializeField] private UberPostProcess.AntiAliasingMode _antiAliasing = UberPostProcess.AntiAliasingMode.Taa;
         [SerializeField] private bool _postEnabled = true;
         [SerializeField] private bool _reflectionsEnabled = true;
         [SerializeField, Range(1, 8)] private int _reflectionDownsample = 1;
@@ -72,7 +72,11 @@ namespace UberBagarre.View
         public float Grain { get { return _grain; } set { _grain = Mathf.Clamp(value, 0f, 0.5f); Push(); } }
         public float Aberration { get { return _aberration; } set { _aberration = Mathf.Clamp(value, 0f, 4f); Push(); } }
         public float Volumetric { get { return _volumetric; } set { _volumetric = Mathf.Clamp(value, 0f, 3f); Push(); } }
-        public bool Fxaa { get { return _fxaa; } set { _fxaa = value; Push(); } }
+        public UberPostProcess.AntiAliasingMode AntiAliasing
+        {
+            get { return _antiAliasing; }
+            set { _antiAliasing = value; Push(); }
+        }
         public bool PostEnabled { get { return _postEnabled; } set { _postEnabled = value; Push(); } }
         public bool ReflectionsEnabled { get { return _reflectionsEnabled; } set { _reflectionsEnabled = value; Push(); } }
 
@@ -111,7 +115,7 @@ namespace UberBagarre.View
                     post.Aberration = _aberration;
                     post.Volumetric = _volumetric > 0.001f;
                     post.VolumetricIntensity = _volumetric;
-                    post.Fxaa = _fxaa;
+                    post.AntiAliasing = _antiAliasing;
                 }
             }
 
@@ -190,7 +194,7 @@ namespace UberBagarre.View
             PlayerPrefs.SetFloat(PrefsPrefix + "grain", _grain);
             PlayerPrefs.SetFloat(PrefsPrefix + "aberration", _aberration);
             PlayerPrefs.SetFloat(PrefsPrefix + "volumetrique", _volumetric);
-            PlayerPrefs.SetInt(PrefsPrefix + "fxaa", _fxaa ? 1 : 0);
+            PlayerPrefs.SetInt(PrefsPrefix + "aa", (int)_antiAliasing);
             PlayerPrefs.SetFloat(PrefsPrefix + "jour", _day);
             PlayerPrefs.SetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0);
             PlayerPrefs.SetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0);
@@ -209,7 +213,8 @@ namespace UberBagarre.View
             _grain = PlayerPrefs.GetFloat(PrefsPrefix + "grain", _grain);
             _aberration = PlayerPrefs.GetFloat(PrefsPrefix + "aberration", _aberration);
             _volumetric = PlayerPrefs.GetFloat(PrefsPrefix + "volumetrique", _volumetric);
-            _fxaa = PlayerPrefs.GetInt(PrefsPrefix + "fxaa", _fxaa ? 1 : 0) != 0;
+            _antiAliasing = (UberPostProcess.AntiAliasingMode)Mathf.Clamp(
+                PlayerPrefs.GetInt(PrefsPrefix + "aa", (int)_antiAliasing), 0, 3);
             if (_restoreDay) _day = PlayerPrefs.GetFloat(PrefsPrefix + "jour", _day);
             _postEnabled = PlayerPrefs.GetInt(PrefsPrefix + "post", _postEnabled ? 1 : 0) != 0;
             _reflectionsEnabled = PlayerPrefs.GetInt(PrefsPrefix + "reflets", _reflectionsEnabled ? 1 : 0) != 0;
@@ -221,7 +226,7 @@ namespace UberBagarre.View
             string[] keys =
             {
                 "bloom", "seuil", "expo", "satu", "contraste", "vignette", "grain",
-                "aberration", "volumetrique", "fxaa", "jour", "post", "reflets", "refletsQualite"
+                "aberration", "volumetrique", "aa", "jour", "post", "reflets", "refletsQualite"
             };
 
             for (int i = 0; i < keys.Length; i++) PlayerPrefs.DeleteKey(PrefsPrefix + keys[i]);

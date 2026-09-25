@@ -35,6 +35,23 @@ namespace UberBagarre.View
         private const int PassComposite = 3;
         private const int PassVolumetric = 4;
         private const int PassFxaa = 5;
+        private const int PassTaa = 6;
+
+        /// <summary>Les méthodes d'anticrénelage disponibles.</summary>
+        public enum AntiAliasingMode
+        {
+            /// <summary>Aucun lissage.</summary>
+            Aucun = 0,
+
+            /// <summary>Lissage de l'image finale : rapide, mais les aretes fines scintillent en mouvement.</summary>
+            Fxaa = 1,
+
+            /// <summary>Temporel : accumule plusieurs images decalees. Le plus stable en mouvement.</summary>
+            Taa = 2,
+
+            /// <summary>MSAA x8 en rendu AVANT : aretes nettes, mais moins de lampes calculees par pixel.</summary>
+            Msaa = 3
+        }
 
         /// <summary>Nombre maximal de lampes volumétriques prises en compte par image (les plus proches).</summary>
         public const int MaxVolumetricLights = 12;
@@ -138,8 +155,25 @@ namespace UberBagarre.View
 
         [Header("Anticrenelage")]
         [SerializeField]
-        [Tooltip("FXAA sur l'image finale. Indispensable en rendu differe, qui ne fait pas de MSAA.")]
-        private bool _fxaa = true;
+        [Tooltip("TAA = le plus stable en mouvement (defaut). FXAA = rapide mais scintille. " +
+                 "MSAA = rendu avant avec MSAA x8, aretes nettes mais moins de lampes par pixel.")]
+        private AntiAliasingMode _antiAliasing = AntiAliasingMode.Taa;
+
+        [SerializeField, Range(0.5f, 0.98f)]
+        [Tooltip("Part de l'historique gardee a chaque image quand rien ne bouge. Plus haut = plus lisse.")]
+        private float _taaStationaryBlend = 0.93f;
+
+        [SerializeField, Range(0.3f, 0.95f)]
+        [Tooltip("Part de l'historique en mouvement rapide. Plus bas = moins de trainees.")]
+        private float _taaMotionBlend = 0.78f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Accentuation apres accumulation.")]
+        private float _taaSharpness = 0.22f;
+
+        [SerializeField, Range(0.3f, 1f)]
+        [Tooltip("Amplitude du decalage de camera, en pixels.")]
+        private float _taaJitterSpread = 0.75f;
 
         private Camera _camera;
         private Material _runtimeMaterial;
@@ -151,6 +185,17 @@ namespace UberBagarre.View
         private readonly VolumetricLight[] _volPicked = new VolumetricLight[MaxVolumetricLights];
         private readonly float[] _volScores = new float[MaxVolumetricLights];
         private readonly Vector3[] _frustum = new Vector3[4];
+
+        private RenderTexture _history;
+        private bool _historyValid;
+        private int _jitterIndex;
+        private Vector2 _jitter;
+        private bool _jittered;
+        private AntiAliasingMode _appliedMode = (AntiAliasingMode)(-1);
+
+        private static readonly int HistoryTexId = Shader.PropertyToID("_HistoryTex");
+        private static readonly int JitterId = Shader.PropertyToID("_Jitter");
+        private static readonly int TaaParamsId = Shader.PropertyToID("_TaaParams");
 
         private static readonly int VolumetricTexId = Shader.PropertyToID("_VolumetricTex");
         private static readonly int VolumetricOnId = Shader.PropertyToID("_VolumetricOn");
@@ -239,10 +284,10 @@ namespace UberBagarre.View
             set { _volumetricIntensity = Mathf.Clamp(value, 0f, 3f); }
         }
 
-        public bool Fxaa
+        public AntiAliasingMode AntiAliasing
         {
-            get { return _fxaa; }
-            set { _fxaa = value; }
+            get { return _antiAliasing; }
+            set { _antiAliasing = value; }
         }
 
         public float Grain
@@ -304,11 +349,21 @@ namespace UberBagarre.View
                 // profondeur. Gratuit en rendu differe, une passe de plus en rendu avant.
                 _camera.depthTextureMode |= DepthTextureMode.Depth;
             }
+
+            _appliedMode = (AntiAliasingMode)(-1);
+            ApplyCameraMode();
         }
 
         private void OnDisable()
         {
             ReleaseChain();
+            ReleaseHistory();
+
+            if (_camera != null && _jittered)
+            {
+                _camera.ResetProjectionMatrix();
+                _jittered = false;
+            }
 
             if (_runtimeMaterial != null)
             {
@@ -317,6 +372,157 @@ namespace UberBagarre.View
 
                 _runtimeMaterial = null;
             }
+        }
+
+        // ------------------------------------------------------------------ mode de rendu
+
+        /// <summary>
+        /// Rendu différé pour tout sauf le MSAA : le différé calcule chaque lampe par pixel,
+        /// mais ne sait pas faire de MSAA. Le mode MSAA repasse donc la caméra en rendu avant.
+        /// </summary>
+        private void ApplyCameraMode()
+        {
+            if (_camera == null) return;
+
+            // Un autre composant (VisualQuality) peut remettre le MSAA global a zero apres nous :
+            // en mode MSAA, on le reverifie a chaque image.
+            bool stale = _antiAliasing == AntiAliasingMode.Msaa && QualitySettings.antiAliasing != 8;
+            if (_appliedMode == _antiAliasing && !stale) return;
+
+            _appliedMode = _antiAliasing;
+            bool msaa = _antiAliasing == AntiAliasingMode.Msaa;
+
+            _camera.renderingPath = msaa ? RenderingPath.Forward : RenderingPath.DeferredShading;
+            _camera.allowMSAA = msaa;
+
+            if (msaa) QualitySettings.antiAliasing = 8;
+            else if (QualitySettings.antiAliasing > 1) QualitySettings.antiAliasing = 0;
+
+            if (_antiAliasing == AntiAliasingMode.Taa && SystemInfo.supportsMotionVectors)
+            {
+                _camera.depthTextureMode |= DepthTextureMode.MotionVectors | DepthTextureMode.Depth;
+            }
+
+            _historyValid = false;
+        }
+
+        private bool TaaActive
+        {
+            get
+            {
+                return _enabled && _antiAliasing == AntiAliasingMode.Taa && Application.isPlaying
+                       && SystemInfo.supportsMotionVectors && _camera != null && !_camera.orthographic;
+            }
+        }
+
+        /// <summary>
+        /// Décale la caméra d'une fraction de pixel, différente à chaque image (suite de Halton).
+        /// C'est ce décalage qui donne au TAA des échantillons nouveaux à accumuler.
+        /// </summary>
+        private void OnPreCull()
+        {
+            ApplyCameraMode();
+
+            if (!TaaActive) return;
+
+            _camera.ResetProjectionMatrix();
+            _camera.nonJitteredProjectionMatrix = _camera.projectionMatrix;
+
+            _jitterIndex = (_jitterIndex + 1) % 8;
+            _jitter = new Vector2(Halton(_jitterIndex + 1, 2) - 0.5f, Halton(_jitterIndex + 1, 3) - 0.5f) * _taaJitterSpread;
+
+            Matrix4x4 projection = _camera.projectionMatrix;
+            projection[0, 2] += _jitter.x * 2f / Mathf.Max(1, _camera.pixelWidth);
+            projection[1, 2] += _jitter.y * 2f / Mathf.Max(1, _camera.pixelHeight);
+
+            _camera.projectionMatrix = projection;
+            _camera.useJitteredProjectionMatrixForTransparentRendering = false;
+            _jittered = true;
+        }
+
+        private void OnPostRender()
+        {
+            if (!_jittered || _camera == null) return;
+
+            _camera.ResetProjectionMatrix();
+            _jittered = false;
+        }
+
+        private static float Halton(int index, int radix)
+        {
+            float result = 0f;
+            float fraction = 1f / radix;
+
+            while (index > 0)
+            {
+                result += fraction * (index % radix);
+                index /= radix;
+                fraction /= radix;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Accumule l'image courante dans l'historique. Renvoie l'image lissée (temporaire, à
+        /// libérer par l'appelant), ou null si le TAA ne s'applique pas.
+        /// </summary>
+        private RenderTexture ResolveTemporal(Material material, RenderTexture source)
+        {
+            if (!TaaActive || source.width < 8 || source.height < 8) return null;
+
+            RenderTextureFormat format = SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBHalf)
+                ? RenderTextureFormat.ARGBHalf
+                : RenderTextureFormat.DefaultHDR;
+
+            if (_history == null || _history.width != source.width || _history.height != source.height)
+            {
+                ReleaseHistory();
+
+                _history = new RenderTexture(source.width, source.height, 0, format, RenderTextureReadWrite.Linear);
+                _history.name = "Historique TAA";
+                _history.hideFlags = HideFlags.HideAndDontSave;
+                _history.filterMode = FilterMode.Bilinear;
+                _history.wrapMode = TextureWrapMode.Clamp;
+                _history.Create();
+                _historyValid = false;
+            }
+
+            RenderTexture resolved = RenderTexture.GetTemporary(source.width, source.height, 0, format,
+                RenderTextureReadWrite.Linear);
+            resolved.filterMode = FilterMode.Bilinear;
+
+            material.SetTexture(HistoryTexId, _historyValid ? (Texture)_history : source);
+            material.SetVector(JitterId, new Vector4(_jitter.x / source.width, _jitter.y / source.height, 0f, 0f));
+            material.SetVector(TaaParamsId, new Vector4(_historyValid ? _taaStationaryBlend : 0f,
+                _historyValid ? _taaMotionBlend : 0f, _taaSharpness, 0f));
+
+            Graphics.Blit(source, resolved, material, PassTaa);
+            Graphics.Blit(resolved, _history);
+            _historyValid = true;
+
+            return resolved;
+        }
+
+        private void ReleaseHistory()
+        {
+            if (_history == null) return;
+
+            _history.Release();
+            if (Application.isPlaying) Destroy(_history);
+            else DestroyImmediate(_history);
+
+            _history = null;
+            _historyValid = false;
+        }
+
+        /// <summary>
+        /// Oublie l'historique : à appeler après une téléportation, sinon l'image précédente
+        /// (un autre lieu) traînerait une image dans la nouvelle.
+        /// </summary>
+        public void ResetHistory()
+        {
+            _historyValid = false;
         }
 
         // ------------------------------------------------------------------ rendu
@@ -338,9 +544,16 @@ namespace UberBagarre.View
 
             PushUniforms(material);
 
+            // La lumiere dans l'air est calculee sur l'image d'ORIGINE : c'est elle qui porte
+            // l'orientation de la profondeur (retournee sur certaines plateformes).
             RenderTexture volumetric = RenderVolumetric(material, source);
             material.SetTexture(VolumetricTexId, volumetric != null ? (Texture)volumetric : Texture2D.blackTexture);
             material.SetFloat(VolumetricOnId, volumetric != null ? 1f : 0f);
+
+            // Puis le TAA, sur l'image HDR : le bloom et l'etalonnage travaillent ensuite sur
+            // une image deja stable.
+            RenderTexture temporal = ResolveTemporal(material, source);
+            if (temporal != null) source = temporal;
 
             int levels = BuildBloomPyramid(material, source);
 
@@ -360,12 +573,13 @@ namespace UberBagarre.View
 
             ReleaseChain();
             if (volumetric != null) RenderTexture.ReleaseTemporary(volumetric);
+            if (temporal != null) RenderTexture.ReleaseTemporary(temporal);
         }
 
         /// <summary>Composition finale, suivie du FXAA s'il est actif.</summary>
         private void Compose(Material material, RenderTexture source, RenderTexture destination)
         {
-            if (!_fxaa || source.width < 8 || source.height < 8)
+            if (_antiAliasing != AntiAliasingMode.Fxaa || source.width < 8 || source.height < 8)
             {
                 Graphics.Blit(source, destination, material, PassComposite);
                 return;

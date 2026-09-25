@@ -410,7 +410,7 @@ namespace UberBagarre.EditorTools
             Material redJacket = Jacket(night, "M_VesteRouge", new Color(0.62f, 0.09f, 0.08f));
             Material lightJeans = EditorBuildUtility.CreateOrUpdateMaterial(
                 NightMaterialFactory.MaterialsFolder, "M_JeanClair",
-                new Color(0.46f, 0.50f, 0.58f), 0.09f, 0f);
+                new Color(0.46f, 0.50f, 0.58f), 0.03f, 0f);
 
             FighterBuilder.Skin targetSkin = FighterBuilder.Skin.Enemy(materials);
             targetSkin.Shirt = redJacket;
@@ -460,7 +460,7 @@ namespace UberBagarre.EditorTools
 
             skin.Pants = EditorBuildUtility.CreateOrUpdateMaterial(
                 NightMaterialFactory.MaterialsFolder, "M_Pantalon_" + name.Replace(" ", ""),
-                trousers, 0.08f, 0f);
+                trousers, 0.03f, 0f);
 
             SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(
                 materials, attacks, name, position, yaw, skin, 80f, false);
@@ -510,7 +510,7 @@ namespace UberBagarre.EditorTools
                 (seed & 0x7FFFFFFF) % 9000);
 
             return EditorBuildUtility.CreateOrUpdateMaterial(NightMaterialFactory.MaterialsFolder,
-                name, Color.white, 0.12f, 0f, weave, new Vector2(12f, 12f));
+                name, Color.white, 0.05f, 0f, weave, new Vector2(12f, 12f));
         }
 
         // ------------------------------------------------------------------ la voiture du club
