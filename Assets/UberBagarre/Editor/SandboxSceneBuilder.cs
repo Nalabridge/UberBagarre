@@ -500,6 +500,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hands, "_leftHand", body.Rig.LeftHand);
             SerializedWiring.SetObject(hands, "_rightHand", body.Rig.RightHand);
             SerializedWiring.SetObject(hands, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(hands, "_leftClavicle", body.Rig.Clavicle(HandSide.Left));
+            SerializedWiring.SetObject(hands, "_rightClavicle", body.Rig.Clavicle(HandSide.Right));
 
             // Le mouchard de la camera : nomme dans la console le noeud qui fait sauter l'image.
             CameraDiagnostics diagnostics = cameraGo.AddComponent<CameraDiagnostics>();
@@ -557,6 +559,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_rightHitbox", body.RightHitbox);
             SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
             SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
+            SerializedWiring.SetObject(executor, "_impulseReceiver", motor);
+            SerializedWiring.SetBool(executor, "_cinematic", true);
             SerializedWiring.SetObject(executor, "_guard", guard);
 
             AddStunMeter(playerGo, combatant, executor);
@@ -730,8 +734,9 @@ namespace UberBagarre.EditorTools
             // dehors, et l'adversaire couche au sol garde les deux bras tendus vers le ciel a
             // hauteur d'yeux. La barre de vie, qui s'accroche au meme repere, restait elle aussi
             // suspendue en l'air au-dessus d'un corps allonge.
+            // A hauteur des YEUX DU CORPS : le Colosse ne boxe pas a la hauteur du joueur.
             GameObject armsAnchor = EditorBuildUtility.CreateEmpty("ArmsAnchor", tilt.transform,
-                new Vector3(0f, FighterBuilder.EyeHeight, 0f));
+                body.EyeLocal);
             FirstPersonHands arms = armsAnchor.AddComponent<FirstPersonHands>();
             SerializedWiring.SetObject(arms, "_poseSpace", armsAnchor.transform);
             SerializedWiring.SetObject(arms, "_leftArm", body.Rig.LeftArm);
@@ -739,6 +744,8 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(arms, "_leftHand", body.Rig.LeftHand);
             SerializedWiring.SetObject(arms, "_rightHand", body.Rig.RightHand);
             SerializedWiring.SetObject(arms, "_locomotion", body.Locomotion);
+            SerializedWiring.SetObject(arms, "_leftClavicle", body.Rig.Clavicle(HandSide.Left));
+            SerializedWiring.SetObject(arms, "_rightClavicle", body.Rig.Clavicle(HandSide.Right));
 
             EnemyMotor motor = enemyGo.AddComponent<EnemyMotor>();
 
@@ -750,7 +757,7 @@ namespace UberBagarre.EditorTools
             // presque tous les coups — le joueur n'aurait jamais la main. Il BLOQUE, le joueur
             // PARE : le timing reste une competence du joueur.
             GuardSystem guard = AddGuard(enemyGo, combatant, 0.06f);
-            GameObject hurtboxes = AddHurtboxes(tilt, combatant, guard, Faction.Enemy, PlayerHeight);
+            GameObject hurtboxes = AddBodyHurtboxes(tilt, combatant, guard, Faction.Enemy, body);
 
             AttackExecutor executor = enemyGo.AddComponent<AttackExecutor>();
             SerializedWiring.SetObject(executor, "_combatant", combatant);
@@ -762,6 +769,13 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(executor, "_leftFootHitbox", body.LeftFootHitbox);
             SerializedWiring.SetObject(executor, "_rightFootHitbox", body.RightFootHitbox);
             SerializedWiring.SetObject(executor, "_headHitbox", body.HeadHitbox);
+            SerializedWiring.SetObject(executor, "_impulseReceiver", motor);
+
+            // L'adversaire arme ses coups plus longtemps (on les VOIT venir), suit moins sa
+            // cible une fois lance (une esquive le fait rater) et s'elance moins loin.
+            SerializedWiring.SetFloat(executor, "_telegraph", 0.16f);
+            SerializedWiring.SetFloat(executor, "_tracking", 0.3f);
+            SerializedWiring.SetFloat(executor, "_maxLungeSpeed", 2.4f);
             SerializedWiring.SetObject(executor, "_guard", guard);
 
             StunMeter stun = AddStunMeter(enemyGo, combatant, executor);
@@ -994,6 +1008,71 @@ namespace UberBagarre.EditorTools
             AddHurtbox(headBox, combatant, guard, faction, HitZone.Head, 1.6f);
 
             return root;
+        }
+
+        /// <summary>
+        /// Zones touchables d'un corps visible : elles SUIVENT les os. La tête est une sphère
+        /// autour du crâne, le torse une capsule de la taille à la base du cou, les jambes une
+        /// capsule du bassin aux chevilles. Des volumes au plus près de la peau : le poing guidé
+        /// vers la cible la touche au moment où il arrive sur elle, pas 30 cm avant.
+        /// </summary>
+        private static GameObject AddBodyHurtboxes(GameObject parent, Combatant combatant, GuardSystem guard,
+            Faction faction, FighterBuilder.Result body)
+        {
+            GameObject root = EditorBuildUtility.CreateEmpty("Hurtboxes", parent.transform, Vector3.zero);
+            if (body.Head == null || body.Chest == null || body.Pelvis == null)
+            {
+                Object.DestroyImmediate(root);
+                return AddHurtboxes(parent, combatant, guard, faction, PlayerHeight);
+            }
+
+            Transform bodyRoot = body.Body.transform;
+            Vector3 eyes = bodyRoot.InverseTransformPoint(parent.transform.TransformPoint(body.EyeLocal));
+
+            // Tête : centre du crâne, un peu au-dessus et en arrière des yeux.
+            Vector3 headCentre = bodyRoot.TransformPoint(eyes + new Vector3(0f, 0.035f, -0.045f));
+            GameObject headBox = FollowingZone("Hurtbox_Tete", root.transform, body.Head, headCentre);
+            SphereCollider headCollider = headBox.AddComponent<SphereCollider>();
+            headCollider.isTrigger = true;
+            headCollider.radius = 0.115f;
+            AddHurtbox(headBox, combatant, guard, faction, HitZone.Head, 1.6f);
+
+            // Torse : de la taille à la base du cou.
+            Vector3 neck = body.Neck.position;
+            Vector3 waist = body.Pelvis.position + Vector3.up * 0.08f;
+            Vector3 torsoCentre = (neck + waist) * 0.5f + bodyRoot.forward * 0.015f;
+            GameObject bodyBox = FollowingZone("Hurtbox_Corps", root.transform, body.Chest, torsoCentre);
+            CapsuleCollider bodyCollider = bodyBox.AddComponent<CapsuleCollider>();
+            bodyCollider.isTrigger = true;
+            bodyCollider.radius = 0.175f;
+            bodyCollider.height = Vector3.Distance(neck, waist) + 0.12f;
+            bodyCollider.direction = 1;
+            AddHurtbox(bodyBox, combatant, guard, faction, HitZone.Body, 1f);
+
+            // Jambes : du bassin aux chevilles, attachées au bassin.
+            float hipHeight = bodyRoot.InverseTransformPoint(body.Pelvis.position).y;
+            Vector3 legsCentre = bodyRoot.TransformPoint(new Vector3(0f, hipHeight * 0.5f, 0f));
+            GameObject legBox = FollowingZone("Hurtbox_Jambes", root.transform, body.Pelvis, legsCentre);
+            CapsuleCollider legCollider = legBox.AddComponent<CapsuleCollider>();
+            legCollider.isTrigger = true;
+            legCollider.radius = 0.2f;
+            legCollider.height = hipHeight;
+            legCollider.direction = 1;
+            AddHurtbox(legBox, combatant, guard, faction, HitZone.Leg, 0.55f);
+
+            return root;
+        }
+
+        private static GameObject FollowingZone(string name, Transform parent, Transform bone, Vector3 worldCentre)
+        {
+            GameObject go = EditorBuildUtility.CreateEmpty(name, parent, Vector3.zero);
+            go.transform.position = worldCentre;
+            go.transform.rotation = bone.rotation;
+
+            BoneFollower follower = go.AddComponent<BoneFollower>();
+            SerializedWiring.SetObject(follower, "_bone", bone);
+            SerializedWiring.SetVector3(follower, "_offset", bone.InverseTransformPoint(worldCentre));
+            return go;
         }
 
         private static void AddHurtbox(GameObject go, Combatant combatant, GuardSystem guard,

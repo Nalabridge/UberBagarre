@@ -2105,3 +2105,82 @@ rare, saut rouge-cyan toutes les huit secondes), la pluie tombe à l'écran et u
 les 17 s. La musique est devenue un groove à 92 BPM (batterie, basse syncopée, nappe), toujours
 synthétisé au lancement, et chaque transition a son souffle.
 
+
+## 25. Des corps humains, des coups qui arrivent
+
+Demande : « refais tout le combat », pas arcade, des animations dignes de Spider-Man 2, des coups qui
+touchent vraiment, une caméra qui suit le mouvement de la frappe, des bras musclés réalistes et des pouces
+qui ne ressemblent pas à des saucisses. Carte blanche sur le code et les modèles.
+
+### 25.1 Le corps : MakeHuman, recuit pour le jeu
+
+Les sites d'assets (Sketchfab, Mixamo, Poly Haven…) sont inaccessibles depuis l'environnement de
+fabrication ; le dépôt public de MakeHuman l'est, et ses données (maillage hm08, cibles de morphologie,
+squelette, poids) sont **CC0**. `Tools/corps/` en tire un corps de jeu complet, sans aucun outil 3D :
+
+- **Morphologie** : les réglages macro de MakeHuman recalculés comme `apps/human.py` (genre, âge,
+  muscle, poids, taille, proportions, origines) plus des cibles locales (biceps, avant-bras, deltoïdes,
+  pectoraux, dorsaux, V, abdominaux, cou). Échelle choisie pour que les **yeux** tombent à la hauteur
+  voulue : 1,62 m pour le joueur, soit exactement la caméra.
+- **Squelette du jeu** (`rig.py`) posé sur les articulations MakeHuman (centroïdes de sommets) avec les
+  noms attendus par le code. Conventions : +Z le long des os de membre ; pour le bras et l'avant-bras
+  +X est **l'axe réel du coude** ; main et doigts +Y dos de la main, fermeture = rotation autour de +X ;
+  pied à plat (sinon la locomotion relèverait les orteils de 18° au premier pas). Os `Yeux` (ancrage
+  caméra et poses) et `Knuckles` (point de frappe). Poids : les 163 os MakeHuman fusionnés sur les
+  nôtres (4 influences), lissés sur la main (plis en lame au creux du pouce).
+- **Le poing** : fermetures et resserrement des doigts, et la pose du pouce trouvée par **optimisation**
+  (scipy, Powell) : bout du pouce sur la phalange moyenne du majeur, articulation sur celle de l'index,
+  pénalité d'interpénétration mesurée sur les sommets. Résultat : pouce en travers, par-dessus.
+- **Vêtements** (`vetements.py`) : découpés dans le « collant » d'aide du maillage (qui suit déjà toutes
+  les morphologies), bords recalés sur leur ligne de coupe, lissés, décollés de la peau d'une épaisseur
+  minimale (avec garde-fou de distance : sinon une manche loin du jean était projetée à 30 cm), drapés
+  (le tee-shirt tombe des pectoraux et droit sous la taille, le jean tombe droit du genou), ourlés
+  (tranche + revers intérieur). Chaque face de peau porte un masque des vêtements qui la cachent.
+- **Subdivision** Catmull-Clark maison (numpy), poids et UV interpolés. **Peau** peinte texel par texel
+  depuis la position anatomique (atlas rasterisé en 3D) : veines, ongles, lunules, jointures, coudes,
+  genoux, joues, oreilles, lèvres, sourcils, crâne rasé, barbe, creux ; relief en espace tangent
+  dérivé d'une carte de hauteur dans l'espace des UV (donc aligné sur les tangentes d'Unity).
+
+Côté Unity, `CorpsImporter` lit le format `UBCORPS2` (gzip), assemble par **tenue** un maillage qui
+ne garde que la peau visible et les vêtements portés (sommets compactés, 32 bits d'index), range la
+position de repos dans le 3e canal d'UV (bleus), et enregistre le maillage dans `Corps/Generes`.
+`FighterBuilder` reconstruit le squelette depuis les positions de liaison et câble tout le reste avec
+les mêmes composants qu'avant (`IkLimb`, `HandRig`, `BodyRig`, `ProceduralLocomotion`, hitbox). Le
+joueur est reculé pour que ses yeux soient sur la caméra : il a un corps, sans tête.
+
+**`IkLimb` en mode charnière.** L'ancien alignement (`FromToRotation`) laissait le roulis des os libre :
+invisible sur des cylindres, catastrophique sur une peau (avant-bras vrillé, coude tordu). Le mode
+charnière oriente bras et avant-bras autour de l'axe du coude mesuré en pose de liaison (repli sur le
+pôle, même signe, fondu quand le bras se tend), et un **os de torsion** encaisse la moitié de la
+rotation du poignet, mesurée depuis la pose de liaison (la main de liaison est à 92° de l'avant-bras).
+`HandRig` reçoit une rotation « poing » par doigt (resserrement, pivot du pouce).
+
+### 25.2 Le coup
+
+- **`AttackData.Sample`** : Hermite à tangentes de Steffen (monotones) au lieu d'un smoothstep par
+  segment. La vitesse traverse les clés ; le poing ne ralentit qu'aux vrais retournements.
+- **`StrikeTarget`** : point de surface visé — zone sous le réticule, sinon adversaire le plus proche
+  devant (±55°, 2,7 m). Tête : la mâchoire (centre du crâne − 12 cm + 7 cm vers l'attaquant) ; corps :
+  point de capsule le plus proche d'un point 28 cm sous l'épaule, 3 cm dedans. En garde : sur
+  l'avant-bras le plus proche de la trajectoire.
+- **`AttackExecutor`** (réécrit) : guidage du poignet vers la cible (écart pose écrite ↔ cible, borné
+  à 45 cm, poids nul au départ, plein à l'impact, rendu au retour ; suivi complet pour le joueur, 30 %
+  pour l'IA) ; élan (`IImpulseReceiver`) calculé pour couvrir l'écart à l'instant d'impact, portée
+  comptée avec la rotation du buste ; **gel de contact** (50 ms, 85 ms lourd, allongé par la charge et
+  le contre) pendant lequel le geste n'avance plus, puis retour accéléré au lieu de traverser ; armement
+  tenu pour l'IA (`_telegraph`) ; montée d'intensité sur l'enchaînement ; ralentis cinéma (contre, K.O.).
+- **`FirstPersonHands`** : nouvelle garde (poings au menton, coudes bas) calée sur un bras de 52 cm ;
+  **l'épaule s'avance** (rotation de clavicule, 7 cm max) quand la cible dépasse la portée.
+- **`CameraPunch`** : pilotage à pleine échelle (11° / 9 cm max) + suivi de la vitesse du poing
+  (roulis, lacet, tangage) + coup de zoom et zoom tenu, toujours par ressorts critiques (aucun saut
+  d'image) ; le champ de vision du menu et de l'appareil photo est respecté (on n'ajoute qu'un écart).
+- **`HitStop`** : vrai arrêt sur les coups lourds (0,45 pendant 55 ms max) et ralenti cinéma à entrée
+  et sortie adoucies.
+- **`ImpactEffects`** : gouttelettes étirées (sueur ; sang sur gros coup au visage), bouffée de tissu,
+  éclair de 60 ms — systèmes de particules fabriqués à l'exécution, branchés sur tous les dégâts.
+- **`ImpactAudio`** : claque (bruit clair), masse (grave qui plonge), craquement (impulsions) ;
+  trois variantes par poids de coup.
+- **Zones touchables collées aux os** (`BoneFollower`) : sphère autour du crâne, capsule du torse,
+  capsule des jambes. Le poing guidé les touche au moment où il arrive sur la peau.
+- **HUD non arcade** : chiffres de dégâts et barres au-dessus des têtes coupés par défaut
+  (`WorldHealthBar.ArcadeHud`), interrupteur dans le menu de triche.

@@ -46,6 +46,20 @@ namespace UberBagarre.View
         [Tooltip("Correction d'orientation de la main / du pied, pour un modele dont les axes different.")]
         private Vector3 _endRotationOffset;
 
+        [Header("Charniere (corps skinne)")]
+        [SerializeField]
+        [Tooltip("Oriente les deux os autour de l'axe reel du coude / du genou, au lieu de la " +
+                 "rotation la plus courte. Indispensable pour une peau : sans roulis controle, " +
+                 "l'avant-bras vrille sur lui-meme et la peau du coude se tord.")]
+        private bool _hingeMode;
+
+        [SerializeField]
+        [Tooltip("Os de torsion de l'avant-bras (optionnel). Il encaisse une part de la rotation " +
+                 "du poignet, comme le radius qui tourne autour du cubitus.")]
+        private Transform _twist;
+
+        [SerializeField, Range(0f, 1f)] private float _twistShare = 0.5f;
+
         [Header("Debug")]
         [SerializeField] private bool _drawGizmos;
 
@@ -56,6 +70,11 @@ namespace UberBagarre.View
         private bool _bound;
 
         private TwoBoneIkSolver.Result _lastSolve;
+
+        private Vector3 _upperHingeLocal;
+        private Vector3 _lowerHingeLocal;
+        private Quaternion _twistRestLocal;
+        private Vector3 _endReferenceLocal;
 
         public Transform End { get { return _end; } }
         public Transform Upper { get { return _upper; } }
@@ -104,6 +123,25 @@ namespace UberBagarre.View
 
             if (_poleSpace == null) _poleSpace = transform;
 
+            // L'axe de la charniere, mesure sur la pose de liaison (coude deja un peu plie).
+            // Bras tendu en liaison : on se rabat sur le pole, avec le meme signe que le
+            // solveur (voir HingeAxis).
+            Vector3 hinge = Vector3.Cross(upperWorld, lowerWorld);
+            if (hinge.sqrMagnitude < 1e-8f)
+            {
+                hinge = Vector3.Cross(_poleSpace.TransformDirection(_poleDirection), upperWorld + lowerWorld);
+            }
+
+            hinge.Normalize();
+            _upperHingeLocal = _upper.InverseTransformDirection(hinge);
+            _lowerHingeLocal = _lower.InverseTransformDirection(hinge);
+
+            if (_twist != null) _twistRestLocal = Quaternion.Inverse(_lower.rotation) * _twist.rotation;
+
+            // Reference de torsion : le cote de l'avant-bras, vu depuis la main de liaison.
+            Vector3 side = Vector3.Cross(lowerWorld.normalized, hinge);
+            _endReferenceLocal = Quaternion.Inverse(_end.rotation) * side;
+
             _bound = true;
         }
 
@@ -116,10 +154,64 @@ namespace UberBagarre.View
             Vector3 pole = _poleSpace.TransformDirection(_poleDirection);
             _lastSolve = TwoBoneIkSolver.Solve(_upper.position, endPosition, _upperLength, _lowerLength, pole);
 
-            AlignBone(_upper, _upperRestLocal, _upperAxisLocal, _lastSolve.UpperDirection);
-            AlignBone(_lower, _lowerRestLocal, _lowerAxisLocal, _lastSolve.LowerDirection);
+            Quaternion endWorld = endRotation * Quaternion.Euler(_endRotationOffset);
 
-            _end.rotation = endRotation * Quaternion.Euler(_endRotationOffset);
+            if (_hingeMode)
+            {
+                Vector3 hinge = HingeAxis(_lastSolve.UpperDirection, _lastSolve.LowerDirection, pole,
+                    endPosition - _upper.position);
+
+                _upper.rotation = Frame(_lastSolve.UpperDirection, hinge) * Quaternion.Inverse(Frame(_upperAxisLocal, _upperHingeLocal));
+                _lower.rotation = Frame(_lastSolve.LowerDirection, hinge) * Quaternion.Inverse(Frame(_lowerAxisLocal, _lowerHingeLocal));
+
+                if (_twist != null)
+                {
+                    Vector3 axis = _lastSolve.LowerDirection;
+                    Vector3 side = Vector3.Cross(axis, hinge);
+                    Vector3 wanted = Vector3.ProjectOnPlane(endWorld * _endReferenceLocal, axis);
+                    float angle = wanted.sqrMagnitude > 1e-8f ? Vector3.SignedAngle(side, wanted, axis) : 0f;
+                    _twist.rotation = Quaternion.AngleAxis(angle * _twistShare, axis) * (_lower.rotation * _twistRestLocal);
+                }
+            }
+            else
+            {
+                AlignBone(_upper, _upperRestLocal, _upperAxisLocal, _lastSolve.UpperDirection);
+                AlignBone(_lower, _lowerRestLocal, _lowerAxisLocal, _lastSolve.LowerDirection);
+            }
+
+            _end.rotation = endWorld;
+        }
+
+        /// <summary>
+        /// L'axe du coude : perpendiculaire au plan bras / avant-bras. Membre presque tendu, ce
+        /// plan n'existe plus — on prend celui du pole, avec le meme sens (un coude plie vers le
+        /// pole donne exactement Cross(pole, direction)).
+        /// </summary>
+        private static Vector3 HingeAxis(Vector3 upperDirection, Vector3 lowerDirection, Vector3 pole, Vector3 reach)
+        {
+            Vector3 hinge = Vector3.Cross(upperDirection, lowerDirection);
+            Vector3 fallback = Vector3.Cross(pole, reach);
+
+            if (fallback.sqrMagnitude < 1e-8f) fallback = Vector3.Cross(Vector3.up, reach);
+            fallback.Normalize();
+
+            // Fondu entre les deux quand le coude s'ouvre : pas de saut de roulis au moment ou
+            // le bras se tend.
+            float bend = hinge.magnitude;
+            if (bend < 1e-5f) return fallback;
+
+            hinge /= bend;
+            if (Vector3.Dot(hinge, fallback) < 0f && bend < 0.2f) hinge = -hinge;
+
+            return Vector3.Slerp(fallback, hinge, Mathf.Clamp01(bend / 0.2f)).normalized;
+        }
+
+        /// <summary>Rotation qui envoie +Z sur <paramref name="z"/> et +X sur <paramref name="x"/> (orthogonalise).</summary>
+        private static Quaternion Frame(Vector3 z, Vector3 x)
+        {
+            Vector3 up = Vector3.Cross(z, x);
+            if (up.sqrMagnitude < 1e-10f) return Quaternion.LookRotation(z);
+            return Quaternion.LookRotation(z, up);
         }
 
         /// <summary>

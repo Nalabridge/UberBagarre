@@ -36,26 +36,39 @@ namespace UberBagarre.View
         [Tooltip("Optionnel : fournit le balancement des bras synchronise avec les jambes.")]
         private ProceduralLocomotion _locomotion;
 
-        // Garde de boxeur : poings VERTICAUX, pouces en haut et vers l'interieur (roulis de
-        // ~65 degres). Les coups partent de la et tournent le poing a plat a l'impact — la
-        // vrille du direct, qui fait toute la difference entre un bras qui se tend et un coup.
+        [Header("Epaules")]
+        [SerializeField]
+        [Tooltip("Clavicules. Quand la cible du poing est hors de portee du bras, l'epaule " +
+                 "s'avance : c'est le dernier centimetre d'un direct, celui qui porte.")]
+        private Transform _leftClavicle;
+
+        [SerializeField] private Transform _rightClavicle;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Avancee maximale de l'epaule, en metres.")]
+        private float _shoulderReach = 0.07f;
+
+        // Garde haute de bagarreur, pour un bras reel (52 cm, epaule 23 cm sous les yeux et
+        // 10 cm en arriere) : poings a hauteur du menton, jointures vers le haut, coudes bas
+        // qui couvrent les cotes. Vue de l'interieur, les deux poings montent du bas de l'image.
+        // Les coups partent de la et vissent le poing a plat a l'impact.
         [Header("Garde normale (espace de visee)")]
-        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.155f, -0.135f, 0.335f), new Vector3(-6f, 20f, 66f));
-        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.148f, -0.165f, 0.275f), new Vector3(-4f, -18f, -68f));
+        [SerializeField] private HandPose _leftGuardPose = new HandPose(new Vector3(-0.115f, -0.155f, 0.245f), new Vector3(-50f, 18f, 72f));
+        [SerializeField] private HandPose _rightGuardPose = new HandPose(new Vector3(0.130f, -0.190f, 0.190f), new Vector3(-50f, -16f, -76f));
 
         [Header("Garde serree (clic droit)")]
-        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.115f, -0.072f, 0.300f), new Vector3(-10f, 28f, 74f));
-        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.115f, -0.078f, 0.290f), new Vector3(-10f, -28f, -74f));
+        [SerializeField] private HandPose _leftTightGuardPose = new HandPose(new Vector3(-0.078f, -0.085f, 0.195f), new Vector3(-62f, 30f, 82f));
+        [SerializeField] private HandPose _rightTightGuardPose = new HandPose(new Vector3(0.078f, -0.095f, 0.180f), new Vector3(-62f, -30f, -82f));
 
         [Header("Course")]
-        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.205f, -0.30f, 0.20f), new Vector3(14f, 24f, 50f));
-        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.205f, -0.30f, 0.20f), new Vector3(14f, -24f, -50f));
+        [SerializeField] private HandPose _leftSprintPose = new HandPose(new Vector3(-0.215f, -0.36f, 0.12f), new Vector3(10f, 24f, 60f));
+        [SerializeField] private HandPose _rightSprintPose = new HandPose(new Vector3(0.215f, -0.36f, 0.12f), new Vector3(10f, -24f, -60f));
 
         // Hors combat : les bras pendent le long du corps, paumes vers les cuisses, mains
         // entrouvertes. Hors du champ de la camera — un homme qui marche ne voit pas ses mains.
         [Header("Hors combat")]
-        [SerializeField] private HandPose _leftRelaxedPose = new HandPose(new Vector3(-0.21f, -0.47f, 0.13f), new Vector3(24f, 8f, 84f));
-        [SerializeField] private HandPose _rightRelaxedPose = new HandPose(new Vector3(0.21f, -0.47f, 0.13f), new Vector3(24f, -8f, -84f));
+        [SerializeField] private HandPose _leftRelaxedPose = new HandPose(new Vector3(-0.225f, -0.66f, 0.0f), new Vector3(80f, 0f, 88f));
+        [SerializeField] private HandPose _rightRelaxedPose = new HandPose(new Vector3(0.225f, -0.66f, 0.0f), new Vector3(80f, 0f, -88f));
         [SerializeField, Range(0f, 1f)] private float _relaxedGrip = 0.28f;
 
         [Header("Fermeture des mains")]
@@ -122,6 +135,30 @@ namespace UberBagarre.View
         private Vector3[] _rightHoldCurls;
         private Vector3 _rightHoldThumb;
 
+        private Quaternion _leftClavicleRest;
+        private Quaternion _rightClavicleRest;
+
+        /// <summary>Position de l'épaule (racine du bras), en monde.</summary>
+        public Vector3 ArmRoot(HandSide side)
+        {
+            IkLimb arm = side == HandSide.Left ? _leftArm : _rightArm;
+            return arm != null ? arm.RootPosition : PoseSpace.position;
+        }
+
+        /// <summary>Longueur du bras tendu (bras + avant-bras).</summary>
+        public float ArmReach(HandSide side)
+        {
+            IkLimb arm = side == HandSide.Left ? _leftArm : _rightArm;
+            return arm != null ? arm.TotalLength : 0.5f;
+        }
+
+        /// <summary>Le poignet.</summary>
+        public Transform ArmEnd(HandSide side)
+        {
+            IkLimb arm = side == HandSide.Left ? _leftArm : _rightArm;
+            return arm != null ? arm.End : null;
+        }
+
         /// <summary>Repère dans lequel les poses sont exprimées. Les coups de pied s'en servent aussi.</summary>
         public Transform PoseSpace
         {
@@ -145,6 +182,9 @@ namespace UberBagarre.View
             if (_poseSpace == null) _poseSpace = transform;
             _smoothedLeft = _leftGuardPose;
             _smoothedRight = _rightGuardPose;
+
+            if (_leftClavicle != null) _leftClavicleRest = _leftClavicle.localRotation;
+            if (_rightClavicle != null) _rightClavicleRest = _rightClavicle.localRotation;
         }
 
         public void SetLookDelta(Vector2 delta, float deltaTime)
@@ -365,6 +405,7 @@ namespace UberBagarre.View
                 worldPosition = Vector3.Lerp(worldPosition, low, Mathf.Clamp01(Lowered));
             }
 
+            ReachWithShoulder(side, arm, worldPosition);
             arm.ApplyWorldPose(worldPosition, worldRotation);
 
             if (hand == null) return;
@@ -378,6 +419,36 @@ namespace UberBagarre.View
 
             Vector3[] curls = isLeft ? _leftHoldCurls : _rightHoldCurls;
             hand.SetPoseOverride(curls != null ? holdWeight : 0f, curls, isLeft ? _leftHoldThumb : _rightHoldThumb);
+        }
+
+        /// <summary>
+        /// L'épaule suit le poing quand le bras ne suffit plus : la clavicule pivote pour
+        /// avancer l'articulation vers la cible, jusqu'à quelques centimètres. Un bras tendu
+        /// sans ce mouvement se lit comme un bras de mannequin ; avec, comme un coup qui porte.
+        /// </summary>
+        private void ReachWithShoulder(HandSide side, IkLimb arm, Vector3 target)
+        {
+            Transform clavicle = side == HandSide.Left ? _leftClavicle : _rightClavicle;
+            if (clavicle == null) return;
+
+            clavicle.localRotation = side == HandSide.Left ? _leftClavicleRest : _rightClavicleRest;
+            if (_shoulderReach <= 0f) return;
+
+            Vector3 shoulder = arm.RootPosition;
+            float excess = Vector3.Distance(shoulder, target) - arm.TotalLength * 0.92f;
+            if (excess <= 0f) return;
+
+            Vector3 lever = shoulder - clavicle.position;
+            float leverLength = lever.magnitude;
+            if (leverLength < 0.02f) return;
+
+            Vector3 toward = (target - shoulder).normalized;
+            Vector3 axis = Vector3.Cross(lever, toward);
+            if (axis.sqrMagnitude < 1e-8f) return;
+
+            float move = Mathf.Min(excess, _shoulderReach);
+            float angle = Mathf.Min(move / leverLength * Mathf.Rad2Deg, 24f);
+            clavicle.rotation = Quaternion.AngleAxis(angle, axis.normalized) * clavicle.rotation;
         }
 
         private void OnDrawGizmosSelected()

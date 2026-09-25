@@ -17,6 +17,14 @@ namespace UberBagarre.View
         [SerializeField] private Transform _spine;
         [SerializeField] private Transform _chest;
         [SerializeField] private Transform _neck;
+        [SerializeField] private Transform _head;
+
+        [Header("Epaules")]
+        [SerializeField]
+        [Tooltip("Clavicules : elles avancent l'epaule dans un direct, la haussent dans une garde.")]
+        private Transform _leftClavicle;
+
+        [SerializeField] private Transform _rightClavicle;
 
         [Header("Jambes")]
         [SerializeField] private IkLimb _leftLeg;
@@ -32,6 +40,8 @@ namespace UberBagarre.View
         public Transform Spine { get { return _spine; } }
         public Transform Chest { get { return _chest; } }
         public Transform Neck { get { return _neck; } }
+        public Transform Head { get { return _head; } }
+        public Transform Clavicle(HandSide side) { return side == HandSide.Left ? _leftClavicle : _rightClavicle; }
 
         public IkLimb LeftLeg { get { return _leftLeg; } }
         public IkLimb RightLeg { get { return _rightLeg; } }
@@ -48,6 +58,15 @@ namespace UberBagarre.View
         public Quaternion PelvisRestRotation { get; private set; }
         public Quaternion SpineRestRotation { get; private set; }
         public Quaternion ChestRestRotation { get; private set; }
+        public Quaternion NeckRestRotation { get; private set; }
+        public Quaternion HeadRestRotation { get; private set; }
+        public Quaternion LeftClavicleRestRotation { get; private set; }
+        public Quaternion RightClavicleRestRotation { get; private set; }
+
+        public Quaternion ClavicleRestRotation(HandSide side)
+        {
+            return side == HandSide.Left ? LeftClavicleRestRotation : RightClavicleRestRotation;
+        }
 
         private void Awake()
         {
@@ -64,6 +83,10 @@ namespace UberBagarre.View
 
             if (_spine != null) SpineRestRotation = _spine.localRotation;
             if (_chest != null) ChestRestRotation = _chest.localRotation;
+            if (_neck != null) NeckRestRotation = _neck.localRotation;
+            if (_head != null) HeadRestRotation = _head.localRotation;
+            if (_leftClavicle != null) LeftClavicleRestRotation = _leftClavicle.localRotation;
+            if (_rightClavicle != null) RightClavicleRestRotation = _rightClavicle.localRotation;
         }
     }
 }

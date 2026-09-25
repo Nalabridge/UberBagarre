@@ -775,6 +775,13 @@ namespace UberBagarre.Sandbox
 
             if (Button(new Rect(right + half + 10f, ry, half, 28f), "K.O. TOUS", _enemyAccent)) _cheats.KillEnemies();
 
+            ry += 34f;
+
+            if (Toggle(new Rect(right, ry, column, 28f), "BARRES DE VIE + CHIFFRES (ARCADE)", UI.WorldHealthBar.ArcadeHud))
+            {
+                UI.WorldHealthBar.ArcadeHud = !UI.WorldHealthBar.ArcadeHud;
+            }
+
             ry += 38f;
 
             if (!_cheats.HasStory && _cheats.Locations == null) return;

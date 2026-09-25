@@ -244,6 +244,57 @@ et **[Docs/MODELE_3D.md](Docs/MODELE_3D.md)** pour remplacer les primitives par 
 
 ---
 
+## Les corps
+
+Tous les personnages — toi, Moretti, les frères Kovač, le champion de la fosse, le public — sont
+de **vrais corps humains** : un maillage MakeHuman (licence CC0) musclé, rigué, habillé et peint
+par `Tools/corps/fabrique.py`, relu dans Unity par `Editor/CorpsImporter.cs`.
+
+- **Quatre gabarits** : Athlete (le joueur, yeux pile à la hauteur de la caméra), Costaud, Sec,
+  Colosse (1,90 m, qui te regarde de haut).
+- **Des bras de bagarreur** : biceps, avant-bras et épaules gonflés par des cibles de musculature,
+  veines sur les avant-bras, jointures rougies, ongles.
+- **De vrais poings** : trois phalanges par doigt, et un pouce qui vient se poser **en travers**
+  de l'index et du majeur (réglé par optimisation sur le maillage : ni dans la paume, ni en
+  saucisse qui dépasse).
+- **Des vêtements** taillés sur le corps : tee-shirt (le joueur — tes avant-bras sont nus),
+  veste/survêtement, débardeur (le champion), jean avec ceinture, baskets. La peau cachée sous
+  un vêtement n'est pas dessinée : rien ne traverse le tissu.
+- **Un visage** : crâne rasé, barbe de trois jours, sourcils, lèvres, yeux.
+- En vue première personne, tu as un corps : baisse les yeux, tu vois ton tee-shirt et tes pieds.
+
+Régénérer les corps (après avoir touché aux réglages) : voir [Tools/corps/README.md](Tools/corps/README.md),
+puis reconstruire les scènes (menus 2 et 3).
+
+## Le combat, réécrit
+
+Ce qui fait qu'un coup **arrive** sur l'adversaire :
+
+1. **Trajectoire continue.** Les poses-clés d'un coup sont reliées par une courbe dont la vitesse
+   traverse les clés : armement, départ explosif, extension, retour — plus d'arrêt robotique à
+   chaque étape.
+2. **La vraie cible.** Au lancement, le coup accroche un point de l'adversaire : la **mâchoire**
+   (de face ou de côté pour un crochet), le **plexus** ou les **côtes** pour un coup au corps. Le
+   poing est guidé vers ce point pendant le geste ; l'impact a lieu quand les jointures arrivent
+   sur la peau. Si l'adversaire est **en garde**, ton poing s'écrase sur son avant-bras.
+3. **L'élan.** Un peu trop loin ? Le corps se jette dans le coup (pas glissé) au lieu de frapper l'air.
+   Le buste tourne, l'épaule s'avance : un direct porte avec tout le corps.
+4. **Le contact.** À l'impact, le poing **reste collé** une fraction de seconde (plus long sur un
+   coup lourd ou chargé), la tête d'en face part dans le sens du coup, sueur (et sang sur les gros
+   coups au visage) gicle, le son claque et cogne.
+5. **La caméra suit le coup** : elle plonge avec le direct, s'enroule avec le crochet, se relève
+   avec l'uppercut, et se resserre à l'impact. Un **contre** après parade et le **coup qui met
+   K.O.** passent au ralenti.
+6. **Les adversaires se lisent** : ils arment leurs coups plus longtemps (on les voit venir) et
+   ne corrigent presque pas leur trajectoire une fois lancés — une esquive les fait rater.
+7. **Pas d'arcade** : plus de chiffres de dégâts ni de barres de vie au-dessus des têtes.
+   L'état d'un adversaire se lit sur lui (bleus, tête qui part, jambes qui flanchent). Le menu de
+   triche a un interrupteur « BARRES DE VIE + CHIFFRES (ARCADE) » pour les rallumer.
+
+Les coups sont des assets (`Resources/Attaques`), régénérés automatiquement (version 6) :
+direct (jab, cross, direct au corps), crochet (tête, corps), uppercut (menton, plexus), coups de
+pied, coup de tête, bousculade.
+
 ## Comment se battre
 
 Le combat n'est pas « cliquer jusqu'à ce que la barre descende ». Chaque pièce a une conséquence,
@@ -258,8 +309,9 @@ et c'est là tout l'intérêt :
 ### Viser décide la zone
 
 **Tu touches là où tu vises**, pas là où ton poing se trouve. Le réticule annonce la zone ciblée
-et son multiplicateur **avant** que tu frappes, et la zone est écrite sous le chiffre de dégâts
-après (TETE / CORPS / JAMBES / BLOQUE).
+et son multiplicateur **avant** que tu frappes ; le poing est ensuite guidé vers cette zone (la
+mâchoire pour la tête, le plexus pour le corps). Sans rien sous le réticule, le coup cherche
+l'adversaire le plus proche devant toi, à la tête — ou au corps pour les variantes « au corps ».
 
 | Ce que tu vises | Zone | Dégâts |
 |---|---|---|
@@ -616,6 +668,10 @@ Ils ne sont plus des ovales en relief collés sur le corps. Chaque morceau de co
 (gonflé). La marque suit le membre, se prolonge sur les morceaux voisins (un coup à la mâchoire marque
 la tête et le cou d'une seule tache), apparaît en une demi-seconde et **fonce si on retape au même
 endroit**. Sur un vêtement, c'est une trace sombre (poussière, sueur), pas un bleu violet.
+
+Sur les corps skinnés, la marque est posée dans la **position de repos** du maillage (rangée dans
+un canal d'UV par l'import) : elle reste collée à la chair quand le bras se plie ou que la tête
+tourne, au lieu de glisser sur la peau.
 
 ### Espace colorimétrique
 

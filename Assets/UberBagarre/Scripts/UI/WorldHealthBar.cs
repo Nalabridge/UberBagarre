@@ -113,8 +113,23 @@ namespace UberBagarre.UI
             }
         }
 
+        /// <summary>
+        /// Affichage « arcade » (barres au-dessus des têtes, chiffres de dégâts). Coupé par
+        /// défaut : l'état d'un adversaire se lit sur lui — bleus, souffle, jambes qui
+        /// flanchent, garde qui tombe. Le menu de triche peut le rallumer pour régler le jeu.
+        /// </summary>
+        public static bool ArcadeHud;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            ArcadeHud = false;
+        }
+
         private void OnGUI()
         {
+            if (!ArcadeHud) return;
+
             // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
             if (FightIntro.AnyPlaying) return;
 

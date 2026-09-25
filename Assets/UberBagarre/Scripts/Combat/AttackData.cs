@@ -202,7 +202,7 @@ namespace UberBagarre.Combat
         /// version, le générateur sait distinguer « asset réglé par l'utilisateur » de « asset
         /// créé par une version antérieure du code ».
         /// </summary>
-        public const int CurrentVersion = 5;
+        public const int CurrentVersion = 6;
 
         [HideInInspector]
         public int dataVersion;
@@ -295,7 +295,18 @@ namespace UberBagarre.Combat
             return index;
         }
 
-        /// <summary>Interpole les clés d'une variante à l'instant normalisé demandé.</summary>
+        /// <summary>
+        /// Interpole les clés d'une variante à l'instant normalisé demandé.
+        ///
+        /// Courbe cubique MONOTONE (Steffen) entre les clés, et c'est ce qui change tout au
+        /// ressenti. L'ancienne version adoucissait chaque segment séparément (smoothstep de clé
+        /// à clé) : la vitesse retombait à zéro sur CHAQUE clé, et un coup de cinq clés devenait
+        /// cinq petits mouvements qui s'arrêtent — exactement la démarche d'un robot. Ici la
+        /// vitesse traverse les clés : le poing ne ralentit que là où le geste s'inverse
+        /// réellement (fin d'armement, extension maximale), jamais au milieu d'une accélération.
+        /// Monotone : la courbe ne dépasse jamais les clés, donc pas de boucle parasite entre
+        /// deux poses rapprochées.
+        /// </summary>
         public AttackPoseKey Sample(int variantIndex, float normalizedTime)
         {
             AttackPoseKey result = new AttackPoseKey();
@@ -307,33 +318,71 @@ namespace UberBagarre.Combat
 
             normalizedTime = Mathf.Clamp01(normalizedTime);
 
-            for (int i = 0; i < keys.Count - 1; i++)
-            {
-                AttackPoseKey a = keys[i];
-                AttackPoseKey b = keys[i + 1];
+            int i = 0;
+            while (i < keys.Count - 2 && normalizedTime > keys[i + 1].time) i++;
 
-                if (normalizedTime > b.time && i < keys.Count - 2) continue;
+            AttackPoseKey a = keys[i];
+            AttackPoseKey b = keys[i + 1];
+            float h = Mathf.Max(0.0001f, b.time - a.time);
+            float u = Mathf.Clamp01((normalizedTime - a.time) / h);
 
-                float span = Mathf.Max(0.0001f, b.time - a.time);
-                float t = Mathf.Clamp01((normalizedTime - a.time) / span);
+            AttackPoseKey prev = i > 0 ? keys[i - 1] : a;
+            AttackPoseKey next = i + 2 < keys.Count ? keys[i + 2] : b;
+            bool hasPrev = i > 0;
+            bool hasNext = i + 2 < keys.Count;
 
-                // Adoucissement aux extremites : un coup ne demarre ni ne s'arrete brutalement.
-                t = t * t * (3f - 2f * t);
+            float h0 = Mathf.Max(0.0001f, a.time - prev.time);
+            float h2 = Mathf.Max(0.0001f, next.time - b.time);
 
-                result.time = normalizedTime;
-                result.handPosition = Vector3.Lerp(a.handPosition, b.handPosition, t);
-                result.handEuler = Vector3.Lerp(a.handEuler, b.handEuler, t);
-                result.grip = Mathf.Lerp(a.grip, b.grip, t);
-                result.bodyEuler = Vector3.Lerp(a.bodyEuler, b.bodyEuler, t);
-                result.cameraOffset = Vector3.Lerp(a.cameraOffset, b.cameraOffset, t);
-                result.cameraEuler = Vector3.Lerp(a.cameraEuler, b.cameraEuler, t);
-                result.offHandPosition = Vector3.Lerp(a.offHandPosition, b.offHandPosition, t);
-                result.offHandEuler = Vector3.Lerp(a.offHandEuler, b.offHandEuler, t);
-                result.offHandWeight = Mathf.Lerp(a.offHandWeight, b.offHandWeight, t);
-                return result;
-            }
+            result.time = normalizedTime;
+            result.handPosition = Cubic(prev.handPosition, a.handPosition, b.handPosition, next.handPosition, h0, h, h2, u, hasPrev, hasNext);
+            result.handEuler = Cubic(prev.handEuler, a.handEuler, b.handEuler, next.handEuler, h0, h, h2, u, hasPrev, hasNext);
+            result.bodyEuler = Cubic(prev.bodyEuler, a.bodyEuler, b.bodyEuler, next.bodyEuler, h0, h, h2, u, hasPrev, hasNext);
+            result.cameraOffset = Cubic(prev.cameraOffset, a.cameraOffset, b.cameraOffset, next.cameraOffset, h0, h, h2, u, hasPrev, hasNext);
+            result.cameraEuler = Cubic(prev.cameraEuler, a.cameraEuler, b.cameraEuler, next.cameraEuler, h0, h, h2, u, hasPrev, hasNext);
+            result.offHandPosition = Cubic(prev.offHandPosition, a.offHandPosition, b.offHandPosition, next.offHandPosition, h0, h, h2, u, hasPrev, hasNext);
+            result.offHandEuler = Cubic(prev.offHandEuler, a.offHandEuler, b.offHandEuler, next.offHandEuler, h0, h, h2, u, hasPrev, hasNext);
+            result.grip = Mathf.Clamp01(Cubic(prev.grip, a.grip, b.grip, next.grip, h0, h, h2, u, hasPrev, hasNext));
+            result.offHandWeight = Mathf.Clamp01(Cubic(prev.offHandWeight, a.offHandWeight, b.offHandWeight, next.offHandWeight, h0, h, h2, u, hasPrev, hasNext));
+            return result;
+        }
 
-            return keys[keys.Count - 1];
+        /// <summary>Instant de l'impact prévu : le milieu de la fenêtre, un peu avant.</summary>
+        public float ImpactTime
+        {
+            get { return Mathf.Lerp(hitWindowStart, hitWindowEnd, 0.42f); }
+        }
+
+        private static Vector3 Cubic(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, float h0, float h1, float h2,
+            float u, bool hasPrev, bool hasNext)
+        {
+            return new Vector3(
+                Cubic(p0.x, p1.x, p2.x, p3.x, h0, h1, h2, u, hasPrev, hasNext),
+                Cubic(p0.y, p1.y, p2.y, p3.y, h0, h1, h2, u, hasPrev, hasNext),
+                Cubic(p0.z, p1.z, p2.z, p3.z, h0, h1, h2, u, hasPrev, hasNext));
+        }
+
+        /// <summary>Hermite entre y1 et y2, tangentes de Steffen (monotones), nulles aux extrémités.</summary>
+        private static float Cubic(float y0, float y1, float y2, float y3, float h0, float h1, float h2,
+            float u, bool hasPrev, bool hasNext)
+        {
+            float d1 = (y2 - y1) / h1;
+            float m1 = hasPrev ? SteffenSlope((y1 - y0) / h0, d1, h0, h1) : 0f;
+            float m2 = hasNext ? SteffenSlope(d1, (y3 - y2) / h2, h1, h2) : 0f;
+
+            float u2 = u * u;
+            float u3 = u2 * u;
+            return (2f * u3 - 3f * u2 + 1f) * y1 + (u3 - 2f * u2 + u) * h1 * m1 +
+                   (-2f * u3 + 3f * u2) * y2 + (u3 - u2) * h1 * m2;
+        }
+
+        private static float SteffenSlope(float left, float right, float hLeft, float hRight)
+        {
+            if (left * right <= 0f) return 0f;
+
+            float p = (left * hRight + right * hLeft) / (hLeft + hRight);
+            float limit = 2f * Mathf.Min(Mathf.Abs(left), Mathf.Abs(right));
+            return Mathf.Sign(left) * Mathf.Min(Mathf.Abs(p), limit);
         }
 
         /// <summary>Passe une pose de la main droite à la main gauche.</summary>

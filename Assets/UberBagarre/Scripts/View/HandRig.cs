@@ -45,6 +45,11 @@ namespace UberBagarre.View
             [Tooltip("Multiplicateur de fermeture propre au doigt. L'auriculaire se ferme plus, l'index moins.")]
             public float curlScale = 1f;
 
+            [Tooltip("Rotation supplementaire de la base au poing serre (degres, Euler local). Les " +
+                     "doigts se resserrent en se fermant ; le pouce, lui, pivote pour venir se " +
+                     "poser en travers de l'index et du majeur au lieu de rentrer dans la paume.")]
+            public Vector3 fistRotation;
+
             [NonSerialized] public Quaternion ProximalRest;
             [NonSerialized] public Quaternion MiddleRest;
             [NonSerialized] public Quaternion DistalRest;
@@ -181,7 +186,11 @@ namespace UberBagarre.View
 
             if (finger.proximal != null)
             {
-                finger.proximal.localRotation = finger.ProximalRest * spread * Quaternion.AngleAxis(proximal, axis);
+                Quaternion fist = finger.fistRotation.sqrMagnitude > 1e-6f
+                    ? Quaternion.Slerp(Quaternion.identity, Quaternion.Euler(finger.fistRotation), Mathf.Clamp01(amount) * (1f - _poseWeight))
+                    : Quaternion.identity;
+
+                finger.proximal.localRotation = finger.ProximalRest * fist * spread * Quaternion.AngleAxis(proximal, axis);
             }
 
             if (finger.middle != null)

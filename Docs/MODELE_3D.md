@@ -1,9 +1,11 @@
 # Brancher un vrai modèle 3D
 
-Les bras, les mains et les jambes du prototype sont des primitives Unity. Elles sont là pour
-que le gameplay soit jouable sans attendre d'assets — pas pour rester.
+> **Depuis le lot 7, les corps par défaut sont de vrais corps humains** (MakeHuman, CC0),
+> fabriqués par `Tools/corps/fabrique.py` et importés par `Editor/CorpsImporter.cs` — voir
+> [Tools/corps/README.md](../Tools/corps/README.md). Ce qui suit reste valable pour remplacer
+> un personnage par un modèle de ton choix (Mixamo, asset store, modèle maison).
 
-Ce document explique comment les remplacer. **Aucun code n'est à modifier.**
+Ce document explique comment brancher un autre modèle. **Aucun code n'est à modifier.**
 
 ---
 

@@ -42,3 +42,7 @@ sysinfo.txt
 crashlytics-build.properties
 Tools/.voix/
 __pycache__/
+
+# Maillages de tenue generes par CorpsImporter a la construction des scenes
+Assets/UberBagarre/Art/Models/Corps/Generes/
+Assets/UberBagarre/Art/Models/Corps/Generes.meta

@@ -681,6 +681,15 @@ namespace UberBagarre.EditorTools
             skin.Shirt = m.Shirts[look % m.Shirts.Count];
             skin.Pants = m.Pants[(look * 3 + 1) % m.Pants.Count];
 
+            // Le public : les quatre gabarits, les trois hauts, en version légère (un corps
+            // du fond de salle n'a pas besoin de doigts subdivisés).
+            string[] silhouettes = { "Costaud", "Sec", "Athlete", "Colosse", "Sec", "Costaud" };
+            CorpsImporter.Top[] tops = { CorpsImporter.Top.TShirt, CorpsImporter.Top.Veste, CorpsImporter.Top.Debardeur,
+                CorpsImporter.Top.TShirt, CorpsImporter.Top.Veste };
+            skin.Silhouette = silhouettes[(look * 7 + 3) % silhouettes.Length];
+            skin.Top = tops[(look * 5 + 1) % tops.Length];
+            skin.Crowd = true;
+
             FighterBuilder.Result built = FighterBuilder.BuildBody(go.transform, go.transform, skin, true, Faction.Neutral, go);
 
             Hitbox[] hitboxes = go.GetComponentsInChildren<Hitbox>(true);

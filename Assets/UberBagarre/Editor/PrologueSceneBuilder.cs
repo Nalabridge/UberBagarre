@@ -273,6 +273,10 @@ namespace UberBagarre.EditorTools
             skin.Shirt = Jacket(night, "M_Debardeur", new Color(0.05f, 0.05f, 0.06f));
             skin.Pants = Jacket(night, "M_Treillis", new Color(0.24f, 0.27f, 0.16f));
 
+            // Le champion de la fosse : le plus grand, le plus lourd, épaules nues.
+            skin.Silhouette = "Colosse";
+            skin.Top = CorpsImporter.Top.Debardeur;
+
             SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(materials, attacks,
                 briefing.TargetName, club.ChampionPosition, club.ChampionYaw, skin, 230f, true);
 
@@ -475,6 +479,10 @@ namespace UberBagarre.EditorTools
             skin.Shirt = suit;
             skin.Pants = suit;
 
+            // Deux frères, deux gabarits : l'aîné massif, le cadet sec et nerveux.
+            skin.Silhouette = name == "Dragan" ? "Costaud" : "Sec";
+            skin.Top = CorpsImporter.Top.Veste;
+
             SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(
                 materials, attacks, name, position, yaw, skin, health, true);
 
@@ -513,6 +521,8 @@ namespace UberBagarre.EditorTools
             FighterBuilder.Skin targetSkin = FighterBuilder.Skin.Enemy(materials);
             targetSkin.Shirt = redJacket;
             targetSkin.Pants = lightJeans;
+            targetSkin.Silhouette = "Costaud";
+            targetSkin.Top = CorpsImporter.Top.Veste;
 
             // La cible encaisse plus que l'adversaire de la sandbox : le tutoriel doit avoir le
             // temps de dérouler ses quatre consignes avant qu'il ne tombe. Un K.O. au troisième
@@ -555,6 +565,14 @@ namespace UberBagarre.EditorTools
         {
             FighterBuilder.Skin skin = FighterBuilder.Skin.Enemy(materials);
             skin.Shirt = Jacket(night, "M_Veste_" + name.Replace(" ", ""), jacket);
+
+            // Des gabarits variés : la cible ne se reconnaît pas à sa carrure, seulement à
+            // ce que dit la fiche. Tous en veste — le signalement parle de vestes.
+            int build = 0;
+            for (int i = 0; i < name.Length; i++) build += name[i];
+            string[] silhouettes = { "Sec", "Costaud", "Athlete", "Sec" };
+            skin.Silhouette = silhouettes[build % silhouettes.Length];
+            skin.Top = CorpsImporter.Top.Veste;
 
             skin.Pants = EditorBuildUtility.CreateOrUpdateMaterial(
                 NightMaterialFactory.MaterialsFolder, "M_Pantalon_" + name.Replace(" ", ""),

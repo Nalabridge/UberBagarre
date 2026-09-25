@@ -83,7 +83,7 @@ namespace UberBagarre.View
         [Header("Force")]
         [SerializeField, Min(0f)]
         [Tooltip("Multiplicateur general. 0 = aucune reaction locale ; 2 = poupee de chiffon.")]
-        private float _impulseScale = 0.85f;
+        private float _impulseScale = 1.1f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Impulsion ajoutee par metre/seconde de vitesse du poing. Un coup lance de loin " +

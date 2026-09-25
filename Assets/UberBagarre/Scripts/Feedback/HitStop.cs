@@ -25,11 +25,11 @@ namespace UberBagarre.Feedback
         [SerializeField, Range(0f, 0.9f)]
         [Tooltip("Vitesse du temps pendant l'arret. 0 = fige completement. En dessous de ~0,15 le " +
                  "jeu arrete de repondre et l'enchainement devient pateux.")]
-        private float _slowTimeScale = 0.72f;
+        private float _slowTimeScale = 0.45f;
 
         // Ralenti a peine perceptible : a 0,25 pendant 32 ms, chaque coup « coupait » l'image
         // (le temps se fige, la camera saccade) et le combat perdait tout son nerf.
-        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.02f;
+        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.055f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Temps mort minimal entre deux ralentis. Sans lui, un enchainement rapide " +
@@ -77,9 +77,64 @@ namespace UberBagarre.Feedback
         private float _cooldownTimer;
         private float _defaultFixedDelta;
 
+        // Ralenti « cinéma » : contre après parade, coup qui met K.O. Plus long qu'un
+        // arrêt d'impact, avec une entrée et une sortie adoucies.
+        private float _slowmoScale = 1f;
+        private float _slowmoDuration;
+        private float _slowmoElapsed = -1f;
+
+        /// <summary>Le ralenti de ce combattant (le joueur). Null s'il n'y en a pas.</summary>
+        public static HitStop Main { get; private set; }
+
+        /// <summary>Vrai pendant un ralenti cinéma.</summary>
+        public bool IsSlowMotion { get { return _slowmoElapsed >= 0f; } }
+
         private void Awake()
         {
             _defaultFixedDelta = Time.fixedDeltaTime;
+            if (Main == null) Main = this;
+        }
+
+        private void OnDestroy()
+        {
+            if (Main == this) Main = null;
+        }
+
+        /// <summary>
+        /// Ralenti de mise en scène : <paramref name="scale"/> au creux, pendant
+        /// <paramref name="duration"/> secondes RÉELLES. Le temps plonge en 60 ms, tient, puis
+        /// remonte en douceur sur le dernier tiers — un ralenti qui se coupe net se lit comme un
+        /// bug, pas comme un effet.
+        /// </summary>
+        public void SlowMotion(float scale, float duration)
+        {
+            if (!_enabled || duration <= 0f) return;
+
+            _slowmoScale = Mathf.Clamp(scale, 0.05f, 1f);
+            _slowmoDuration = duration;
+            _slowmoElapsed = 0f;
+        }
+
+        private float SlowmoFactor()
+        {
+            if (_slowmoElapsed < 0f) return 1f;
+
+            float t = _slowmoElapsed / Mathf.Max(0.01f, _slowmoDuration);
+            if (t >= 1f) return 1f;
+
+            float dive = Mathf.Clamp01(_slowmoElapsed / 0.06f);
+            float rise = Mathf.Clamp01((t - 0.66f) / 0.34f);
+            float depth = Mathf.SmoothStep(0f, 1f, dive) * (1f - Mathf.SmoothStep(0f, 1f, rise));
+            return Mathf.Lerp(1f, _slowmoScale, depth);
+        }
+
+        private void ApplyScale()
+        {
+            float factor = SlowmoFactor();
+            if (_timer > 0f) factor = Mathf.Min(factor, _slowTimeScale);
+
+            Time.timeScale = factor * _baseTimeScale;
+            Time.fixedDeltaTime = _defaultFixedDelta * Mathf.Max(0.02f, factor);
         }
 
         public void Play(float duration)
@@ -92,8 +147,7 @@ namespace UberBagarre.Feedback
 
             _cooldownTimer = _cooldown;
             _timer = Mathf.Max(_timer, Mathf.Min(duration, _maxDuration));
-            Time.timeScale = _slowTimeScale * _baseTimeScale;
-            Time.fixedDeltaTime = _defaultFixedDelta * Mathf.Max(0.02f, _slowTimeScale);
+            ApplyScale();
         }
 
         private void Update()
@@ -102,6 +156,24 @@ namespace UberBagarre.Feedback
             if (UberBagarre.UI.GameMenu.IsPaused) return;
 
             if (_cooldownTimer > 0f) _cooldownTimer -= Time.unscaledDeltaTime;
+
+            if (_slowmoElapsed >= 0f)
+            {
+                _slowmoElapsed += Time.unscaledDeltaTime;
+
+                if (_slowmoElapsed >= _slowmoDuration)
+                {
+                    _slowmoElapsed = -1f;
+                    if (_timer <= 0f) Restore();
+                }
+                else
+                {
+                    if (_timer > 0f) _timer -= Time.unscaledDeltaTime;
+                    ApplyScale();
+                    return;
+                }
+            }
+
             if (_timer <= 0f) return;
 
             _timer -= Time.unscaledDeltaTime;
@@ -113,6 +185,7 @@ namespace UberBagarre.Feedback
         private void OnDisable()
         {
             _cooldownTimer = 0f;
+            _slowmoElapsed = -1f;
             Restore();
         }
 

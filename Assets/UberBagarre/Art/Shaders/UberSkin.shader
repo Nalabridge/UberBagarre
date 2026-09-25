@@ -27,6 +27,7 @@ Shader "UberBagarre/Peau"
         _MarkCore ("Teinte de la marque (coeur)", Color) = (0.55, 0.22, 0.30, 1)
         _MarkSwelling ("Gonflement (brillance au coeur)", Range(0, 0.5)) = 0.12
         _MarkNoise ("Irregularite du contour", Range(0, 1)) = 0.55
+        [Toggle] _MarkSpace ("Marques en position de repos (corps skinne)", Float) = 0
     }
 
     SubShader
@@ -49,6 +50,7 @@ Shader "UberBagarre/Peau"
         fixed4 _MarkCore;
         half _MarkSwelling;
         half _MarkNoise;
+        float _MarkSpace;
 
         // Remplis par BruiseSystem, via un bloc de proprietes propre a chaque rendu.
         // _Marks    : xyz = centre (espace objet), w = rayon (metres)
@@ -75,7 +77,10 @@ Shader "UberBagarre/Peau"
             UNITY_INITIALIZE_OUTPUT(Input, o);
 
             // Position de l'objet, en metres : l'echelle est appliquee, pas la rotation.
-            o.markPosition = v.vertex.xyz * ObjectScale();
+            // Sur un corps skinne, le sommet a deja ete deforme : la marque glisserait sur la
+            // peau a chaque mouvement. On lit alors la position de REPOS rangee dans le 3e
+            // canal d'UV par l'import du corps — la marque reste collee a la chair.
+            o.markPosition = _MarkSpace > 0.5 ? v.texcoord2.xyz : v.vertex.xyz * ObjectScale();
         }
 
         float Hash(float3 p)

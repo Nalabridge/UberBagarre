@@ -125,6 +125,9 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
+            // Pas de chiffres qui volent : voir WorldHealthBar.ArcadeHud.
+            if (!WorldHealthBar.ArcadeHud) return;
+
             _camera = GuiKit.ActiveCamera(_camera);
 
             DrawDamageNumbers();

@@ -47,6 +47,8 @@ namespace UberBagarre.Feedback
         private float _pitchVariation = 0.17f;
 
         private AudioSource _source;
+        private AudioClip[] _lightPunches;
+        private AudioClip[] _heavyPunches;
 
         private void Awake()
         {
@@ -56,8 +58,19 @@ namespace UberBagarre.Feedback
 
             // Les deux impacts partagent leur construction et ne diffèrent que par la masse
             // apparente : plus le coup est lourd, plus il est sourd et plus il traîne.
-            if (_lightImpactClip == null) _lightImpactClip = BuildImpact("Impact_Leger", 0.085f, 0.30f, 0.10f, 0.55f);
-            if (_heavyImpactClip == null) _heavyImpactClip = BuildImpact("Impact_Lourd", 0.200f, 0.12f, 0.045f, 0.85f);
+            // Coups portés : trois variantes de chaque, tirées au hasard. Un seul échantillon
+            // répété à chaque coup devient une mitraillette au troisième direct.
+            if (_lightImpactClip == null)
+            {
+                _lightPunches = new AudioClip[3];
+                for (int i = 0; i < 3; i++) _lightPunches[i] = BuildPunch("Coup_Leger_" + i, false, 101 + i * 17);
+            }
+
+            if (_heavyImpactClip == null)
+            {
+                _heavyPunches = new AudioClip[3];
+                for (int i = 0; i < 3; i++) _heavyPunches[i] = BuildPunch("Coup_Lourd_" + i, true, 707 + i * 29);
+            }
             if (_whooshClip == null) _whooshClip = BuildWhoosh("Souffle_Poing");
             if (_hurtClip == null) _hurtClip = BuildBreath("Expiration");
             if (_blockClip == null) _blockClip = BuildImpact("Blocage", 0.070f, 0.18f, 0.10f, 0.25f);
@@ -66,7 +79,12 @@ namespace UberBagarre.Feedback
 
         public void PlayImpact(bool heavy)
         {
-            Play(heavy ? _heavyImpactClip : _lightImpactClip, _impactVolume);
+            AudioClip[] bank = heavy ? _heavyPunches : _lightPunches;
+            AudioClip clip = bank != null && bank.Length > 0
+                ? bank[Random.Range(0, bank.Length)]
+                : (heavy ? _heavyImpactClip : _lightImpactClip);
+
+            Play(clip, _impactVolume);
         }
 
         public void PlayWhoosh()
@@ -170,6 +188,66 @@ namespace UberBagarre.Feedback
                     : Mathf.Exp(-(t - attackSamples / (float)samples) * 14f);
 
                 data[i] = Mathf.Clamp((lowB * (1f - weight * 0.45f) + body * weight * 5.5f) * envelope, -1f, 1f);
+            }
+
+            return Finish(clipName, data);
+        }
+
+        /// <summary>
+        /// Un coup de poing qui porte, en trois couches superposées, comme au cinéma :
+        /// - la CLAQUE : quelques millisecondes de bruit clair, la peau contre la peau ;
+        /// - la MASSE : un grave bref qui plonge (de ~120 à ~50 Hz), la chair qui encaisse ;
+        /// - sur un coup lourd, le CRAQUEMENT : une grappe de micro-impulsions juste après,
+        ///   cartilage et os.
+        /// Aucune note tenue : la « hauteur » du grave tombe trop vite pour être entendue comme
+        /// une note, elle se lit comme du poids.
+        /// </summary>
+        private static AudioClip BuildPunch(string clipName, bool heavy, int seed)
+        {
+            System.Random random = new System.Random(seed);
+            float duration = heavy ? 0.26f : 0.16f;
+            int samples = Mathf.CeilToInt(duration * SampleRate);
+            float[] data = new float[samples];
+
+            float slapLow = 0f;
+            float slapPrevious = 0f;
+            float phase = 0f;
+            float crunch = 0f;
+            float crunchLow = 0f;
+
+            float thumpStart = heavy ? 125f : 150f;
+            float thumpEnd = heavy ? 48f : 70f;
+            float thumpDecay = heavy ? 13f : 22f;
+            float thumpGain = heavy ? 1.0f : 0.6f;
+
+            for (int i = 0; i < samples; i++)
+            {
+                float time = i / (float)SampleRate;
+                float noise = (float)random.NextDouble() * 2f - 1f;
+
+                // Claque : bande claire, attaque instantanee, 25 ms.
+                slapLow = Mathf.Lerp(slapLow, noise, 0.45f);
+                float slap = slapLow - slapPrevious * 0.8f;
+                slapPrevious = slapLow;
+                float slapEnvelope = Mathf.Min(1f, time * 2500f) * Mathf.Exp(-time * (heavy ? 95f : 130f));
+
+                // Masse : sinus qui plonge.
+                float frequency = Mathf.Lerp(thumpEnd, thumpStart, Mathf.Exp(-time * 38f));
+                phase += frequency * 2f * Mathf.PI / SampleRate;
+                float thump = Mathf.Sin(phase) * Mathf.Min(1f, time * 900f) * Mathf.Exp(-time * thumpDecay) * thumpGain;
+
+                // Craquement : impulsions eparses entre 8 et 60 ms.
+                float crack = 0f;
+                if (heavy && time > 0.008f && time < 0.06f && random.NextDouble() < 0.012)
+                {
+                    crunch = (float)random.NextDouble() * 1.4f + 0.4f;
+                }
+
+                crunch *= 0.93f;
+                crunchLow = Mathf.Lerp(crunchLow, crunch * noise, 0.6f);
+                crack = crunchLow * 0.55f;
+
+                data[i] = Mathf.Clamp(slap * slapEnvelope * (heavy ? 0.9f : 1.1f) + thump + crack, -1f, 1f);
             }
 
             return Finish(clipName, data);
