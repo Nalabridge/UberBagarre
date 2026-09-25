@@ -43,6 +43,10 @@ namespace UberBagarre.View
 
         [SerializeField] private bool _logJumps = true;
 
+        [SerializeField]
+        [Tooltip("Optionnel : la chute du joueur. Pendant une chute, la camera bascule exprès.")]
+        private Combat.KnockdownSystem _knockdown;
+
         private const int FrameWindow = 120;
 
         private readonly float[] _frameTimes = new float[FrameWindow];
@@ -77,6 +81,7 @@ namespace UberBagarre.View
         private void Awake()
         {
             if (_look == null) _look = GetComponentInParent<PlayerLook>();
+            if (_knockdown == null) _knockdown = GetComponentInParent<Combat.KnockdownSystem>();
             _previousNodes = new Quaternion[_nodes.Length];
             _gcAtWindowStart = System.GC.CollectionCount(0);
             _gcWindowStart = Time.unscaledTime;
@@ -150,7 +155,11 @@ namespace UberBagarre.View
             float rootJump = new Vector2(change.x, change.z).magnitude;
             if (Mathf.Abs(change.y) > 0.15f) rootJump = Mathf.Max(rootJump, Mathf.Abs(change.y));
 
-            if (rigJump > _angleThreshold) Report(rigJump.ToString("0.0") + " deg d'effet de camera", Culprit());
+            // Une chute bascule la camera volontairement, et vite : ce n'est pas un defaut.
+            bool falling = _knockdown != null && (_knockdown.IsDown || _knockdown.Weight > 0.001f);
+
+            if (falling) { }
+            else if (rigJump > _angleThreshold) Report(rigJump.ToString("0.0") + " deg d'effet de camera", Culprit());
             else if (rootJump > _positionThreshold && rootJump < 5f)
             {
                 Report((rootJump * 100f).ToString("0") + " cm de deplacement brusque du joueur",

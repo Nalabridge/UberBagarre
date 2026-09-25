@@ -152,6 +152,12 @@ namespace UberBagarre.Phone
 
         public Screen Current { get { return _screen; } }
         public bool IsRinging { get { return _ringing; } }
+
+        /// <summary>La touche qui sort le téléphone, telle qu'elle est réglée (pour les indications à l'écran).</summary>
+        public string PhoneKeyName
+        {
+            get { return _input != null && _input.Bindings != null ? _input.Bindings.phone.ToString() : "T"; }
+        }
         public string Caller { get { return _caller; } }
         public float CallTime { get { return _callTime; } }
         public float ScreenAge { get { return _screenAge; } }
@@ -236,7 +242,7 @@ namespace UberBagarre.Phone
             _screenAge = 0f;
         }
 
-        /// <summary>Fait sonner le téléphone. Il se lève tout seul : une sonnerie qu'on peut rater n'en est pas une.</summary>
+        /// <summary>Fait sonner le téléphone. Il reste dans la poche : c'est le joueur qui le sort pour répondre.</summary>
         public void Ring(string caller)
         {
             _caller = string.IsNullOrEmpty(caller) ? "INCONNU" : caller;
@@ -305,12 +311,11 @@ namespace UberBagarre.Phone
             // l'ecran affiche, comme avant.
             if (_os == null && !_ringing && _input != null && _input.InteractPressed && IsRaised) ConfirmStory();
 
-            // Un appel sort le téléphone tout seul. Le joueur n'a pas à deviner qu'une touche
-            // existe au moment précis où le jeu lui apprend qu'elle existe.
+            // Un appel fait sonner et vibrer le telephone ; c'est au joueur de le sortir (le
+            // bandeau et l'objectif disent comment), puis de repondre.
             if (_ringing)
             {
                 _callTime += Time.unscaledDeltaTime;
-                _wantRaised = _available;
 
                 if (_input != null && _input.InteractPressed && IsRaised) Answer();
             }

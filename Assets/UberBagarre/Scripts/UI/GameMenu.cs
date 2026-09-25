@@ -88,7 +88,7 @@ namespace UberBagarre.UI
         [SerializeField] private string _sandboxScene = "CombatSandbox";
 
         [Header("Son")]
-        [SerializeField, Range(0f, 1f)] private float _musicVolume = 0.3f;
+        [SerializeField, Range(0f, 1f)] private float _musicVolume = 0.42f;
         [SerializeField, Range(0f, 1f)] private float _uiVolume = 0.45f;
 
         private static readonly Color Accent = new Color(1f, 0.2f, 0.55f);
@@ -112,12 +112,34 @@ namespace UberBagarre.UI
         private float _baseFov = 70f;
         private int _dragging = -1;
 
+        // Transition entre deux pages : l'ancienne file vers la droite, puis la nouvelle arrive.
+        private const float LeaveDuration = 0.16f;
+        private bool _leaving;
+        private float _leaveTime;
+        private Page _nextPage;
+
+        // Ecran titre : depuis quand il est ouvert (allumage du neon), rapprochement de la
+        // camera selon la page, pluie a l'ecran, voiture qui passe.
+        private float _titleTime;
+        private float _zoom;
+        private float _zoomVelocity;
+        private float _lastSweep = -100f;
+        private float[] _rainX;
+        private float[] _rainY;
+        private float[] _rainLength;
+        private float[] _rainSpeed;
+        private float _rainClock;
+        private readonly GUIContent _glyph = new GUIContent();
+        private static readonly string[] LogoLetters = { "Ü", "B", "E", "R", " ", "B", "A", "G", "A", "R", "R", "E" };
+
         private Texture2D _gradient;
         private AudioSource _music;
         private AudioSource _ui;
         private AudioClip _musicClip;
         private AudioClip _tick;
         private AudioClip _confirm;
+        private AudioClip _whoosh;
+        private AudioClip _carPass;
 
         private readonly List<Vector2Int> _resolutions = new List<Vector2Int>(16);
 
@@ -164,6 +186,8 @@ namespace UberBagarre.UI
 
             _tick = Blip("Menu (deplacement)", 1320f, 0.035f, 0.25f);
             _confirm = Blip("Menu (validation)", 660f, 0.12f, 0.5f);
+            _whoosh = Swoosh("Menu (transition)", 0.28f, 0.35f, 3);
+            _carPass = Swoosh("Menu (voiture qui passe)", 3.2f, 0.9f, 8);
         }
 
         private void Start()
@@ -184,6 +208,8 @@ namespace UberBagarre.UI
             if (_musicClip != null) Destroy(_musicClip);
             if (_tick != null) Destroy(_tick);
             if (_confirm != null) Destroy(_confirm);
+            if (_whoosh != null) Destroy(_whoosh);
+            if (_carPass != null) Destroy(_carPass);
         }
 
         private void Update()
@@ -214,6 +240,18 @@ namespace UberBagarre.UI
             }
 
             if (_home == Page.Title) UpdateShot(dt);
+
+            if (_leaving)
+            {
+                _leaveTime += dt;
+                if (_leaveTime >= LeaveDuration)
+                {
+                    _leaving = false;
+                    ShowNow(_nextPage);
+                }
+
+                return;
+            }
 
             HandleKeys();
         }
@@ -279,6 +317,7 @@ namespace UberBagarre.UI
             _page = Page.None;
             _home = Page.None;
             _dragging = -1;
+            _leaving = false;
 
             IsOpen = false;
             ModalScreen.Set(this, false);
@@ -291,7 +330,25 @@ namespace UberBagarre.UI
             }
         }
 
+        /// <summary>Change de page : l'ancienne s'efface vers la droite, la nouvelle entre par la gauche.</summary>
         private void Show(Page page)
+        {
+            if (_page == Page.None || _page == page)
+            {
+                ShowNow(page);
+                return;
+            }
+
+            _nextPage = page;
+            if (_leaving) return;
+
+            _leaving = true;
+            _leaveTime = 0f;
+            _dragging = -1;
+            Play(_whoosh, 0.7f);
+        }
+
+        private void ShowNow(Page page)
         {
             _page = page;
             _pageTime = 0f;
@@ -407,6 +464,10 @@ namespace UberBagarre.UI
         private void BeginShot()
         {
             _shotTime = 0f;
+            _titleTime = 0f;
+            _zoom = 0f;
+            _zoomVelocity = 0f;
+            _lastSweep = 6f;
 
             if (_menuCamera == null || _shotFrom == null || _shotTo == null) return;
 
@@ -446,6 +507,7 @@ namespace UberBagarre.UI
             if (_menuCamera == null || _shotFrom == null || _shotTo == null) return;
 
             _shotTime += dt;
+            _titleTime += dt;
 
             // Un aller-retour tres lent, adouci aux extremites : un travelling, pas un manege.
             float phase = Mathf.PingPong(_shotTime / _shotDuration, 1f);
@@ -453,6 +515,18 @@ namespace UberBagarre.UI
 
             Vector3 position = Vector3.Lerp(_shotFrom.position, _shotTo.position, t);
             Vector3 target = _shotTarget != null ? _shotTarget.position : position + _shotFrom.forward;
+
+            // Chaque page a son cadre : la camera s'avance et tourne un peu quand on entre dans un
+            // sous-menu, et recule en revenant au titre. C'est la transition entre les menus.
+            Page shown = _leaving ? _nextPage : _page;
+            float zoomTarget = shown == Page.Chapters ? 0.45f : shown == Page.Graphics ? 0.6f : shown == Page.Controls ? 0.3f : 0f;
+            _zoom = Mathf.SmoothDamp(_zoom, zoomTarget, ref _zoomVelocity, 0.55f, Mathf.Infinity, Mathf.Max(0.0001f, dt));
+
+            Vector3 offset = position - target;
+            float swing = shown == Page.Graphics ? -18f : shown == Page.Chapters ? 12f : 0f;
+            Vector3 closer = target + Quaternion.Euler(0f, swing * _zoom, 0f) * offset * 0.55f + Vector3.up * 0.25f * _zoom;
+            position = Vector3.Lerp(position, closer, _zoom);
+            _menuCamera.fieldOfView = Mathf.Lerp(_shotFov, _shotFov * 0.82f, _zoom);
 
             // Un souffle de camera a l'epaule, a peine perceptible.
             position += new Vector3(Mathf.Sin(_shotTime * 0.7f), Mathf.Sin(_shotTime * 0.53f + 1f), 0f) * 0.02f;
@@ -799,23 +873,37 @@ namespace UberBagarre.UI
             GuiKit.Alpha = _open;
 
             bool title = _home == Page.Title;
+            EnsureGradient();
 
-            // Fond : sur l'ecran titre, un degrade qui laisse voir la scene a droite ; en
-            // pause, un voile sur toute l'image figee.
+            // Fond : sur l'ecran titre, la pluie, une voiture qui passe de temps en temps, et un
+            // degrade qui laisse voir la scene a droite ; en pause, un voile sur l'image figee et
+            // un panneau qui glisse depuis la gauche.
             if (title)
             {
-                EnsureGradient();
+                DrawRain(sw, sh, u);
+                DrawPassingCar(sw, sh);
+
                 Color color = GUI.color;
                 GUI.color = new Color(0f, 0f, 0f, 0.92f * _open);
                 GUI.DrawTexture(new Rect(0f, 0f, sw * 0.62f, sh), _gradient);
                 GUI.color = color;
 
-                GuiKit.Fill(new Rect(0f, 0f, sw, sh * 0.07f), new Color(0f, 0f, 0f, 1f));
-                GuiKit.Fill(new Rect(0f, sh * 0.93f, sw, sh * 0.07f), new Color(0f, 0f, 0f, 1f));
+                // Les bandes de cinema, qui s'ouvrent a l'arrivee de l'ecran titre.
+                float bars = Mathf.Lerp(0.5f, 0.07f, Ease(Mathf.Clamp01(_titleTime / 1.2f)));
+                GuiKit.Fill(new Rect(0f, 0f, sw, sh * bars), new Color(0f, 0f, 0f, 1f));
+                GuiKit.Fill(new Rect(0f, sh * (1f - bars), sw, sh * bars), new Color(0f, 0f, 0f, 1f));
             }
             else
             {
-                GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.02f, 0.02f, 0.04f, 0.72f));
+                GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.02f, 0.02f, 0.04f, 0.55f));
+
+                float slide = (Ease(_open) - 1f) * sw * 0.62f;
+                Color color = GUI.color;
+                GUI.color = new Color(0f, 0f, 0f, 0.85f * _open);
+                GUI.DrawTexture(new Rect(slide, 0f, sw * 0.62f, sh), _gradient);
+                GUI.color = color;
+
+                GuiKit.Fill(new Rect(slide + sw * 0.62f - 2f, 0f, 2f, sh), new Color(Accent.r, Accent.g, Accent.b, 0.25f));
             }
 
             float left = 110f * u;
@@ -835,27 +923,186 @@ namespace UberBagarre.UI
         {
             float glowPulse = 0.85f + Mathf.Sin(Time.unscaledTime * 2.1f) * 0.08f + Mathf.Sin(Time.unscaledTime * 13f) * 0.02f;
 
-            if (title)
+            if (title && _page == Page.Title)
             {
-                // Le halo du neon derriere le nom.
-                GuiKit.Disc(new Rect(left - 120f * u, top - 90f * u, 900f * u, 330f * u), new Color(Accent.r, Accent.g, Accent.b, 0.22f * glowPulse));
-
-                GUIStyle huge = GuiKit.Style(Mathf.RoundToInt(112f * u), FontStyle.Bold, TextAnchor.UpperLeft);
-                GuiKit.OutlinedLabel(new Rect(left, top, 1200f * u, 130f * u), "ÜBER BAGARRE", huge,
-                    new Color(1f, 0.95f, 0.97f), new Color(Accent.r * 0.5f, 0f, Accent.b * 0.3f, 0.95f), 3f * u);
-
-                GuiKit.Fill(new Rect(left + 4f * u, top + 132f * u, 150f * u, 6f * u), Accent);
-
-                GUIStyle tagline = GuiKit.Style(Mathf.RoundToInt(22f * u), FontStyle.Bold, TextAnchor.UpperLeft);
-                GuiKit.OutlinedLabel(new Rect(left + 4f * u, top + 150f * u, 900f * u, 30f * u),
-                    "LIVRAISON DE BAGARRES À DOMICILE", tagline, new Color(1f, 0.82f, 0.35f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
+                DrawNeonLogo(left, top, u, glowPulse);
                 return;
             }
 
+            // Le titre de la page tombe d'en haut ; la barre d'accent s'etire derriere lui.
+            float appear = Ease(Mathf.Clamp01(_pageTime / 0.25f));
+            float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * appear * (1f - leave);
+
+            float y = top - (1f - appear) * 26f * u - leave * 14f * u;
             string heading = PageName(_page);
             GUIStyle big = GuiKit.Style(Mathf.RoundToInt(64f * u), FontStyle.Bold, TextAnchor.UpperLeft);
-            GuiKit.OutlinedLabel(new Rect(left, top, 1200f * u, 80f * u), heading, big, Ink, new Color(0f, 0f, 0f, 0.9f), 2f);
-            GuiKit.Fill(new Rect(left + 3f * u, top + 82f * u, 110f * u, 5f * u), Accent);
+            GuiKit.OutlinedLabel(new Rect(left, y, 1200f * u, 80f * u), heading, big, Ink, new Color(0f, 0f, 0f, 0.9f), 2f);
+
+            float grow = Ease(Mathf.Clamp01((_pageTime - 0.08f) / 0.3f));
+            GuiKit.Fill(new Rect(left + 3f * u, y + 82f * u, 110f * u * grow, 5f * u), Accent);
+
+            GuiKit.Alpha = previous;
+        }
+
+        /// <summary>
+        /// Le nom du jeu, allumé comme un néon : les lettres s'allument une à une en grésillant,
+        /// puis de temps en temps l'une d'elles clignote, et toutes les huit secondes l'enseigne
+        /// « saute » (décalage rouge et cyan) une fraction de seconde.
+        /// </summary>
+        private void DrawNeonLogo(float left, float top, float u, float glowPulse)
+        {
+            GUIStyle huge = GuiKit.Style(Mathf.RoundToInt(112f * u), FontStyle.Bold, TextAnchor.UpperLeft);
+
+            int lit = 0;
+            for (int i = 0; i < LogoLetters.Length; i++)
+            {
+                if (LetterLight(i) > 0.5f) lit++;
+            }
+
+            float ignition = lit / (float)LogoLetters.Length;
+            GuiKit.Disc(new Rect(left - 120f * u, top - 90f * u, 900f * u, 330f * u),
+                new Color(Accent.r, Accent.g, Accent.b, 0.24f * glowPulse * ignition));
+
+            bool glitch = _titleTime > 3f && (_titleTime % 8f) > 7.82f;
+            if (glitch)
+            {
+                DrawLetters(huge, left - 5f * u, top, u, new Color(1f, 0.15f, 0.2f, 0.55f), false);
+                DrawLetters(huge, left + 5f * u, top + 2f * u, u, new Color(0.2f, 0.9f, 1f, 0.55f), false);
+            }
+
+            DrawLetters(huge, left, top, u, new Color(1f, 0.95f, 0.97f), true);
+
+            float bar = Ease(Mathf.Clamp01((_titleTime - 1.3f) / 0.5f));
+            GuiKit.Fill(new Rect(left + 4f * u, top + 132f * u, 150f * u * bar, 6f * u), Accent);
+
+            float tag = Mathf.Clamp01((_titleTime - 1.6f) / 0.6f);
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * tag;
+
+            GUIStyle tagline = GuiKit.Style(Mathf.RoundToInt(22f * u), FontStyle.Bold, TextAnchor.UpperLeft);
+            GuiKit.OutlinedLabel(new Rect(left + 4f * u + (1f - tag) * 20f * u, top + 150f * u, 900f * u, 30f * u),
+                "LIVRAISON DE BAGARRES À DOMICILE", tagline, new Color(1f, 0.82f, 0.35f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
+
+            GuiKit.Alpha = previous;
+        }
+
+        private void DrawLetters(GUIStyle style, float left, float top, float u, Color color, bool flicker)
+        {
+            float x = left;
+            Color outline = new Color(Accent.r * 0.5f, 0f, Accent.b * 0.3f, 0.95f);
+
+            for (int i = 0; i < LogoLetters.Length; i++)
+            {
+                _glyph.text = LogoLetters[i];
+                float width = style.CalcSize(_glyph).x;
+                float light = flicker ? LetterLight(i) : (LetterLight(i) > 0.5f ? 1f : 0f);
+
+                if (light > 0.01f && LogoLetters[i] != " ")
+                {
+                    // Eteinte, une lettre de neon n'est pas invisible : c'est un tube gris sombre.
+                    Color c = Color.Lerp(new Color(0.25f, 0.2f, 0.24f, color.a * 0.6f), color, light);
+                    Color o = new Color(outline.r, outline.g, outline.b, outline.a * Mathf.Max(0.3f, light));
+                    float drop = (1f - Mathf.Clamp01((_titleTime - LetterStart(i)) / 0.25f)) * -10f * u;
+
+                    GuiKit.OutlinedLabel(new Rect(x, top + drop, width + 20f * u, 130f * u), LogoLetters[i], style, c, o, 3f * u);
+                }
+
+                x += width * 0.96f;
+            }
+        }
+
+        private static float LetterStart(int index)
+        {
+            return 0.3f + index * 0.075f;
+        }
+
+        /// <summary>0 = éteinte, 1 = allumée. Grésille à l'allumage, puis clignote rarement.</summary>
+        private float LetterLight(int index)
+        {
+            float t = _titleTime - LetterStart(index);
+            if (t < 0f) return 0f;
+
+            if (t < 0.32f)
+            {
+                float hash = Mathf.Abs(Mathf.Sin((Mathf.Floor(t * 28f) + index * 13.7f) * 12.9898f) * 43758.5453f) % 1f;
+                return hash > 0.45f ? 1f : 0.12f;
+            }
+
+            // Une lettre fatiguee sur quatre lache une fraction de seconde, de loin en loin.
+            if (index % 4 == 1)
+            {
+                float cycle = (_titleTime + index * 1.37f) % 6.3f;
+                if (cycle < 0.09f || (cycle > 0.16f && cycle < 0.21f)) return 0.15f;
+            }
+
+            return 1f;
+        }
+
+        /// <summary>La pluie, à l'écran : de fines traînées qui tombent vite, en biais.</summary>
+        private void DrawRain(float sw, float sh, float u)
+        {
+            const int count = 70;
+
+            if (_rainX == null)
+            {
+                _rainX = new float[count];
+                _rainY = new float[count];
+                _rainLength = new float[count];
+                _rainSpeed = new float[count];
+
+                System.Random random = new System.Random(11);
+                for (int i = 0; i < count; i++)
+                {
+                    _rainX[i] = (float)random.NextDouble();
+                    _rainY[i] = (float)random.NextDouble();
+                    _rainLength[i] = 0.03f + (float)random.NextDouble() * 0.05f;
+                    _rainSpeed[i] = 0.9f + (float)random.NextDouble() * 0.8f;
+                }
+
+                _rainClock = Time.unscaledTime;
+            }
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                float dt = Mathf.Min(0.1f, Time.unscaledTime - _rainClock);
+                _rainClock = Time.unscaledTime;
+
+                for (int i = 0; i < count; i++)
+                {
+                    _rainY[i] += _rainSpeed[i] * dt;
+                    _rainX[i] += _rainSpeed[i] * dt * 0.08f;
+                    if (_rainY[i] > 1.1f) { _rainY[i] -= 1.2f; _rainX[i] = (_rainX[i] * 7.31f + 0.37f) % 1f; }
+                }
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                float alpha = 0.05f + (i % 5) * 0.025f;
+                GuiKit.Fill(new Rect(_rainX[i] * sw, _rainY[i] * sh, Mathf.Max(1f, 1.4f * u), _rainLength[i] * sh),
+                    new Color(0.75f, 0.82f, 0.95f, alpha));
+            }
+        }
+
+        /// <summary>De temps en temps, une voiture passe dans la rue : un balayage de phares, et son bruit.</summary>
+        private void DrawPassingCar(float sw, float sh)
+        {
+            if (Event.current.type == EventType.Repaint && _titleTime - _lastSweep > 17f)
+            {
+                _lastSweep = _titleTime;
+                Play(_carPass, 1f);
+            }
+
+            float age = _titleTime - _lastSweep;
+            if (age < 0.4f || age > 3.2f) return;
+
+            float p = (age - 0.4f) / 2.8f;
+            float x = Mathf.Lerp(sw * 1.2f, -sw * 0.6f, p);
+            float strength = Mathf.Sin(p * Mathf.PI);
+
+            GuiKit.Disc(new Rect(x, sh * 0.35f, sw * 0.55f, sh * 0.5f), new Color(1f, 0.9f, 0.7f, 0.13f * strength));
+            GuiKit.Disc(new Rect(x + sw * 0.12f, sh * 0.5f, sw * 0.3f, sh * 0.25f), new Color(1f, 0.95f, 0.85f, 0.1f * strength));
         }
 
         private string PageName(Page page)
@@ -890,11 +1137,23 @@ namespace UberBagarre.UI
             GUIStyle label = GuiKit.Style(Mathf.RoundToInt((settings ? 21f : 30f) * u), FontStyle.Bold, TextAnchor.MiddleLeft);
             GUIStyle value = GuiKit.Style(Mathf.RoundToInt(20f * u), FontStyle.Bold, TextAnchor.MiddleRight);
 
+            // Les lignes entrent l'une apres l'autre depuis la gauche, et sortent vers la droite.
+            float baseAlpha = GuiKit.Alpha;
+            float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
+            bool interactive = !_leaving;
+
             for (int row = 0; row < visible && first + row < _items.Count; row++)
             {
                 int index = first + row;
                 Item item = _items[index];
-                Rect rect = new Rect(left, top + row * rowHeight, width, rowHeight - 6f * u);
+
+                float appear = Ease(Mathf.Clamp01((_pageTime - row * 0.045f) / 0.24f));
+                float rowAlpha = appear * (1f - leave);
+                if (rowAlpha <= 0.01f) continue;
+
+                GuiKit.Alpha = baseAlpha * rowAlpha;
+                float shift = (1f - appear) * -70f * u + leave * 110f * u;
+                Rect rect = new Rect(left + shift, top + row * rowHeight, width, rowHeight - 6f * u);
 
                 if (item.Separator)
                 {
@@ -902,7 +1161,7 @@ namespace UberBagarre.UI
                     continue;
                 }
 
-                bool hover = rect.Contains(mouse);
+                bool hover = interactive && rect.Contains(mouse);
                 if (hover && (e.type == EventType.MouseMove || e.type == EventType.MouseDown) && _selected != index)
                 {
                     _selected = index;
@@ -915,7 +1174,18 @@ namespace UberBagarre.UI
                 if (selected)
                 {
                     GuiKit.Fill(rect, new Color(1f, 1f, 1f, 0.07f));
-                    GuiKit.Fill(new Rect(rect.x, rect.y, 5f * u, rect.height), Accent);
+
+                    // La barre d'accent respire, et un reflet balaie la ligne choisie.
+                    float bar = (5f + Mathf.Sin(Time.unscaledTime * 5f) * 1.5f) * u;
+                    GuiKit.Fill(new Rect(rect.x, rect.y, bar, rect.height), Accent);
+
+                    float sweep = (Time.unscaledTime * 0.9f) % 1.8f;
+                    if (sweep < 1f)
+                    {
+                        float glintWidth = 34f * u;
+                        float x = rect.x + (rect.width - glintWidth) * sweep;
+                        GuiKit.Fill(new Rect(x, rect.y, glintWidth, rect.height), new Color(1f, 1f, 1f, 0.06f * (1f - sweep)));
+                    }
                 }
 
                 Color textColor = selected ? Ink : Dim;
@@ -933,7 +1203,7 @@ namespace UberBagarre.UI
                     GuiKit.Fill(new Rect(barRect.x + barRect.width * t - 3f * u, barRect.y - 5f * u, 6f * u, barRect.height + 10f * u), Ink);
 
                     Rect grab = new Rect(barRect.x - 8f * u, rect.y, barRect.width + 16f * u, rect.height);
-                    if (e.type == EventType.MouseDown && e.button == 0 && grab.Contains(mouse)) _dragging = index;
+                    if (interactive && e.type == EventType.MouseDown && e.button == 0 && grab.Contains(mouse)) _dragging = index;
                     if (_dragging == index && (e.type == EventType.MouseDown || e.type == EventType.MouseDrag))
                     {
                         item.Set01((mouse.x - barRect.x) / barRect.width);
@@ -955,7 +1225,7 @@ namespace UberBagarre.UI
                     GuiKit.OutlinedLabel(leftArrow, "‹", centred, selected ? Accent : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
                     GuiKit.OutlinedLabel(rightArrow, "›", centred, selected ? Accent : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
 
-                    if (e.type == EventType.MouseDown && e.button == 0)
+                    if (interactive && e.type == EventType.MouseDown && e.button == 0)
                     {
                         if (leftArrow.Contains(mouse)) { item.Step(-1); Play(_tick, 1f); e.Use(); }
                         else if (rightArrow.Contains(mouse) || rect.Contains(mouse)) { item.Step(1); Play(_tick, 1f); e.Use(); }
@@ -965,10 +1235,13 @@ namespace UberBagarre.UI
                 {
                     Play(_confirm, 0.7f);
                     e.Use();
+                    GuiKit.Alpha = baseAlpha;
                     item.Activate();
                     return;
                 }
             }
+
+            GuiKit.Alpha = baseAlpha * (1f - leave);
 
             if (e.type == EventType.MouseUp) _dragging = -1;
 
@@ -1022,11 +1295,20 @@ namespace UberBagarre.UI
             GUIStyle action = GuiKit.Style(Mathf.RoundToInt(19f * u), FontStyle.Normal, TextAnchor.MiddleLeft);
             GUIStyle key = GuiKit.Style(Mathf.RoundToInt(19f * u), FontStyle.Bold, TextAnchor.MiddleRight);
 
+            float baseAlpha = GuiKit.Alpha;
+            float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
+
             for (int i = 0; i < count; i++)
             {
                 int column = i / perColumn;
                 int row = i % perColumn;
-                Rect rect = new Rect(left + column * (columnWidth + 40f * u), top + row * rowHeight, columnWidth, rowHeight - 4f * u);
+
+                // Les deux colonnes se remplissent en cascade.
+                float appear = Ease(Mathf.Clamp01((_pageTime - (row + column * 0.5f) * 0.03f) / 0.22f));
+                GuiKit.Alpha = baseAlpha * appear * (1f - leave);
+                float shift = (1f - appear) * -50f * u + leave * 90f * u;
+
+                Rect rect = new Rect(left + shift + column * (columnWidth + 40f * u), top + row * rowHeight, columnWidth, rowHeight - 4f * u);
 
                 GuiKit.Fill(rect, new Color(1f, 1f, 1f, row % 2 == 0 ? 0.05f : 0.02f));
                 GuiKit.OutlinedLabel(new Rect(rect.x + 12f * u, rect.y, rect.width * 0.6f, rect.height), rows[i, 0], action,
@@ -1034,6 +1316,8 @@ namespace UberBagarre.UI
                 GuiKit.OutlinedLabel(new Rect(rect.x, rect.y, rect.width - 12f * u, rect.height), rows[i, 1].ToUpperInvariant(), key,
                     Ink, new Color(0f, 0f, 0f, 0.85f), 1f);
             }
+
+            GuiKit.Alpha = baseAlpha;
         }
 
         private void DrawFooter(float u, float sw, float sh)
@@ -1103,13 +1387,19 @@ namespace UberBagarre.UI
         }
 
         /// <summary>
-        /// La musique de l'écran titre : une nappe sombre de synthétiseur sur quatre accords
-        /// (la mineur, fa, do, sol), une basse qui pulse doucement, bouclée sans couture.
-        /// Composée ici même, faute de fichier son dans le projet.
+        /// La musique de l'écran titre, composée ici même : un groove de nuit à 92 BPM. Grosse
+        /// caisse, caisse claire sur les temps 2 et 4, charleston en croches balancées, basse
+        /// syncopée sur la fondamentale, et une nappe de synthé désaccordée sur quatre accords
+        /// (la mineur, fa, do, sol), deux mesures chacun. La boucle retombe sur ses pieds : le
+        /// motif tient dans une mesure et la nappe fond aux changements d'accord.
         /// </summary>
         private static AudioClip Music()
         {
-            const float bar = 4f;
+            const float bpm = 92f;
+            float beat = 60f / bpm;
+            float bar = beat * 4f;
+            float step = beat / 4f;
+
             float[][] chords =
             {
                 new[] { 110f, 130.81f, 164.81f, 220f },
@@ -1118,45 +1408,143 @@ namespace UberBagarre.UI
                 new[] { 98f, 123.47f, 146.83f, 196f },
             };
 
-            int length = Mathf.RoundToInt(bar * chords.Length * SampleRate);
+            int bars = chords.Length * 2;
+            int length = Mathf.RoundToInt(bar * bars * SampleRate);
             float[] data = new float[length];
+            System.Random random = new System.Random(21);
+
+            int[] kicks = { 0, 7, 10 };
+            int[] snares = { 4, 12 };
+            int[] basses = { 0, 3, 6, 10, 14 };
+
             float low = 0f;
+            float hatLow = 0f;
+            float snareLow = 0f;
+            float peak = 0.0001f;
 
             for (int n = 0; n < length; n++)
             {
                 float t = n / (float)SampleRate;
-                int chord = Mathf.Min(chords.Length - 1, (int)(t / bar));
-                float inBar = t - chord * bar;
+                int barIndex = Mathf.Min(bars - 1, (int)(t / bar));
+                float inBar = t - barIndex * bar;
+                int chordIndex = barIndex / 2;
+                float[] notes = chords[chordIndex];
 
-                // Fondu entre deux accords, pour que la boucle et les changements ne claquent pas.
-                float fade = Mathf.Clamp01(inBar / 0.6f) * Mathf.Clamp01((bar - inBar) / 0.6f);
+                // --- nappe : fondu aux changements d'accord (toutes les deux mesures)
+                float inChord = t - chordIndex * bar * 2f;
+                float fade = Mathf.Clamp01(inChord / 0.5f) * Mathf.Clamp01((bar * 2f - inChord) / 0.5f);
 
                 float pad = 0f;
-                float[] notes = chords[chord];
                 for (int i = 0; i < notes.Length; i++)
                 {
-                    float f = notes[i];
-                    // Deux voix un peu desaccordees par note : c'est ce qui fait « nappe ».
-                    pad += Saw(f * t) * 0.5f + Saw(f * 1.004f * t + 0.3f) * 0.5f;
+                    pad += Saw(notes[i] * t) * 0.5f + Saw(notes[i] * 1.005f * t + 0.3f) * 0.5f;
                 }
 
                 pad /= notes.Length;
-
-                // Filtre passe-bas qui respire lentement.
-                float cutoff = 0.04f + 0.03f * (0.5f + 0.5f * Mathf.Sin(t * 0.4f));
+                float cutoff = 0.035f + 0.03f * (0.5f + 0.5f * Mathf.Sin(t * 0.5f));
                 low += (pad - low) * cutoff;
 
-                // Basse : la fondamentale une octave en dessous, qui pulse sur chaque temps.
-                float beat = t % 1f;
-                float bass = Mathf.Sin(2f * Mathf.PI * notes[0] * 0.5f * t) * Mathf.Exp(-beat * 3.2f) *
-                             Mathf.Clamp01(beat / 0.012f) * 0.45f;
+                // --- batterie
+                float noise = (float)random.NextDouble() * 2f - 1f;
 
-                data[n] = (low * 0.55f + bass) * fade * 0.8f;
+                float tk = Since(inBar, kicks, step);
+                float kickPhase = 48f * tk + 110f * 0.035f * (1f - Mathf.Exp(-tk / 0.035f));
+                float kick = Mathf.Sin(2f * Mathf.PI * kickPhase) * Mathf.Exp(-tk / 0.2f) * Mathf.Clamp01(tk / 0.002f);
+
+                float ts = Since(inBar, snares, step);
+                snareLow += (noise - snareLow) * 0.5f;
+                float snare = (noise - snareLow * 0.6f) * Mathf.Exp(-ts / 0.11f) * 0.8f +
+                              Mathf.Sin(2f * Mathf.PI * 190f * ts) * Mathf.Exp(-ts / 0.05f) * 0.5f;
+
+                // Charleston en croches, balancees (la deuxieme croche un peu en retard).
+                float eighth = beat / 2f;
+                int eighthIndex = (int)(inBar / eighth);
+                float swing = eighthIndex % 2 == 1 ? eighth * 0.16f : 0f;
+                float th = inBar - eighthIndex * eighth - swing;
+                if (th < 0f) th += eighth;
+                bool open = eighthIndex == 7;
+                hatLow += (noise - hatLow) * 0.6f;
+                float hat = (noise - hatLow) * Mathf.Exp(-th / (open ? 0.14f : 0.028f)) * (eighthIndex % 2 == 0 ? 0.5f : 0.32f);
+
+                // --- basse : la fondamentale, deux octaves sous l'accord, pincee en syncope
+                float tb = Since(inBar, basses, step);
+                float root = notes[0] * 0.5f;
+                float bass = (Mathf.Sin(2f * Mathf.PI * root * t) + Saw(root * t) * 0.25f) *
+                             Mathf.Exp(-tb / 0.28f) * Mathf.Clamp01(tb / 0.004f);
+
+                float sample = low * 1.1f * fade + bass * 0.34f + kick * 0.7f + snare * 0.26f + hat * 0.12f;
+                data[n] = sample;
+                peak = Mathf.Max(peak, Mathf.Abs(sample));
             }
+
+            for (int n = 0; n < length; n++) data[n] = data[n] / peak * 0.85f;
 
             AudioClip clip = AudioClip.Create("Menu (musique)", length, 1, SampleRate, false);
             clip.SetData(data, 0);
             return clip;
+        }
+
+        /// <summary>Temps écoulé depuis le dernier coup du motif (en doubles croches) dans la mesure.</summary>
+        private static float Since(float inBar, int[] steps, float step)
+        {
+            float best = 10f;
+            for (int i = 0; i < steps.Length; i++)
+            {
+                float at = steps[i] * step;
+                if (at <= inBar) best = Mathf.Min(best, inBar - at);
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Un souffle filtré dont la hauteur monte puis retombe. Court : la transition entre deux
+        /// pages. Long, plus grave et avec un moteur : une voiture qui passe dans la rue.
+        /// </summary>
+        private static AudioClip Swoosh(string name, float seconds, float level, int seed)
+        {
+            bool car = seconds > 1f;
+            int length = Mathf.RoundToInt(seconds * SampleRate);
+            float[] data = new float[length];
+            System.Random random = new System.Random(seed);
+
+            float band = 0f;
+            float low = 0f;
+            float engine = 0f;
+
+            for (int n = 0; n < length; n++)
+            {
+                float t = n / (float)length;
+                float shape = Mathf.Sin(t * Mathf.PI);
+                float noise = (float)random.NextDouble() * 2f - 1f;
+
+                float cutoff = car ? Mathf.Lerp(0.02f, 0.09f, shape) : Mathf.Lerp(0.05f, 0.4f, shape);
+                low += (noise - low) * cutoff;
+                band += (low - band) * (car ? 0.01f : 0.03f);
+
+                float sample = (low - band) * shape;
+
+                if (car)
+                {
+                    // Le moteur, dont la hauteur baisse en passant (effet Doppler).
+                    float pitch = Mathf.Lerp(62f, 44f, Mathf.SmoothStep(0f, 1f, t));
+                    engine += pitch / SampleRate;
+                    engine -= Mathf.Floor(engine);
+                    sample += Saw(engine) * 0.12f * shape * shape;
+                }
+
+                data[n] = sample * level;
+            }
+
+            AudioClip clip = AudioClip.Create(name, length, 1, SampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        private static float Ease(float t)
+        {
+            t = Mathf.Clamp01(t);
+            return t * t * (3f - 2f * t);
         }
 
         private static float Saw(float phase)

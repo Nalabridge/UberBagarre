@@ -25,6 +25,16 @@ namespace UberBagarre.Player
 
         [SerializeField, Range(0f, 1f)] private float _pitchInfluence = 0.45f;
 
+        [SerializeField]
+        [Tooltip("Optionnel : la chute. Le repere des mains se couche avec le corps, sinon la garde " +
+                 "resterait a hauteur d'yeux debout pendant qu'on est par terre.")]
+        private Combat.KnockdownSystem _knockdown;
+
+        private void Awake()
+        {
+            if (_knockdown == null) _knockdown = GetComponentInParent<Combat.KnockdownSystem>();
+        }
+
         private void LateUpdate()
         {
             if (_positionSource != null)
@@ -34,7 +44,9 @@ namespace UberBagarre.Player
 
             if (_look != null)
             {
-                transform.rotation = Quaternion.Euler(_look.Pitch * _pitchInfluence, _look.Yaw, 0f);
+                Quaternion tilt = _knockdown != null ? _knockdown.Tilt : Quaternion.identity;
+                transform.rotation = Quaternion.Euler(0f, _look.Yaw, 0f) * tilt *
+                                     Quaternion.Euler(_look.Pitch * _pitchInfluence, 0f, 0f);
             }
         }
     }

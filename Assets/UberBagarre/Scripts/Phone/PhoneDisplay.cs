@@ -95,10 +95,17 @@ namespace UberBagarre.Phone
             if (_device == null) return;
             if (UberBagarre.UI.GameMenu.ShowingTitle) return;
 
+            // Telephone dans la poche : les notifications s'affichent en bandeau, et c'est au
+            // joueur de le sortir.
+            if (_device.RaiseAmount < 0.45f)
+            {
+                DrawPocketNotification();
+                return;
+            }
+
             // Seuil franc plutot qu'un fondu : GuiKit.Fill impose sa propre couleur a chaque
             // appel, donc un GUI.color global ne ferait pas fondre les aplats — seulement le
             // texte. Un allumage net se lit comme un ecran qui se reveille.
-            if (_device.RaiseAmount < 0.45f) return;
 
             // En mode photo, l'image entiere est le viseur : c'est PhoneCamera qui dessine. Pendant
             // une cinematique, la camera du joueur est eteinte : projeter l'ecran depuis une autre
@@ -144,6 +151,92 @@ namespace UberBagarre.Phone
             DrawScreen(new Rect(0f, 0f, _w, _h));
 
             GUI.matrix = previous;
+        }
+
+        // ------------------------------------------------------------------ notification, telephone range
+
+        /// <summary>
+        /// Le bandeau d'une notification reçue téléphone rangé : il descend du haut de l'écran
+        /// avec l'icône de l'appli, l'expéditeur, le message et la touche pour sortir le
+        /// téléphone, puis se replie en une petite pastille qui reste tant que ce n'est pas lu.
+        /// Un appel entrant garde le bandeau déplié tant qu'il sonne.
+        /// </summary>
+        private void DrawPocketNotification()
+        {
+            if (_os == null || FightIntro.AnyPlaying || UberBagarre.UI.ModalScreen.Active) return;
+
+            bool ringing = _device.IsRinging;
+            PhoneOS.App app = ringing ? PhoneOS.App.Appels : _os.NotificationApp;
+            if (app == PhoneOS.App.Accueil) return;
+
+            float sw = UnityEngine.Screen.width;
+            float u = Mathf.Max(0.6f, UnityEngine.Screen.height / 1080f);
+            float age = ringing ? Mathf.Min(_device.CallTime, 1f) + 1f : _os.NotificationAge;
+
+            string title = ringing ? "Appel entrant" : _os.NotificationTitle;
+            string text = ringing ? _device.Caller : _os.NotificationText;
+            string key = _device.PhoneKeyName.ToUpperInvariant();
+            Color color = PhoneOS.AppColor(app);
+
+            bool expanded = ringing || age < 6f;
+
+            if (expanded)
+            {
+                // Descente amortie, et une legere secousse tant que ca vibre.
+                float drop = 1f - Mathf.Pow(1f - Mathf.Clamp01(age / 0.35f), 3f);
+                float shake = ringing || age < 0.8f ? Mathf.Sin(Time.unscaledTime * 55f) * 2.5f * u : 0f;
+
+                float width = 520f * u;
+                float height = 84f * u;
+                Rect band = new Rect((sw - width) * 0.5f + shake, Mathf.Lerp(-height - 10f, 22f * u, drop), width, height);
+
+                GuiKit.Fill(new Rect(band.x + 4f * u, band.y + 6f * u, band.width, band.height), new Color(0f, 0f, 0f, 0.35f));
+                GuiKit.Fill(band, new Color(0.06f, 0.06f, 0.08f, 0.94f));
+                GuiKit.Fill(new Rect(band.x, band.y, 4f * u, band.height), color);
+
+                Rect icon = new Rect(band.x + 16f * u, band.y + 14f * u, 56f * u, 56f * u);
+                GuiKit.Fill(icon, color);
+                GUIStyle letter = GuiKit.Style(Mathf.RoundToInt(28f * u), FontStyle.Bold, TextAnchor.MiddleCenter);
+                GuiKit.OutlinedLabel(icon, PhoneOS.AppName(app).Substring(0, 1).ToUpperInvariant(), letter,
+                    Color.white, new Color(0f, 0f, 0f, 0.3f), 1f);
+
+                float textX = icon.xMax + 14f * u;
+                float textWidth = band.xMax - textX - 110f * u;
+
+                GUIStyle head = GuiKit.Style(Mathf.RoundToInt(19f * u), FontStyle.Bold, TextAnchor.UpperLeft);
+                GUIStyle body = GuiKit.Style(Mathf.RoundToInt(17f * u), FontStyle.Normal, TextAnchor.UpperLeft, true);
+
+                GuiKit.OutlinedLabel(new Rect(textX, band.y + 12f * u, textWidth, 26f * u), title, head,
+                    _ink, new Color(0f, 0f, 0f, 0.6f), 1f);
+                GuiKit.OutlinedLabel(new Rect(textX, band.y + 38f * u, textWidth, 42f * u), text, body,
+                    _dim, new Color(0f, 0f, 0f, 0.6f), 1f);
+
+                // La touche, dessinee comme une touche de clavier.
+                Rect cap = new Rect(band.xMax - 94f * u, band.y + 16f * u, 36f * u, 36f * u);
+                GuiKit.Fill(cap, new Color(0.92f, 0.92f, 0.95f, 0.95f));
+                GuiKit.Fill(new Rect(cap.x, cap.yMax - 5f * u, cap.width, 5f * u), new Color(0.55f, 0.55f, 0.6f, 1f));
+                GUIStyle keyStyle = GuiKit.Style(Mathf.RoundToInt(20f * u), FontStyle.Bold, TextAnchor.MiddleCenter);
+                GuiKit.OutlinedLabel(new Rect(cap.x, cap.y - 2f * u, cap.width, cap.height), key, keyStyle,
+                    new Color(0.1f, 0.1f, 0.12f), new Color(0f, 0f, 0f, 0f), 0f);
+
+                GUIStyle hint = GuiKit.Style(Mathf.RoundToInt(14f * u), FontStyle.Bold, TextAnchor.UpperCenter);
+                GuiKit.OutlinedLabel(new Rect(cap.center.x - 45f * u, cap.yMax + 4f * u, 90f * u, 20f * u),
+                    ringing ? "répondre" : "sortir", hint, _dim, new Color(0f, 0f, 0f, 0.6f), 1f);
+                return;
+            }
+
+            // Repliee : une pastille discrete, tant que la notification n'est pas lue.
+            float pillWidth = 190f * u;
+            Rect pill = new Rect((sw - pillWidth) * 0.5f, 14f * u, pillWidth, 34f * u);
+            float pulse = 0.75f + Mathf.Sin(Time.unscaledTime * 3f) * 0.25f;
+
+            GuiKit.Fill(pill, new Color(0.06f, 0.06f, 0.08f, 0.85f));
+            GuiKit.Fill(new Rect(pill.x + 12f * u, pill.center.y - 6f * u, 12f * u, 12f * u),
+                new Color(color.r, color.g, color.b, pulse));
+
+            GUIStyle small = GuiKit.Style(Mathf.RoundToInt(15f * u), FontStyle.Bold, TextAnchor.MiddleLeft);
+            GuiKit.OutlinedLabel(new Rect(pill.x + 32f * u, pill.y, pill.width - 40f * u, pill.height),
+                PhoneOS.AppName(app) + "  ·  " + key, small, _ink, new Color(0f, 0f, 0f, 0.6f), 1f);
         }
 
         // ------------------------------------------------------------------ mise en page

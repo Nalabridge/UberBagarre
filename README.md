@@ -358,7 +358,7 @@ Il a un vrai **système**, sombre et à la luminosité réglable, avec un écran
 
 | Appli | Contenu |
 |---|---|
-| **RDV BASTON** | la course en cours (contrat, fiche, directive, validation) et le **profil** (niveau, réputation, avis) — apparaît une fois installée |
+| **Über Bagarre** | la course en cours (contrat, fiche, directive, validation) et le **profil** (niveau, réputation, avis) — apparaît une fois installée |
 | **Messages** | Sami (le lien de l'appli, puis ses réactions après chaque course), maman, la banque, SFR, l'agence |
 | **Appels** | le journal des appels ; les appels entrants s'y affichent |
 | **Photo** | l'appareil photo **plein écran** : grille, cadre de mise au point (vert sur une cible au sol), **zoom à la molette**, 5 **filtres**, vraie photo qui file en vignette |
@@ -367,9 +367,13 @@ Il a un vrai **système**, sombre et à la luminosité réglable, avec un écran
 | **Carte** | la planque, le Vertigo, le parking — et où tu es |
 | **Réglages** | **luminosité** (4 crans), **mode nuit**, sonnerie ou vibreur |
 
-Quand l'histoire a besoin du téléphone (un appel, le lien de Sami, une course, une preuve à
-photographier), il ouvre l'appli concernée, comme une notification qu'on touche. On peut en sortir et
-y revenir ; une validation ne compte que si l'écran de l'histoire est vraiment affiché.
+**C'est toi qui le sors, et toi qui lances les applis.** Quand l'histoire a besoin du téléphone (un
+appel, le lien de Sami, une course, une preuve à photographier), il **vibre** et une **notification**
+descend en haut de l'écran : l'appli, l'expéditeur, le message et la touche **T**. Au bout de quelques
+secondes, elle se replie en une petite pastille qui reste tant que ce n'est pas lu. Rien ne s'ouvre
+tout seul : tu sors le téléphone, l'accueil s'affiche avec le curseur sur l'appli qui t'a notifié, et
+tu la lances (Entrée). Un appel, lui, prend l'écran dès que tu sors le téléphone ; **E** décroche.
+Une validation ne compte que si l'écran de l'histoire est vraiment affiché.
 
 Son interface n'est pas collée par-dessus l'image : elle est dessinée **sur la dalle**, à partir de
 ses quatre coins projetés à l'écran. Elle suit donc l'inclinaison du poignet et le balancement.
@@ -476,22 +480,14 @@ marchent jusqu'à une place autour du combat, s'arrêtent et regardent — puis 
 
 ## Les voix et les ambiances
 
-**Chaque réplique est dite.** Les répliques du scénario ont été enregistrées par une voix de
-synthèse neuronale **hors-ligne** ([Piper](https://github.com/rhasspy/piper), voix françaises) :
-le personnage a une voix d'homme posée, **Sami** une voix plus aiguë passée dans un combiné de
-téléphone, les **frères Kovac** et **le Taureau** des voix plus graves (Dragan plus lent, Milan plus
-nerveux), et **l'appli** une voix de femme synthétique. Les fichiers sont dans
-`Assets/UberBagarre/Resources/Voix/` (`_liste.txt` dit qui dit quoi). Le sous-titre reste affiché
-tant que la voix parle ; **E** passe la réplique et coupe la voix.
-
-Les répliques **calculées en jeu** (une somme, un compte de photos) n'ont pas d'enregistrement : elles
-sont **babillées** — des syllabes synthétisées à la hauteur de voix du personnage, au rythme du texte.
-Une réplique modifiée dans le code devient babillée jusqu'à ce qu'on relance le générateur :
-
-```
-pip install piper-tts soundfile scipy numpy
-python3 Tools/generer_voix.py          # --force pour tout régénérer
-```
+**Les personnages babillent.** Pas de vraie voix : un « bla-bla-bla » synthétisé, propre à chaque
+personnage, pendant que le sous-titre porte le sens. Le babillage suit quand même le texte — une
+syllabe par groupe de voyelles, la voyelle et la consonne tirées des lettres écrites, des pauses sur
+la ponctuation, une phrase qui descend en finissant, une question qui remonte, une exclamation qui
+monte et tape plus fort. Le personnage parle posément, **Sami** vite et haut dans un combiné, **Dragan**
+lentement et en grave, **Milan** nerveusement, **le Taureau** en grognant, **Bruno Moretti** d'une voix
+basse, et **l'appli** en bips. La même réplique donne toujours le même babillage. **E** passe la
+réplique.
 
 **Chaque lieu a son fond sonore**, synthétisé au premier passage :
 
@@ -543,7 +539,10 @@ animée en dépassant un peu.
   uppercut la relève, un direct l'envoie en arrière. La hitbox mesure sa vitesse au contact.
 - **Ventre** : le corps se plie. **Torse** : coup du lapin, la tête reste en arrière. **Jambe** : la
   cuisse ou le tibia touché part. **Garde** : ce sont les avant-bras qui encaissent.
-- **Toi aussi** : un coup à la tête secoue ta caméra dans le sens du coup.
+- **Toi aussi** : un coup à la tête secoue ta caméra dans le sens du coup. Et quand **tu tombes**, ta
+  vue suit l'arc de ta tête : tu pars en arrière si on t'a frappé de face, tu te retrouves la tête au
+  sol à regarder le ciel, les poings devant le visage, puis tu te relèves en passant par le côté et
+  l'accroupi. Un mur ou une voiture derrière toi t'arrêtent au lieu d'être traversés.
 - **Le décor bouge** : bouteilles, cônes, caisses, sacs, poubelles, chaise, télé… Frapper un objet le
   pousse **au point touché** ; il devient dangereux un court instant (un coup de pied dans une
   bouteille la renvoie dans une figure). Le verre éclate. On pousse aussi les objets en marchant.
@@ -631,9 +630,16 @@ deux cas, mais il ne peut pas rattraper un éclairage calculé faux en amont.
 
 ## Le menu du jeu
 
-**L'écran titre** s'ouvre sur la maison, filmée lentement depuis le trottoir d'en face, sous la bruine,
-avec une nappe de synthé composée par le code : **Nouvelle partie**, **Chapitres** (prologue,
-chapitre 1, chapitre 2), **Bac à sable**, **Graphismes**, **Commandes**, **Quitter**.
+**L'écran titre** s'ouvre sur la maison, filmée lentement depuis le trottoir d'en face, sous la pluie
+(qui tombe aussi à l'écran), avec un groove de nuit composé par le code (batterie, basse, nappe). Le
+nom du jeu s'allume comme un **néon**, lettre par lettre, en grésillant, puis clignote de temps en
+temps ; de temps en temps une voiture passe (phares qui balaient l'image, bruit du moteur).
+**Nouvelle partie**, **Chapitres** (prologue, chapitre 1, chapitre 2), **Bac à sable**, **Graphismes**,
+**Commandes**, **Quitter**.
+
+**Entre les menus**, la page quittée file vers la droite, la nouvelle entre ligne par ligne depuis la
+gauche avec un souffle, et sur l'écran titre **la caméra s'avance et tourne** vers la maison quand on
+entre dans un sous-menu, puis recule au retour. La ligne choisie respire et un reflet la balaie.
 
 **Échap en jeu = pause** : le temps, le son, les dialogues, la cinématique et le téléphone se figent
 vraiment. Reprendre, Chapitres, Graphismes, Commandes, Menu principal, Quitter.
@@ -714,7 +720,7 @@ réécrire le combat.
 | Animations **procédurales** pilotées par données | Le projet n'a aucun clip ni rig : impossible de livrer de « vraies » animations. Les poses-clés sont éditables dans l'Inspector. | `ICombatAnimator` → implémentation Animator/Mecanim |
 | HUD et vignette en `OnGUI` | Pas de TextMeshPro, pas de police, pas de post-processing requis. Paramétrable dans l'Inspector. | Canvas uGUI / UI Toolkit |
 | Sons générés par code | Aucun fichier audio dans le projet, sauf les voix | Vrais samples |
-| Voix de synthèse neuronale (Piper, hors-ligne) | Un jeu où l'on parle en silence paraît en panne ; des comédiens ne sont pas disponibles pour un prototype | Doublage réel : il suffit de remplacer les `.ogg` de `Resources/Voix` (même nom) |
+| Babillage synthétisé au lieu de voix | Un jeu où l'on parle en silence paraît en panne ; une voix de synthèse « réaliste » sonnait faux ; des comédiens ne sont pas disponibles pour un prototype | Doublage réel : faire jouer un clip enregistré dans `DialogueVoice.Speak` quand il existe |
 | Primitives Unity pour le corps et les mains | Aucun modèle 3D disponible | **Un clic** : `Uber Bagarre → 5 - Brancher le modele 3D`, voir [Docs/MODELE_3D.md](Docs/MODELE_3D.md) |
 | Chute sur coup bas **procédurale**, ragdoll **seulement à la mort** | Tant que le combattant est vivant, son squelette est piloté à chaque image par l'IK et le cycle de marche : un ragdoll se battrait avec eux, et la chute doit finir par un relevé reproductible. La mort, elle, est définitive — plus rien n'a besoin d'être reproductible, et c'est le seul moment où la physique peut prendre la main sans rien casser. | Ragdoll sur un vrai rig importé, avec un mélange de sortie |
 | Matières **texturées par code** (grain, tissage) plutôt que couleurs plates | Une couleur plate ne réagit à la lumière que par son orientation : deux surfaces tournées pareil sont identiques, et l'ensemble se lit comme une maquette en plastique. C'est ça que « trop low poly » décrit en réalité. | Vraies textures + normal maps importées |

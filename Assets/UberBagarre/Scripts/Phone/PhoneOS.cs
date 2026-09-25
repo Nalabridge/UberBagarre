@@ -96,11 +96,17 @@ namespace UberBagarre.Phone
         private bool _callReceived;
         private bool _callsSeen;
         private bool _rdvUnseen;
+        private bool _photoUnseen;
         private bool _wasRaised;
         private readonly int[] _seen = new int[5];
 
         private string _toast;
         private float _toastUntil;
+
+        private App _notifyApp = App.Accueil;
+        private string _notifyTitle;
+        private string _notifyText;
+        private float _notifyTime = -100f;
 
         private readonly List<App> _apps = new List<App>(9);
         private readonly List<Message> _messages = new List<Message>(12);
@@ -141,6 +147,35 @@ namespace UberBagarre.Phone
         public string Toast
         {
             get { return Time.unscaledTime < _toastUntil ? _toast : null; }
+        }
+
+        /// <summary>
+        /// La dernière notification tant qu'elle n'a pas été lue : l'appli qui l'envoie (Accueil
+        /// = aucune), son titre, son texte, et depuis combien de temps elle est arrivée. Le
+        /// téléphone rangé l'affiche en bandeau ; c'est au joueur de le sortir et d'ouvrir l'appli.
+        /// </summary>
+        public App NotificationApp { get { return _notifyApp; } }
+        public string NotificationTitle { get { return _notifyTitle; } }
+        public string NotificationText { get { return _notifyText; } }
+        public float NotificationAge { get { return Time.unscaledTime - _notifyTime; } }
+
+        /// <summary>Une notification arrive : bandeau, vibration, pastille. L'appli ne s'ouvre PAS toute seule.</summary>
+        public void Notify(App app, string title, string text)
+        {
+            _notifyApp = app;
+            _notifyTitle = title;
+            _notifyText = text;
+            _notifyTime = Time.unscaledTime;
+
+            if (_uiSource != null && _buzz != null) _uiSource.PlayOneShot(_buzz, _ringVolume * 0.8f);
+
+            // Telephone en main : la notification tombe en haut de l'ecran, comme sur un vrai.
+            if (_device != null && _device.IsRaised) ShowToast(title + " — " + text);
+        }
+
+        private void ClearNotification(App app)
+        {
+            if (_notifyApp == app) _notifyApp = App.Accueil;
         }
 
         /// <summary>Les applis de l'écran d'accueil, dans l'ordre. ÜBER BAGARRE n'y est qu'une fois installée.</summary>
@@ -209,6 +244,7 @@ namespace UberBagarre.Phone
 
                 case App.Appels: return _callsSeen ? 0 : 4;
                 case App.UberBagarre: return _rdvUnseen ? 1 : 0;
+                case App.Photo: return _photoUnseen ? 1 : 0;
                 default: return 0;
             }
         }
@@ -393,15 +429,24 @@ namespace UberBagarre.Phone
 
             bool raised = _device.IsRaised;
 
-            // Ressortir le telephone ramene a l'accueil, sauf si l'histoire attend quelque chose
-            // de precis a l'ecran : on ne cache pas une course qui vient de tomber.
-            if (raised && !_wasRaised && !IsStoryView() && _app != App.Photo) Open(App.Accueil, false);
+            // Sortir le telephone : un appel prend l'ecran ; une notification en attente ramene a
+            // l'accueil, le curseur sur l'appli qui l'a envoyee (c'est au joueur de l'ouvrir) ;
+            // sinon on retrouve l'appli ou on l'avait laisse, comme sur un vrai telephone.
+            if (raised && !_wasRaised)
+            {
+                if (_device.IsRinging) Open(App.Appels, false);
+                else if (_notifyApp != App.Accueil && _app != _notifyApp) SelectOnHome(_notifyApp);
+                else if (_app == App.Appels && _device.Current != PhoneDevice.Screen.EnAppel) Open(App.Accueil, false);
+            }
+
             _wasRaised = raised;
+            if (raised && _app != App.Accueil) ClearNotification(_app);
 
             _device.CameraMode = _app == App.Photo;
             _device.ScreenBrightness = Brightness;
 
             if (_app == App.UberBagarre && raised) _rdvUnseen = false;
+            if (_app == App.Photo && raised) _photoUnseen = false;
             if (_app == App.Appels && raised) _callsSeen = true;
             if (_app == App.Messages && _thread >= 0 && raised) _seen[_thread] = Messages(_thread).Count;
 
@@ -419,24 +464,37 @@ namespace UberBagarre.Phone
         {
             PhoneDevice.Screen screen = _device.Current;
 
-            if (_device.IsRinging && _app != App.Appels) Open(App.Appels, false);
+            // Un appel qui tombe pendant qu'on tient le telephone prend l'ecran. Telephone range,
+            // il sonne et vibre : c'est au joueur de le sortir.
+            if (_device.IsRinging && _device.IsRaised && _app != App.Appels) Open(App.Appels, false);
             if (screen == _lastStory) return;
 
+            PhoneDevice.Screen previous = _lastStory;
             _lastStory = screen;
+
+            // L'histoire ne choisit JAMAIS l'appli a la place du joueur : elle notifie, pose une
+            // pastille, et attend qu'il sorte son telephone et l'ouvre lui-meme.
+            bool looking = _device.IsRaised;
 
             switch (screen)
             {
                 case PhoneDevice.Screen.AppelEntrant:
+                    _callReceived = true;
+                    if (!looking) Notify(App.Appels, "Appel entrant", _device.Caller);
+                    break;
+
                 case PhoneDevice.Screen.EnAppel:
                     _callReceived = true;
                     Open(App.Appels, false);
+                    ClearNotification(App.Appels);
                     break;
 
                 case PhoneDevice.Screen.Lien:
                     _linkSent = true;
-                    Open(App.Messages, false);
-                    _thread = 0;
-                    _threadScroll = 0;
+                    if (!(looking && _app == App.Messages && _thread == 0))
+                    {
+                        Notify(App.Messages, "SAMI", "Tiens, le lien. Installe-la.");
+                    }
                     break;
 
                 case PhoneDevice.Screen.Installation:
@@ -451,18 +509,50 @@ namespace UberBagarre.Phone
                     _device.AppInstalled = true;
                     _lastRdv = screen;
                     _rdvTab = 0;
-                    if (!_device.IsRaised || _app != App.UberBagarre) _rdvUnseen = true;
-                    Open(App.UberBagarre, false);
+
+                    if (!(looking && _app == App.UberBagarre))
+                    {
+                        _rdvUnseen = true;
+                        Notify(App.UberBagarre, "ÜBER BAGARRE", RdvNotice(screen, previous));
+                    }
                     break;
 
                 case PhoneDevice.Screen.Photo:
-                    Open(App.Photo, false);
+                    if (!(looking && _app == App.Photo))
+                    {
+                        _photoUnseen = true;
+                        Notify(App.Photo, "ÜBER BAGARRE", "Preuve exigée : une photo du sujet au sol.");
+                    }
                     break;
 
                 default:
-                    if (_app == App.Appels || _app == App.Photo) Open(App.Accueil, false);
+                    if (_app == App.Appels) Open(App.Accueil, false);
                     break;
             }
+        }
+
+        private static string RdvNotice(PhoneDevice.Screen screen, PhoneDevice.Screen previous)
+        {
+            switch (screen)
+            {
+                case PhoneDevice.Screen.Accueil:
+                    return previous == PhoneDevice.Screen.Installation
+                        ? "Installation terminée. Une course t'attend."
+                        : "Nouvelle course disponible.";
+                case PhoneDevice.Screen.Cible: return "La fiche du sujet est arrivée.";
+                case PhoneDevice.Screen.Mission: return "Course en cours : la consigne est dans l'appli.";
+                case PhoneDevice.Screen.Valide: return "Course validée. Paiement reçu.";
+                case PhoneDevice.Screen.Profil: return "Nouveau niveau. Nouvel avis client.";
+                default: return "Nouvelle notification.";
+            }
+        }
+
+        /// <summary>Ramène à l'accueil, le curseur posé sur <paramref name="app"/> : il reste à valider.</summary>
+        private void SelectOnHome(App app)
+        {
+            Open(App.Accueil, false);
+            int index = Apps.IndexOf(app);
+            if (index >= 0) _homeSelection = index;
         }
 
         /// <summary>L'écran affiché est-il celui que l'histoire attend ?</summary>
@@ -541,7 +631,12 @@ namespace UberBagarre.Phone
             switch (_app)
             {
                 case App.Accueil: NavigateHome(up, down, left, right, select); break;
-                case App.UberBagarre: NavigateRdv(left, right); break;
+                case App.UberBagarre:
+                    NavigateRdv(left, right);
+
+                    // La course reclame une preuve : Entree ouvre l'appareil photo depuis l'appli.
+                    if (select && _device.Current == PhoneDevice.Screen.Photo) Open(App.Photo, true);
+                    break;
                 case App.Messages: NavigateMessages(up, down, select); break;
                 case App.Appels: NavigateCalls(up, down, select); break;
                 case App.Galerie: NavigateGallery(up, down, left, right, select); break;

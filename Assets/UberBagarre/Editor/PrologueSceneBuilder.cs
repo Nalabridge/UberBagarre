@@ -722,8 +722,7 @@ namespace UberBagarre.EditorTools
 
             SubtitleDisplay subtitles = root.AddComponent<SubtitleDisplay>();
 
-            // La voix des sous-titres : les fichiers pre-enregistres de Resources/Voix, ou un
-            // babillage pour les repliques calculees en jeu.
+            // La voix des sous-titres : un babillage synthetise, propre a chaque personnage.
             root.AddComponent<AudioSource>();
             DialogueVoice voice = root.AddComponent<DialogueVoice>();
             SerializedWiring.SetObject(subtitles, "_voice", voice);

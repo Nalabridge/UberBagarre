@@ -1795,7 +1795,7 @@ suive le téléphone et pas l'inverse.
 ### 21.4 Les voix
 
 Un sous-titre silencieux se lit comme un bug d'audio. Les 75 répliques fixes du scénario sont
-**enregistrées** par une synthèse neuronale hors-ligne (Piper) : `Tools/generer_voix.py` lit
+*(Retiré depuis : voir 24.2, les personnages babillent.)* **enregistrées** par une synthèse neuronale hors-ligne (Piper) : `Tools/generer_voix.py` lit
 `PrologueDirector.cs`, évalue les concaténations (noms des cibles, tenues, récompenses) avec les
 valeurs que pose le générateur de scène, synthétise, transforme la voix par personnage (hauteur,
 débit, filtre de combiné pour Sami et l'appli), et écrit des OGG dans `Resources/Voix`.
@@ -2046,4 +2046,62 @@ et piloté au clavier comme à la souris.
 Voir `Docs/MODELE_3D.md`, complété : personnage **Humanoid** (Mixamo, etc.) branché par l'outil
 existant, objets rigides (voiture, meubles) posés à la place des boîtes générées. Les bleus suivent
 d'office, puisque la conversion des matières se fait au démarrage.
+
+## 24. Tomber pour de vrai, parler en babil, sortir soi-même son téléphone, un menu qui bouge
+
+Demande : *« le menu paraît trop calme, et entre les menus des animations ; abandonne les voix, elles
+sont bizarres, juste des blablabla ; c'est moi qui sors mon téléphone, avec une appli lançable ; et
+l'animation quand on tombe est mauvaise, la caméra passe derrière notre crâne. »*
+
+### 24.1 La chute vue de l'intérieur
+
+Deux défauts se cumulaient. `KnockdownSystem` calculait la bascule du corps avec les signes inversés :
+rotation positive autour de X = la tête part vers l'AVANT (c'est aussi le sens du tangage d'une caméra
+qui regarde vers le bas), donc un coup de face faisait tomber vers l'attaquant, face contre terre ; les
+deux signes sont désormais ceux de l'opposé du coup. Et la caméra du joueur, au lieu de suivre la tête,
+descendait tout droit d'un mètre et s'inclinait d'une fraction de la bascule, pendant que le corps se
+couchait autour des pieds : les yeux restaient au-dessus des chevilles, le corps allongé à côté, et on
+regardait l'intérieur de sa nuque.
+
+La caméra subit maintenant **exactement** la bascule du corps (exposée par `KnockdownSystem.Tilt`),
+autour du même pivot, dans le repère du joueur : sa position est `pivot + bascule × (œil − pivot)`, sa
+rotation `bascule × tangage`, ramenées dans le repère de la tête. Pendant le relevé, l'œil descend avec
+le bassin qui plie. Un lancer de sphère depuis l'œil debout arrête la tête contre un mur, et un rayon
+vers le bas la garde à 20 cm au-dessus du sol. Le repère des mains (`HandsAimAnchor`) prend la même
+bascule : la garde tombe avec le corps, serrée (`PlayerAvatarDriver` la force au sol) — on voit ses
+poings devant son visage, sur fond de ciel. Le mouchard de caméra ignore la chute.
+
+### 24.2 Le babil
+
+Les fichiers de voix et leur générateur sont retirés (ils restent dans l'historique git).
+`DialogueVoice` ne fait plus que du babillage, mais un babillage qui lit le texte : syllabes par groupe
+de voyelles (digrammes français compris : ou, eu, au, ai, oi ; e muet de fin de mot sauté), attaque
+tirée de la consonne précédente (occlusive = silence puis éclat de bruit filtré au lieu
+d'articulation ; nasale = murmure grave ; liquide = glissement de formants ; fricative = souffle),
+trois formants par voyelle, source glottale adoucie plus souffle, sous-harmonique pour les voix qui
+grognent, bips carrés sur une gamme pour l'appli. L'intonation est calculée par phrase (déclinaison,
+remontée des questions, élan des exclamations, accent aléatoire en fin de mot). Les résonateurs sont
+normalisés en gain au sommet : sans ça, un « i » (premier formant très bas) sortait cinq fois plus fort
+qu'un « a ».
+
+### 24.3 Le téléphone reste dans la poche
+
+L'histoire ne choisit plus l'appli à la place du joueur. `PhoneOS.SyncStory` ne fait plus `Open(...)` :
+il **notifie** (`Notify(app, titre, texte)` : vibration, pastille, et un toast si le téléphone est déjà
+en main) et attend. `PhoneDisplay` dessine la notification en bandeau quand le téléphone est rangé,
+puis en pastille. Sortir le téléphone rouvre l'appli où on l'avait laissé, sauf qu'un appel prend
+l'écran et qu'une notification en attente ramène à l'accueil, le curseur sur l'appli concernée. Les
+`Raise()` du scénario ont disparu, un appel ne sort plus le téléphone tout seul, les objectifs disent
+quoi faire (« sors ton téléphone (T), ouvre Über Bagarre et accepte »), et le prologue attend que le
+joueur ait ouvert l'appli (`PhoneShowsStory`) avant qu'elle se présente.
+
+### 24.4 Le menu qui bouge
+
+`GameMenu.Show` ne change plus de page d'un coup : l'ancienne file vers la droite en 0,16 s
+(`_leaving`), puis la nouvelle entre ligne par ligne, décalées de 45 ms. Sur l'écran titre, la caméra
+de cinéma a un cadre par page (`_zoom` amorti : plus près et un peu tourné dans Chapitres et
+Graphismes), le nom s'allume lettre par lettre comme un néon (grésillement à l'allumage, clignotement
+rare, saut rouge-cyan toutes les huit secondes), la pluie tombe à l'écran et une voiture passe toutes
+les 17 s. La musique est devenue un groove à 92 BPM (batterie, basse syncopée, nappe), toujours
+synthétisé au lancement, et chaque transition a son souffle.
 

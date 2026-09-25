@@ -328,6 +328,18 @@ namespace UberBagarre.Story
             if (_intro != null && opponent != null) _intro.Play(opponent, title, subtitle, null);
         }
 
+        /// <summary>La touche du téléphone, pour les consignes.</summary>
+        private string PhoneKey()
+        {
+            return _phone != null ? _phone.PhoneKeyName.ToUpperInvariant() : "T";
+        }
+
+        /// <summary>Le joueur a sorti son téléphone et regarde l'écran que l'histoire attend.</summary>
+        private bool PhoneShowsStory()
+        {
+            return _phone == null || (_phone.IsRaised && _phone.ShowingStoryScreen);
+        }
+
         private Combatant Brother(int index)
         {
             return index < _brothers.Length ? _brothers[index] : null;
@@ -584,7 +596,7 @@ namespace UberBagarre.Story
 
             // ---------------------------------------------------------- l'appel
             beats.Add(new StoryBeat("sonnerie")
-                .Goal("Réponds au téléphone")
+                .Goal("Ton téléphone sonne : sors-le (" + PhoneKey() + ") et réponds (E)")
                 .Enter(delegate
                 {
                     if (_phone != null) _phone.Ring(friend);
@@ -609,12 +621,8 @@ namespace UberBagarre.Story
                 }));
 
             beats.Add(new StoryBeat("lien")
-                .Goal("Installe l'application")
-                .Enter(delegate
-                {
-                    _confirm = false;
-                    if (_phone != null) _phone.Raise();
-                })
+                .Goal("Téléphone (" + PhoneKey() + ") : ouvre Messages, le lien de Sami, et installe l'appli")
+                .Enter(delegate { _confirm = false; })
                 .Until(delegate { return _confirm; })
                 .Exit(delegate
                 {
@@ -633,6 +641,12 @@ namespace UberBagarre.Story
                 }));
 
             // ---------------------------------------------------------- l'application
+            // Personne n'ouvre l'appli a la place du joueur : il revient a l'accueil de son
+            // telephone et la lance. C'est seulement la qu'elle se presente.
+            beats.Add(new StoryBeat("ouvre-appli")
+                .Goal("Ouvre Über Bagarre depuis l'accueil du téléphone (" + PhoneKey() + ")")
+                .Until(PhoneShowsStory));
+
             beats.Add(new StoryBeat("appli")
                 .Goal("Accepte la course")
                 .Say("APPLI", "Une course, un contrat. De une à cinq étoiles.")
@@ -771,7 +785,7 @@ namespace UberBagarre.Story
 
             // ---------------------------------------------------------- la preuve
             beats.Add(new StoryBeat("photo")
-                .Goal("Envoie la photo au client")
+                .Goal("Photographie-le au sol : téléphone (" + PhoneKey() + "), appli Photo")
                 .Say("APPLI", "Preuve exigée. Photo du sujet au sol.")
                 .Enter(delegate
                 {
@@ -780,11 +794,9 @@ namespace UberBagarre.Story
                     // Le rappel de touche sert ici de mode d'emploi, pas d'exercice : le
                     // compteur est a zero, la consigne reste affichee tant que la photo n'est
                     // pas prise. Sans elle, « envoie la photo » ne dit pas quelle touche.
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Cadre-le au sol dans l'appareil photo (T si le téléphone est rangé)", 0);
+                    if (_tutorial != null) _tutorial.Show(PhoneKey() + "  ›  PHOTO  ›  CLIC GAUCHE", "Sors le téléphone, ouvre l'appareil photo, cadre-le au sol", 0);
 
-                    if (_phone == null) return;
-                    _phone.SetScreen(PhoneDevice.Screen.Photo);
-                    _phone.Raise();
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Photo);
                 })
                 .Until(delegate { return _photoValidated; })
                 .Exit(delegate
@@ -919,7 +931,7 @@ namespace UberBagarre.Story
 
             // ---------------------------------------------------------- la commande
             beats.Add(new StoryBeat("notification")
-                .Goal("Accepte le RDV BASTON")
+                .Goal("Nouvelle course : sors ton téléphone (" + PhoneKey() + "), ouvre Über Bagarre et accepte")
                 .Say("APPLI", "Nouveau RDV BASTON. Deux étoiles.")
                 .Say("APPLI", "Deux sujets, une seule course. Le client paie le double.")
                 .Enter(delegate
@@ -931,7 +943,6 @@ namespace UberBagarre.Story
 
                     _phone.Available = true;
                     _phone.SetScreen(PhoneDevice.Screen.Accueil);
-                    _phone.Raise();
                 })
                 .Until(delegate { return _confirm; })
                 .Exit(delegate
@@ -1048,7 +1059,7 @@ namespace UberBagarre.Story
 
             // ---------------------------------------------------------- deux preuves
             beats.Add(new StoryBeat("photo-2")
-                .Goal("Photographie les deux frères")
+                .Goal("Photographie les deux frères : téléphone (" + PhoneKey() + "), appli Photo")
                 .Say("APPLI", "Preuve exigée. Une photo par sujet.")
                 .Enter(delegate
                 {
@@ -1060,11 +1071,9 @@ namespace UberBagarre.Story
 
                     RequirePhotos(proofs);
 
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Un cliché par frère, au sol. Molette : zoom", 0);
+                    if (_tutorial != null) _tutorial.Show(PhoneKey() + "  ›  PHOTO  ›  CLIC GAUCHE", "Un cliché par frère, au sol. Molette : zoom", 0);
 
-                    if (_phone == null) return;
-                    _phone.SetScreen(PhoneDevice.Screen.Photo);
-                    _phone.Raise();
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Photo);
                 })
                 .Until(delegate { return _photoValidated; })
                 .Exit(delegate
@@ -1154,7 +1163,7 @@ namespace UberBagarre.Story
                 }));
 
             beats.Add(new StoryBeat("sonnerie-2")
-                .Goal("Réponds au téléphone")
+                .Goal("Ton téléphone sonne : sors-le (" + PhoneKey() + ") et réponds (E)")
                 .Enter(delegate
                 {
                     if (_phone != null) _phone.Ring(friend);
@@ -1327,7 +1336,7 @@ namespace UberBagarre.Story
 
             // LA règle : la bagarre commence quand la commande est reçue ET acceptée.
             beats.Add(new StoryBeat("commande-3")
-                .Goal("Accepte le RDV BASTON")
+                .Goal("Nouvelle course : sors ton téléphone (" + PhoneKey() + "), ouvre Über Bagarre et accepte")
                 .Say("APPLI", "RDV BASTON. Trois étoiles. Ici, maintenant.")
                 .Say("APPLI", "Le client est dans la salle. Il veut voir ça de près.")
                 .Enter(delegate
@@ -1339,7 +1348,6 @@ namespace UberBagarre.Story
 
                     _phone.Available = true;
                     _phone.SetScreen(PhoneDevice.Screen.Accueil);
-                    _phone.Raise();
                 })
                 .Until(delegate { return _confirm; })
                 .Exit(delegate
@@ -1401,17 +1409,15 @@ namespace UberBagarre.Story
                 .Until(ChampionKnockedOut));
 
             beats.Add(new StoryBeat("photo-3")
-                .Goal("Envoie la photo au client")
+                .Goal("Photographie-le au sol : téléphone (" + PhoneKey() + "), appli Photo")
                 .Say("APPLI", "Preuve exigée. Photo du sujet au sol.")
                 .Enter(delegate
                 {
                     RequirePhotos(_champion != null ? _champion.transform : null);
 
-                    if (_tutorial != null) _tutorial.Show("CLIC GAUCHE", "Cadre-le au sol. Molette : zoom", 0);
+                    if (_tutorial != null) _tutorial.Show(PhoneKey() + "  ›  PHOTO  ›  CLIC GAUCHE", "Cadre-le au sol. Molette : zoom", 0);
 
-                    if (_phone == null) return;
-                    _phone.SetScreen(PhoneDevice.Screen.Photo);
-                    _phone.Raise();
+                    if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Photo);
                 })
                 .Until(delegate { return _photoValidated; })
                 .Exit(delegate

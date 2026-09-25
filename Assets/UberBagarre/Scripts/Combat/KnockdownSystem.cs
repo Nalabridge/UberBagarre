@@ -44,18 +44,18 @@ namespace UberBagarre.Combat
         [SerializeField] private MonoBehaviour _impulseReceiver;
 
         [SerializeField]
-        [Tooltip("Optionnel, pour un combattant vu en premiere personne. En vue subjective, " +
-                 "basculer le corps ne se voit PAS : c'est le point de vue qui doit descendre et " +
-                 "rouler, sinon tomber ne se distingue pas d'une simple perte de controle.")]
+        [Tooltip("Optionnel, pour un combattant vu en premiere personne : le noeud de camera, " +
+                 "enfant de la tete. Il suit les yeux du corps qui tombe, exactement.")]
         private Transform _cameraRoot;
 
-        [SerializeField, Min(0f)]
-        [Tooltip("De combien le point de vue descend quand on est au sol, en metres.")]
-        private float _cameraDrop = 1.02f;
+        [SerializeField, Min(0.05f)]
+        [Tooltip("Hauteur minimale des yeux au-dessus du sol, tete posee par terre.")]
+        private float _eyeGroundClearance = 0.2f;
 
-        [SerializeField, Range(0f, 1f)]
-        [Tooltip("Part de la bascule du corps reportee sur le point de vue. A 1 on a la nausee.")]
-        private float _cameraTiltScale = 0.55f;
+        [SerializeField, Min(0.02f)]
+        [Tooltip("Rayon de la tete pour les collisions de la camera pendant la chute : on ne " +
+                 "tombe pas a travers un mur, on tombe contre.")]
+        private float _cameraRadius = 0.14f;
 
         [Header("Declenchement")]
         [SerializeField, Range(0f, 1f)]
@@ -121,9 +121,17 @@ namespace UberBagarre.Combat
         private Quaternion _restRotation = Quaternion.identity;
         private Vector3 _cameraRestPosition;
         private Quaternion _cameraRestRotation = Quaternion.identity;
+        private Quaternion _tilt = Quaternion.identity;
+        private readonly RaycastHit[] _hits = new RaycastHit[12];
 
         public bool IsDown { get { return _phase != Phase.Standing; } }
         public float Weight { get { return _weight; } }
+
+        /// <summary>
+        /// La bascule actuelle du corps, dans le repère du combattant (identité debout). Le repère
+        /// des mains du joueur la suit : on tombe avec sa garde, on ne la laisse pas en l'air.
+        /// </summary>
+        public Quaternion Tilt { get { return _tilt; } }
 
         public event Action KnockedDown;
         public event Action GotUp;
@@ -229,8 +237,11 @@ namespace UberBagarre.Combat
 
             Vector3 local = transform.InverseTransformDirection(direction);
 
-            // On bascule dans le sens du coup : pousse de face = chute en arriere.
-            _fallEuler = new Vector3(-local.z * _fallAngle, 0f, local.x * _fallAngle);
+            // On bascule dans le sens du coup : pousse de face = chute en arriere, frappe a
+            // gauche = chute a droite. (Rotation positive autour de X = la tete part vers l'avant,
+            // autour de Z = vers la gauche : les deux signes sont donc ceux de l'oppose du coup.
+            // L'ancienne formule faisait tomber vers l'attaquant, face contre terre.)
+            _fallEuler = new Vector3(local.z * _fallAngle, 0f, -local.x * _fallAngle);
 
             _phase = Phase.Falling;
             _timer = _fallDuration;
@@ -343,6 +354,7 @@ namespace UberBagarre.Combat
 
             Quaternion tilt = Quaternion.Euler(
                 _fallEuler * _weight + new Vector3(settle, 0f, settle * 0.4f + roll));
+            _tilt = tilt;
 
             // Un SEUL transform bascule, et tout ce qui doit tomber est dessous : le corps, les
             // zones touchables, le repere des bras. Faire basculer trois transforms en parallele
@@ -374,13 +386,86 @@ namespace UberBagarre.Combat
             return t * t * (3f - 2f * t);
         }
 
+        /// <summary>
+        /// Le point de vue suit les YEUX du corps qui tombe.
+        ///
+        /// La première version faisait descendre la caméra tout droit d'un mètre et l'inclinait
+        /// d'une fraction de la bascule, pendant que le corps, lui, se couchait autour de ses pieds.
+        /// Les yeux se retrouvaient au-dessus des chevilles, le corps allongé devant ou derrière :
+        /// on regardait l'intérieur de sa propre nuque. Ici, la caméra subit EXACTEMENT la bascule
+        /// du corps, autour du même pivot : elle décrit l'arc de la tête, se pose à une vingtaine de
+        /// centimètres du sol, regarde le ciel quand on tombe sur le dos, puis remonte par la même
+        /// position accroupie que le corps. La visée du joueur continue de s'appliquer dans ce
+        /// repère couché. Un mur ou une marche derrière arrêtent la tête au lieu de la traverser.
+        /// </summary>
         private void ApplyCameraPose()
         {
             if (_cameraRoot == null) return;
 
-            _cameraRoot.localPosition = _cameraRestPosition + Vector3.down * (_cameraDrop * _weight);
-            _cameraRoot.localRotation = _cameraRestRotation *
-                Quaternion.Euler(_fallEuler * (_weight * _cameraTiltScale));
+            Transform head = _cameraRoot.parent;
+            Transform root = head != null ? head.parent : null;
+
+            if (head == null || root == null || (_weight <= 0.0001f && _phase == Phase.Standing))
+            {
+                _cameraRoot.localPosition = _cameraRestPosition;
+                _cameraRoot.localRotation = _cameraRestRotation;
+                return;
+            }
+
+            // Tout se calcule dans le repere du combattant, celui ou la bascule du corps est definie.
+            Vector3 pivot = _bodyRoot != null && _bodyRoot.parent == root ? _bodyRoot.localPosition : Vector3.zero;
+            Vector3 eye = head.localPosition + head.localRotation * _cameraRestPosition;
+
+            // Pendant le releve, le bassin plie : les yeux descendent avec lui.
+            if (_locomotion != null) eye.y -= _locomotion.ExtraPelvisDrop;
+
+            Vector3 target = pivot + _tilt * (eye - pivot);
+
+            Vector3 from = root.TransformPoint(head.localPosition);
+            Vector3 to = Clear(root, from, root.TransformPoint(target));
+
+            _cameraRoot.localPosition = Quaternion.Inverse(head.localRotation) * (root.InverseTransformPoint(to) - head.localPosition);
+            _cameraRoot.localRotation = Quaternion.Inverse(head.localRotation) * _tilt * head.localRotation * _cameraRestRotation;
+        }
+
+        /// <summary>La tête s'arrête contre ce qu'elle rencontre (mur, voiture, marche), et jamais sous le sol.</summary>
+        private Vector3 Clear(Transform root, Vector3 from, Vector3 to)
+        {
+            Vector3 delta = to - from;
+            float length = delta.magnitude;
+
+            if (length > 0.001f)
+            {
+                Vector3 direction = delta / length;
+                int count = Physics.SphereCastNonAlloc(from, _cameraRadius, direction, _hits, length, ~0,
+                    QueryTriggerInteraction.Ignore);
+
+                float nearest = length;
+                for (int i = 0; i < count; i++)
+                {
+                    Collider collider = _hits[i].collider;
+                    if (collider == null || collider.transform.IsChildOf(root)) continue;
+                    if (_hits[i].distance <= 0f) continue;
+                    nearest = Mathf.Min(nearest, _hits[i].distance);
+                }
+
+                to = from + direction * nearest;
+            }
+
+            // Le sol sous la tete : les yeux restent au-dessus, tete posee.
+            int down = Physics.RaycastNonAlloc(to + Vector3.up * 0.3f, Vector3.down, _hits, 1.3f, ~0,
+                QueryTriggerInteraction.Ignore);
+
+            float ground = float.MinValue;
+            for (int i = 0; i < down; i++)
+            {
+                Collider collider = _hits[i].collider;
+                if (collider == null || collider.transform.IsChildOf(root)) continue;
+                ground = Mathf.Max(ground, _hits[i].point.y);
+            }
+
+            if (ground > float.MinValue) to.y = Mathf.Max(to.y, ground + _eyeGroundClearance);
+            return to;
         }
 
         /// <summary>
@@ -397,6 +482,7 @@ namespace UberBagarre.Combat
             _cooldownTimer = 0f;
             _weight = 0f;
             _fallEuler = Vector3.zero;
+            _tilt = Quaternion.identity;
 
             _getUpProgress = 0f;
 

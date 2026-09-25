@@ -29,6 +29,10 @@ namespace UberBagarre.Player
         [Tooltip("Optionnel : hors combat, les mains pendent le long du corps au lieu d'etre en garde.")]
         private CombatPresence _presence;
 
+        [SerializeField]
+        [Tooltip("Optionnel : la chute. Au sol, la garde se serre pour proteger le visage.")]
+        private KnockdownSystem _knockdown;
+
         [Header("Reactivite")]
         [SerializeField, Min(0.5f)] private float _guardBlendSpeed = 10f;
         [SerializeField, Min(0.5f)] private float _sprintBlendSpeed = 6f;
@@ -42,6 +46,7 @@ namespace UberBagarre.Player
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
             if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
             if (_presence == null) _presence = GetComponentInParent<CombatPresence>();
+            if (_knockdown == null) _knockdown = GetComponentInParent<KnockdownSystem>();
         }
 
         private void Update()
@@ -54,7 +59,9 @@ namespace UberBagarre.Player
                     ? _guard.IsGuarding
                     : _input != null && _input.GuardHeld;
 
-                float guardTarget = guarding ? 1f : 0f;
+                // Au sol, on se protege le visage : la garde se serre d'elle-meme.
+                bool down = _knockdown != null && _knockdown.IsDown;
+                float guardTarget = guarding || down ? 1f : 0f;
 
                 // La fenetre de parade se voit : les poings se collent instantanement au menton,
                 // sans le fondu habituel. Sans ce signal, parer serait un coup de des invisible.
