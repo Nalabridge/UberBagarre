@@ -21,6 +21,10 @@ namespace UberBagarre.Feedback
         [Tooltip("Optionnel. Donne a la garde et a la parade un retour qui leur est propre.")]
         private GuardSystem _guard;
 
+        [SerializeField]
+        [Tooltip("Optionnel. Le bruit d'un corps qui tombe.")]
+        private KnockdownSystem _knockdown;
+
         [Header("Sorties")]
         [SerializeField] private CameraShake _cameraShake;
         [SerializeField] private ImpactAudio _audio;
@@ -69,6 +73,8 @@ namespace UberBagarre.Feedback
                 _guard.Parried += OnParried;
                 _guard.Blocked += OnBlocked;
             }
+
+            if (_knockdown != null) _knockdown.KnockedDown += OnKnockedDown;
         }
 
         private void OnDisable()
@@ -89,6 +95,13 @@ namespace UberBagarre.Feedback
                 _guard.Parried -= OnParried;
                 _guard.Blocked -= OnBlocked;
             }
+
+            if (_knockdown != null) _knockdown.KnockedDown -= OnKnockedDown;
+        }
+
+        private void OnKnockedDown()
+        {
+            if (_audio != null) _audio.PlayFall();
         }
 
         private void Update()

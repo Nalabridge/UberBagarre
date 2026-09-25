@@ -46,3 +46,7 @@ __pycache__/
 # Maillages de tenue generes par CorpsImporter a la construction des scenes
 Assets/UberBagarre/Art/Models/Corps/Generes/
 Assets/UberBagarre/Art/Models/Corps/Generes.meta
+
+# Bibliotheque d animations capturees generee par MocapLibraryBuilder (reference le paquet FS)
+Assets/UberBagarre/Art/Animations/Generes/
+Assets/UberBagarre/Art/Animations/Generes.meta

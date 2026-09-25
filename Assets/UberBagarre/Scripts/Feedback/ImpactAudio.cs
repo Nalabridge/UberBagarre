@@ -19,7 +19,8 @@ namespace UberBagarre.Feedback
     /// avant-bras qui bloque et une expiration ne diffèrent que par ces deux choses.
     ///
     /// Remplacer par de vrais échantillons se fera en assignant les champs ci-dessous ;
-    /// la génération ne sert que de secours.
+    /// la génération ne sert que de secours. Avec le paquet FS Melee Combat System, le
+    /// constructeur de scène y range ses bruitages (coups, garde, souffle, chute).
     /// </summary>
     [RequireComponent(typeof(AudioSource))]
     public class ImpactAudio : MonoBehaviour
@@ -34,12 +35,23 @@ namespace UberBagarre.Feedback
         [SerializeField] private AudioClip _blockClip;
         [SerializeField] private AudioClip _parryClip;
 
+        [Header("Banques d'echantillons (optionnelles, tirees au hasard)")]
+        [SerializeField] private AudioClip[] _punchSamples = new AudioClip[0];
+        [SerializeField] private AudioClip[] _heavySamples = new AudioClip[0];
+        [SerializeField] private AudioClip[] _whooshSamples = new AudioClip[0];
+        [SerializeField] private AudioClip[] _blockSamples = new AudioClip[0];
+
+        [SerializeField]
+        [Tooltip("Un corps qui tombe au sol. Sans echantillon, la chute reste silencieuse.")]
+        private AudioClip[] _fallSamples = new AudioClip[0];
+
         [Header("Volumes")]
         [SerializeField, Range(0f, 1f)] private float _impactVolume = 0.85f;
         [SerializeField, Range(0f, 1f)] private float _whooshVolume = 0.22f;
         [SerializeField, Range(0f, 1f)] private float _hurtVolume = 0.45f;
         [SerializeField, Range(0f, 1f)] private float _blockVolume = 0.7f;
         [SerializeField, Range(0f, 1f)] private float _parryVolume = 0.8f;
+        [SerializeField, Range(0f, 1f)] private float _fallVolume = 0.8f;
 
         [SerializeField, Range(0f, 0.5f)]
         [Tooltip("Variation aleatoire de hauteur : deux coups identiques ne sonnent jamais pareil. " +
@@ -60,13 +72,21 @@ namespace UberBagarre.Feedback
             // apparente : plus le coup est lourd, plus il est sourd et plus il traîne.
             // Coups portés : trois variantes de chaque, tirées au hasard. Un seul échantillon
             // répété à chaque coup devient une mitraillette au troisième direct.
-            if (_lightImpactClip == null)
+            if (HasAny(_punchSamples))
+            {
+                _lightPunches = _punchSamples;
+            }
+            else if (_lightImpactClip == null)
             {
                 _lightPunches = new AudioClip[3];
                 for (int i = 0; i < 3; i++) _lightPunches[i] = BuildPunch("Coup_Leger_" + i, false, 101 + i * 17);
             }
 
-            if (_heavyImpactClip == null)
+            if (HasAny(_heavySamples))
+            {
+                _heavyPunches = _heavySamples;
+            }
+            else if (_heavyImpactClip == null)
             {
                 _heavyPunches = new AudioClip[3];
                 for (int i = 0; i < 3; i++) _heavyPunches[i] = BuildPunch("Coup_Lourd_" + i, true, 707 + i * 29);
@@ -89,7 +109,13 @@ namespace UberBagarre.Feedback
 
         public void PlayWhoosh()
         {
-            Play(_whooshClip, _whooshVolume);
+            Play(Pick(_whooshSamples, _whooshClip), _whooshVolume);
+        }
+
+        /// <summary>Un corps qui touche le sol (chute, K.O.).</summary>
+        public void PlayFall()
+        {
+            Play(Pick(_fallSamples, null), _fallVolume);
         }
 
         public void PlayHurt()
@@ -105,12 +131,32 @@ namespace UberBagarre.Feedback
         /// </summary>
         public void PlayBlock()
         {
-            Play(_blockClip, _blockVolume);
+            Play(Pick(_blockSamples, _blockClip), _blockVolume);
         }
 
         public void PlayParry()
         {
             Play(_parryClip, _parryVolume);
+        }
+
+        private static bool HasAny(AudioClip[] bank)
+        {
+            if (bank == null) return false;
+            for (int i = 0; i < bank.Length; i++)
+            {
+                if (bank[i] != null) return true;
+            }
+
+            return false;
+        }
+
+        private static AudioClip Pick(AudioClip[] bank, AudioClip fallback)
+        {
+            if (!HasAny(bank)) return fallback;
+
+            AudioClip clip = null;
+            for (int tries = 0; tries < 4 && clip == null; tries++) clip = bank[Random.Range(0, bank.Length)];
+            return clip != null ? clip : fallback;
         }
 
         private void Play(AudioClip clip, float volume)

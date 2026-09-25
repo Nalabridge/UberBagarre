@@ -136,6 +136,32 @@ namespace UberBagarre.Combat
         public event Action KnockedDown;
         public event Action GotUp;
 
+        /// <summary>Émis quand le relevé commence (fin du temps passé au sol).</summary>
+        public event Action GettingUp;
+
+        /// <summary>
+        /// Faux quand une animation capturée joue la chute (voir MocapDriver) : le corps ne
+        /// doit alors pas AUSSI basculer d'un bloc autour des pieds.
+        /// </summary>
+        public bool TiltEnabled { get; set; } = true;
+
+        /// <summary>Direction de la dernière chute (monde, horizontale) : vers où le corps part.</summary>
+        public Vector3 LastFallDirection { get; private set; }
+
+        /// <summary>Vrai si le combattant est au sol pour de bon (mort).</summary>
+        public bool IsTerminal { get { return _terminal; } }
+
+        /// <summary>Durées de chute, d'attente au sol et de relevé (celles des animations capturées).</summary>
+        public void SetTimings(float fall, float grounded, float getUp)
+        {
+            _fallDuration = Mathf.Max(0.05f, fall);
+            _groundedDuration = Mathf.Max(0.05f, grounded);
+            _getUpDuration = Mathf.Max(0.05f, getUp);
+
+            // Appelé depuis KnockedDown, la chute est déjà lancée avec l'ancienne durée.
+            if (_phase == Phase.Falling) _timer = _fallDuration;
+        }
+
         /// <summary>Émis pour N'IMPORTE quelle chute. Sert au décompte des statistiques.</summary>
         public static event Action<KnockdownSystem> AnyKnockedDown;
 
@@ -235,6 +261,7 @@ namespace UberBagarre.Combat
             if (direction.sqrMagnitude < 0.0001f) direction = -transform.forward;
             direction.Normalize();
 
+            LastFallDirection = direction;
             Vector3 local = transform.InverseTransformDirection(direction);
 
             // On bascule dans le sens du coup : pousse de face = chute en arriere, frappe a
@@ -285,6 +312,9 @@ namespace UberBagarre.Combat
                 case Phase.Grounded:
                     _phase = Phase.GettingUp;
                     _timer = _getUpDuration;
+
+                    Action gettingUp = GettingUp;
+                    if (gettingUp != null) gettingUp();
                     break;
 
                 case Phase.GettingUp:
@@ -361,6 +391,9 @@ namespace UberBagarre.Combat
             // finissait forcement par en oublier un — et l'oubli etait spectaculaire : les bras
             // de l'adversaire restaient tendus vers le ciel a hauteur d'yeux pendant qu'il etait
             // couche au sol, parce que la cible de leur IK vivait hors du corps.
+            if (!TiltEnabled) tilt = Quaternion.identity;
+            _tilt = tilt;
+
             if (_bodyRoot != null) _bodyRoot.localRotation = _restRotation * tilt;
 
             if (_locomotion != null)

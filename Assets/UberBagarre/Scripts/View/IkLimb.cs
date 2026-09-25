@@ -151,7 +151,19 @@ namespace UberBagarre.View
             if (!_bound) CaptureBindPose();
             if (!_bound) return;
 
-            Vector3 pole = _poleSpace.TransformDirection(_poleDirection);
+            ApplyWorldPose(endPosition, endRotation, _poleSpace.TransformDirection(_poleDirection));
+        }
+
+        /// <summary>
+        /// Même chose avec un pôle donné en monde. Sert à corriger un membre ANIMÉ (animation
+        /// capturée) : le pôle est alors la direction du coude de l'animation, pour que la
+        /// correction déplace la main sans retourner le coude.
+        /// </summary>
+        public void ApplyWorldPose(Vector3 endPosition, Quaternion endRotation, Vector3 pole)
+        {
+            if (!_bound) CaptureBindPose();
+            if (!_bound) return;
+
             _lastSolve = TwoBoneIkSolver.Solve(_upper.position, endPosition, _upperLength, _lowerLength, pole);
 
             Quaternion endWorld = endRotation * Quaternion.Euler(_endRotationOffset);
@@ -180,6 +192,23 @@ namespace UberBagarre.View
             }
 
             _end.rotation = endWorld;
+        }
+
+        /// <summary>
+        /// Remet l'os de torsion d'après la rotation ACTUELLE de l'avant-bras et de la main, sans
+        /// IK. Une animation capturée ne connaît pas cet os : sans ce recalage, toute la
+        /// pronation passerait par le poignet et la peau de l'avant-bras vrillerait.
+        /// </summary>
+        public void UpdateTwist()
+        {
+            if (!_bound || !_hingeMode || _twist == null) return;
+
+            Vector3 axis = _lower.TransformDirection(_lowerAxisLocal);
+            Vector3 hinge = _lower.TransformDirection(_lowerHingeLocal);
+            Vector3 side = Vector3.Cross(axis, hinge);
+            Vector3 wanted = Vector3.ProjectOnPlane(_end.rotation * _endReferenceLocal, axis);
+            float angle = wanted.sqrMagnitude > 1e-8f ? Vector3.SignedAngle(side, wanted, axis) : 0f;
+            _twist.rotation = Quaternion.AngleAxis(angle * _twistShare, axis) * (_lower.rotation * _twistRestLocal);
         }
 
         /// <summary>

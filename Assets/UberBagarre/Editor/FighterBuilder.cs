@@ -48,6 +48,9 @@ namespace UberBagarre.EditorTools
             public Vector3 EyeLocal;
 
             public SkinnedMeshRenderer Renderer;
+
+            /// <summary>Le corps lu (os, poses de liaison) : l'avatar humanoïde s'en construit.</summary>
+            public CorpsImporter.Data Data;
         }
 
         /// <summary>Palette et silhouette d'un combattant.</summary>
@@ -133,6 +136,7 @@ namespace UberBagarre.EditorTools
 
             CorpsImporter.Data data = CorpsImporter.Load(skin.Silhouette, skin.Crowd);
             if (data == null) return result;
+            result.Data = data;
 
             Vector3 eyes = data.BonePosition("Yeux");
 

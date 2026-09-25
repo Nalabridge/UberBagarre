@@ -35,6 +35,12 @@ namespace UberBagarre.View
         private MonoBehaviour[] _disableOnDeath = new MonoBehaviour[0];
 
         [SerializeField]
+        [Tooltip("Optionnel : les animations capturees. Si elles savent jouer la mort, le corps " +
+                 "s'effondre en animation (chute arriere ou avant selon le coup) au lieu de " +
+                 "partir en poupee de chiffon.")]
+        private MocapDriver _mocap;
+
+        [SerializeField]
         [Tooltip("Le CharacterController. Il doit partir : sa capsule continuerait de pousser le " +
                  "cadavre et de le maintenir debout.")]
         private CharacterController _controller;
@@ -128,6 +134,12 @@ namespace UberBagarre.View
             _built = true;
 
             SilenceDrivers();
+
+            if (_mocap != null && _mocap.PlayDeath(info))
+            {
+                if (_logBuild) Debug.Log("[UberBagarre] Mort animee sur " + name + ".", this);
+                return;
+            }
 
             // Le bassin porte tout le reste : il est construit en premier et sert de parent
             // d'articulation a la colonne comme aux cuisses.

@@ -295,6 +295,40 @@ Les coups sont des assets (`Resources/Attaques`), régénérés automatiquement 
 direct (jab, cross, direct au corps), crochet (tête, corps), uppercut (menton, plexus), coups de
 pied, coup de tête, bousculade.
 
+## Les adversaires, en animations capturées (FS Melee Combat System)
+
+Le paquet **FS - Melee Combat System** (Fantacode Studios, Asset Store) est dans le projet
+(`Assets/Fantacode Studios/`). On n'en prend que **le visuel** : ses animations capturées et ses
+bruitages. Son code (IA, contrôleur, réactions) n'est **pas** importé : le combat reste le nôtre —
+histoire, tutoriel, vue première personne, menu de triche, dégâts, parades, chutes.
+
+Ce que ça change, sur tous les adversaires (bac à sable, prologue, fosse) :
+
+- **Garde de boxe qui danse**, pas chassés avant / arrière / côtés joués à la vitesse réelle du
+  corps (pas de pieds qui glissent), marche tranquille et bras le long du corps avant la bagarre.
+- **Les coups** : jab, cross, crochets (dont un par-dessus et une gifle), coups au corps, uppercut
+  du gauche, coup de pied de face et circulaire. Chaque clip est **accéléré ou ralenti** pour que
+  son impact tombe à l'instant exact où notre combat ouvre la frappe ; puis le poing animé est
+  **guidé sur ton menton** (ou ton plexus) : à l'impact, les jointures sont sur la cible.
+- **Les réactions** choisies selon le sens du coup reçu (la tête part du bon côté — mesuré sur les
+  clips, pas deviné d'après leur nom), réaction lourde, uppercut, contre ; **garde** qui encaisse,
+  **esquive** en arrière.
+- **Chutes et relevé animés**, frappe au sol, et **la mort** : une vraie chute en arrière (ou en
+  avant, frappé dans le dos) au lieu de la poupée de chiffon.
+- **Les vrais bruitages** du paquet : coups légers et lourds, garde touchée, souffle du poing, corps
+  qui tombe (pour toi aussi).
+- Le coup de pied bas, le coup de tête et la bousculade n'ont pas de clip : le corps calculé les
+  joue, avec un fondu d'entrée et de sortie.
+
+Menu de triche → **« ANIMATIONS CAPTUREES (MOCAP) »** : couper / remettre, pour comparer.
+
+**Pour l'activer** : reconstruire les scènes (menus 2 et 3). La construction range les clips
+(`Art/Animations/Generes/Mocap_FS.asset`) et fabrique l'avatar humanoïde de chaque corps
+(`Art/Models/Corps/Generes/Avatar_*.asset`). Sans le paquet, tout retombe sur les poses calculées.
+
+> ⚠️ **Le dépôt doit rester privé** : la licence de l'Asset Store interdit de redistribuer le
+> contenu du paquet.
+
 ## Comment se battre
 
 Le combat n'est pas « cliquer jusqu'à ce que la barre descende ». Chaque pièce a une conséquence,

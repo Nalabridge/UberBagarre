@@ -647,11 +647,13 @@ namespace UberBagarre.EditorTools
             AudioSource audioSource = playerGo.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;
             ImpactAudio audio = playerGo.AddComponent<ImpactAudio>();
+            MocapLibraryBuilder.AssignSounds(audio);
 
             CombatFeedbackRelay relay = playerGo.AddComponent<CombatFeedbackRelay>();
             SerializedWiring.SetObject(relay, "_executor", executor);
             SerializedWiring.SetObject(relay, "_combatant", combatant);
             SerializedWiring.SetObject(relay, "_guard", guard);
+            SerializedWiring.SetObject(relay, "_knockdown", knockdown);
             SerializedWiring.SetObject(relay, "_cameraShake", shake);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
@@ -792,7 +794,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(reaction, "_executor", executor);
             SerializedWiring.SetObject(reaction, "_impulseReceiver", motor);
 
-            AddKnockdown(enemyGo, combatant, body, executor, motor, tilt.transform);
+            KnockdownSystem knockdown = AddKnockdown(enemyGo, combatant, body, executor, motor, tilt.transform);
 
             EnemyAvatarDriver avatarDriver = enemyGo.AddComponent<EnemyAvatarDriver>();
             SerializedWiring.SetObject(avatarDriver, "_motor", motor);
@@ -812,11 +814,13 @@ namespace UberBagarre.EditorTools
             AudioSource audioSource = enemyGo.AddComponent<AudioSource>();
             audioSource.playOnAwake = false;
             ImpactAudio audio = enemyGo.AddComponent<ImpactAudio>();
+            MocapLibraryBuilder.AssignSounds(audio);
 
             CombatFeedbackRelay relay = enemyGo.AddComponent<CombatFeedbackRelay>();
             SerializedWiring.SetObject(relay, "_executor", executor);
             SerializedWiring.SetObject(relay, "_combatant", combatant);
             SerializedWiring.SetObject(relay, "_guard", guard);
+            SerializedWiring.SetObject(relay, "_knockdown", knockdown);
             SerializedWiring.SetObject(relay, "_audio", audio);
 
             if (withHealthBar)
@@ -841,17 +845,68 @@ namespace UberBagarre.EditorTools
 
             SetComponentArray(ragdoll, "_disableOnDeath",
                 body.Locomotion, arms, avatarDriver, brain, motor, executor, reaction, dodge,
-                enemyGo.GetComponent<KnockdownSystem>(), guard, stun);
+                knockdown, guard, stun);
+
+            // Animations capturées (FS Melee Combat System, si le paquet est là) : le corps est
+            // joué par elles, les décisions restent celles de notre combat.
+            MocapDriver mocap = AddMocap(enemyGo, body, combatant, executor, knockdown, guard, dodge, brain,
+                controller, arms);
+            if (mocap != null) SerializedWiring.SetObject(ragdoll, "_mocap", mocap);
 
             FighterParts parts = new FighterParts();
             parts.Go = enemyGo;
             parts.Combatant = combatant;
             parts.Brain = brain;
-            parts.Knockdown = enemyGo.GetComponent<KnockdownSystem>();
+            parts.Knockdown = knockdown;
             parts.Body = body;
             parts.Guard = guard;
 
             return parts;
+        }
+
+        /// <summary>
+        /// Branche les animations capturées sur un combattant : un Animator humanoïde sur le
+        /// corps (avatar construit pour SA silhouette), le pilote qui joue nos décisions de
+        /// combat avec les clips, et le relais du déplacement contenu dans les clips. Rien sans
+        /// le paquet FS : le combattant garde ses poses calculées.
+        /// </summary>
+        internal static MocapDriver AddMocap(GameObject go, FighterBuilder.Result body, Combatant combatant,
+            AttackExecutor executor, KnockdownSystem knockdown, GuardSystem guard, DodgeSystem dodge,
+            Behaviour brain, CharacterController controller, FirstPersonHands arms)
+        {
+            MocapLibrary library = MocapLibraryBuilder.Build();
+            if (library == null || body == null || body.Body == null || body.Data == null) return null;
+
+            Avatar avatar = CorpsAvatarBuilder.For(body.Data, body.Body.name);
+            if (avatar == null) return null;
+
+            Animator animator = body.Body.AddComponent<Animator>();
+            animator.avatar = avatar;
+            animator.runtimeAnimatorController = null;
+            animator.applyRootMotion = false;
+            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animator.enabled = false;
+
+            MocapDriver mocap = go.AddComponent<MocapDriver>();
+            SerializedWiring.SetObject(mocap, "_library", library);
+            SerializedWiring.SetObject(mocap, "_animator", animator);
+            SerializedWiring.SetObject(mocap, "_rig", body.Rig);
+            SerializedWiring.SetObject(mocap, "_root", go.transform);
+            SerializedWiring.SetObject(mocap, "_combatant", combatant);
+            SerializedWiring.SetObject(mocap, "_executor", executor);
+            SerializedWiring.SetObject(mocap, "_knockdown", knockdown);
+            SerializedWiring.SetObject(mocap, "_guard", guard);
+            SerializedWiring.SetObject(mocap, "_dodge", dodge);
+            SerializedWiring.SetObject(mocap, "_brain", brain);
+            SerializedWiring.SetObject(mocap, "_controller", controller);
+            SetComponentArray(mocap, "_procedural", body.Locomotion, arms);
+            SerializedWiring.Verify(mocap, "_library");
+            SerializedWiring.Verify(mocap, "_animator");
+
+            MocapRootMotion rootMotion = body.Body.AddComponent<MocapRootMotion>();
+            SerializedWiring.SetObject(rootMotion, "_driver", mocap);
+
+            return mocap;
         }
 
         /// <summary>

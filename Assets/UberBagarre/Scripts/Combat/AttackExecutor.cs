@@ -162,6 +162,61 @@ namespace UberBagarre.Combat
         /// <summary>La cible du coup en cours (non valide si le coup part dans le vide).</summary>
         public StrikeTarget Target { get { return _target; } }
 
+        /// <summary>Le côté du coup en cours.</summary>
+        public HandSide CurrentSide { get { return _side; } }
+
+        /// <summary>Nom de la variante jouée (« 02 - au corps »…), vide sans coup.</summary>
+        public string CurrentVariantName
+        {
+            get
+            {
+                if (_attack == null || _variantIndex < 0 || _attack.variants == null || _variantIndex >= _attack.variants.Count) return string.Empty;
+                return _attack.variants[_variantIndex].name ?? string.Empty;
+            }
+        }
+
+        /// <summary>Vrai si la variante en cours vise le corps (plexus, côtes, foie).</summary>
+        public bool CurrentIsBodyShot
+        {
+            get
+            {
+                string v = CurrentVariantName;
+                return v.Contains("corps") || v.Contains("plexus") || v.Contains("foie") || v.Contains("cotes");
+            }
+        }
+
+        /// <summary>Vrai pendant le gel de contact : le geste est suspendu, poing sur la cible.</summary>
+        public bool InContact { get { return _hitLag > 0f; } }
+
+        /// <summary>
+        /// Secondes entre le lancement du coup en cours et son impact prévu, armement de l'IA
+        /// compris. Une animation capturée s'y cale : son impact tombe au même instant.
+        /// </summary>
+        public float ImpactDelay
+        {
+            get
+            {
+                if (_attack == null) return 0f;
+
+                float duration = EffectiveDuration;
+                float impact = _attack.ImpactTime;
+                float telegraph = Telegraph;
+                if (telegraph <= 0f) return impact * duration;
+
+                float wind = Mathf.Clamp(_attack.hitWindowStart * 0.5f, 0.05f, 0.3f);
+                float windTime = wind * duration + telegraph;
+                if (impact <= wind) return impact / wind * windTime;
+                return windTime + (impact - wind) * duration;
+            }
+        }
+
+        /// <summary>
+        /// Choix du côté imposé de l'extérieur : les animations capturées n'existent pas
+        /// forcément des deux côtés (l'uppercut capturé est un gauche). Reçoit le côté proposé,
+        /// rend celui à jouer.
+        /// </summary>
+        public Func<AttackData, HandSide, HandSide> SideResolver { get; set; }
+
         public Vector3 ActiveFistPosition
         {
             get
@@ -391,6 +446,7 @@ namespace UberBagarre.Combat
             _riposteMultiplier = _guard != null ? _guard.ConsumeRiposte() : 1f;
 
             _side = ResolveHand(attack);
+            if (SideResolver != null) _side = SideResolver(attack, _side);
             _variantIndex = attack.PickVariant(_previousVariant);
             _previousVariant = _variantIndex;
             _elapsed = 0f;

@@ -2184,3 +2184,83 @@ rotation du poignet, mesurée depuis la pose de liaison (la main de liaison est 
   capsule des jambes. Le poing guidé les touche au moment où il arrive sur la peau.
 - **HUD non arcade** : chiffres de dégâts et barres au-dessus des têtes coupés par défaut
   (`WorldHealthBar.ArcadeHud`), interrupteur dans le menu de triche.
+
+## 26. Les animations capturées de FS Melee Combat System
+
+Demande : intégrer le visuel du paquet acheté (animations, mort…), en gardant NOTRE combat.
+
+### 26.1 Ce qui est pris, ce qui ne l'est pas
+
+Extrait du `.unitypackage` : les clips à mains nues (`Melee Combat System/Animations/Unarmed`), ceux
+de `Combat Core/Animations` (réactions gauche/droite, chutes avant/arrière, relevé), la marche et
+l'attente de `Third Person Controller`, les trois FBX dont les clips copient l'avatar
+(`avatarSetup: CopyFromOther`), et les bruitages. **Aucun script** du paquet (pas de second système
+de combat, pas de dépendance), et son `manifest.json` n'écrase pas le nôtre.
+
+Réglage d'import des clips (dans les `.meta`) : rotation et hauteur **cuites** dans la pose,
+déplacement horizontal **extrait** et calculé sur le **centre de masse**
+(`loopBlendPositionXZ: 0`, `keepOriginalPositionXZ: 0`). Mesuré dans Blender, le crochet au corps
+avance le bassin de 1,9 m et la réaction à l'uppercut le recule de 1,3 m : cuit dans la pose, le
+corps partirait loin de sa capsule puis reviendrait d'un coup à la fin du clip.
+
+### 26.2 Rejouer sur nos squelettes : l'avatar humanoïde
+
+`CorpsAvatarBuilder` construit un avatar par silhouette. Unity retarget des « muscles », pas des
+rotations d'os : il lui faut la correspondance des os (Clavicle → Shoulder, Forearm → LowerArm,
+Ankle → Foot…) et la **T-pose** du corps. MakeHuman livre un corps bras écartés, paumes vers les
+cuisses : la rotation la plus courte de chaque segment vers sa direction de T-pose est exactement une
+abduction, qui amène les paumes vers le sol et les plis des coudes vers l'avant (vérifié sur les
+données : axe du coude vertical, dos de la main en haut, pouce devant). Les pieds sont redressés
+(5° d'ouverture). Les doigts ne sont pas confiés à l'avatar : `HandRig` ferme les poings.
+
+### 26.3 `MocapDriver` : nos décisions, leurs mouvements
+
+Un graphe Playables par combattant (pas de contrôleur d'animation à maintenir) :
+
+- couche 0, **déplacements** : garde, 4 pas chassés, attente et marche détendues ; poids tirés de la
+  vitesse réelle de la racine, lecture calée sur la vitesse de chaque clip (1,66 m/s avant/arrière,
+  1,34 m/s de côté) ; « engagé » = cerveau actif et pas de `HoldAll` ;
+- couche 1, **garde haute** (masque haut du corps) quand `GuardSystem.IsGuarding` ;
+- couche 2, **action** en deux emplacements fondus : coup, réaction, chute, relevé, esquive, mort.
+
+Branchements, sans que le combat sache qu'il est animé :
+
+- `AttackExecutor.AttackStarted` → clip du coup (bibliothèque `MocapLibrary` : attaque, côté,
+  tête/corps, membre, instant d'impact mesuré). **Vitesse = impact du clip / `ImpactDelay`** de
+  l'exécuteur (armement de l'IA compris). `SideResolver` fait jouer l'uppercut du gauche (seul
+  capturé). Pendant le **gel de contact** (`InContact`) le clip s'arrête.
+- `CorrectStrike` (LateUpdate) : IK du bras animé vers `StrikeTarget` — l'écart jointures ↔ cible,
+  borné à 38 cm, pèse le carré d'une montée douce jusqu'à 1 à l'impact, puis se relâche ; pôle = coude
+  de l'animation ; fondu avec les rotations animées pour ne pas imposer le roulis de l'IK. L'os de
+  torsion de l'avant-bras est recalé à chaque image (`IkLimb.UpdateTwist`).
+- `Combatant.Damaged` → réaction : riposte → contre ; uppercut ; lourd ; sinon légère. Parmi les
+  clips d'une famille, celui dont la **tête part dans le sens du coup** — mesuré au démarrage en posant
+  le corps sur chaque clip (`graph.Evaluate`). Coup bloqué → `Block Hit` ; au sol → frappe au sol.
+- `KnockdownSystem` : `KnockedDown` → chute avant/arrière selon `LastFallDirection`, et
+  `SetTimings` cale la durée au sol sur le clip ; `GettingUp` → relevé. La bascule d'un bloc du
+  système de chute est coupée (`TiltEnabled`).
+- `DeathRagdoll` → `PlayDeath` : mort animée (le ragdoll reste le secours).
+- `DodgeSystem.Dodged` en arrière → retrait du buste.
+- **Déplacement des clips** : `MocapRootMotion` (sur le corps, là où Unity le donne) le passe au
+  pilote, qui le rend à la capsule (`CharacterController.Move`, donc collisions) : 25 % pour un coup
+  (notre élan couvre déjà la distance), 100 % pour réactions, chutes, relevé ; rien pour la marche.
+- **Bascule** mocap ↔ corps calculé (coup sans clip, menu de triche) : `ProceduralLocomotion` et
+  `FirstPersonHands` sont mis en veille / réveillés, et un **fondu de pose** de 0,18 s part de la
+  dernière pose affichée (chaque image du fondu repart de la liaison, pour qu'un os écrit par un seul
+  des deux systèmes retrouve sa pose).
+
+`MocapLibraryBuilder` range les clips et les bruitages (`ImpactAudio` : banques d'échantillons,
+`PlayFall` branché sur `KnockedDown` par `CombatFeedbackRelay`). `SandboxSceneBuilder.AddMocap` pose
+l'Animator (désactivé, le pilote l'allume), le pilote et le relais sur chaque combattant de
+`BuildFighter` : bac à sable, prologue, fosse.
+
+### 26.4 Limites connues
+
+- Impossible de lancer Unity ici : compilé hors ligne contre les références Unity, clips et
+  squelettes analysés dans Blender, mais **pas vu tourner**. Si un clip se comporte mal : menu de
+  triche, « ANIMATIONS CAPTUREES », pour revenir aux poses calculées ; `_log` sur `MocapDriver`
+  trace chaque coup (clip, vitesse, impact).
+- Pas de clip pour le coup de pied bas, le coup de tête, la bousculade : joués par le corps calculé.
+- Le relevé capturé part du dos : après une chute sur le ventre, le fondu retourne le corps.
+- Le joueur reste en première personne calculée (ses bras, sa garde, ses coups) : c'est voulu.
+

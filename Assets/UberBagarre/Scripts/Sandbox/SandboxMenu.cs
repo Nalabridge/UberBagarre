@@ -782,6 +782,15 @@ namespace UberBagarre.Sandbox
                 UI.WorldHealthBar.ArcadeHud = !UI.WorldHealthBar.ArcadeHud;
             }
 
+            ry += 34f;
+
+            // Les animations capturees (FS Melee Combat System) ou les poses calculees : pour
+            // comparer, ou si un clip se comporte mal sur un corps.
+            if (Toggle(new Rect(right, ry, column, 28f), "ANIMATIONS CAPTUREES (MOCAP)", MocapDriver.GloballyEnabled))
+            {
+                MocapDriver.GloballyEnabled = !MocapDriver.GloballyEnabled;
+            }
+
             ry += 38f;
 
             if (!_cheats.HasStory && _cheats.Locations == null) return;
