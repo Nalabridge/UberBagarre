@@ -122,8 +122,8 @@ namespace UberBagarre.View
         [SerializeField, Min(1f)] private float _legStiffness = 140f;
 
         [Header("Camera (joueur)")]
-        [SerializeField, Min(0f)] private float _cameraSnap = 1.1f;
-        [SerializeField, Min(0f)] private float _cameraSnapLimit = 16f;
+        [SerializeField, Min(0f)] private float _cameraSnap = 0.45f;
+        [SerializeField, Min(0f)] private float _cameraSnapLimit = 6f;
 
         [Header("Debug")]
         [SerializeField] private bool _drawDebug = true;

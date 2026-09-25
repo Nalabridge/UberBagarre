@@ -82,7 +82,7 @@ namespace UberBagarre.Player
                  "toute touche pressee pendant la partie non annulable d'un coup est jetee en " +
                  "silence. Le joueur clique quatre fois, deux coups sortent, et le jeu passe pour " +
                  "mou alors qu'il a simplement ignore la moitie des ordres.")]
-        private float _inputBuffer = 0.22f;
+        private float _inputBuffer = 0.26f;
 
         [SerializeField]
         [Tooltip("Maintenir la touche enchaine le coup. Desactive : un coup = un appui, sinon il " +
@@ -92,12 +92,12 @@ namespace UberBagarre.Player
         [Header("Cadence")]
         [SerializeField, Min(0f)]
         [Tooltip("Intervalle minimal entre deux coups, en secondes, quel que soit le coup.")]
-        private float _minAttackInterval = 0.5f;
+        private float _minAttackInterval = 0.34f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Temps de recuperation ajoute apres la duree de chaque coup. Un coup lourd " +
                  "immobilise donc plus longtemps qu'un direct.")]
-        private float _attackRecovery = 0.2f;
+        private float _attackRecovery = 0.08f;
 
         [Header("Effet sur le deplacement")]
         [SerializeField, Range(0f, 1f)]
@@ -112,7 +112,7 @@ namespace UberBagarre.Player
         [SerializeField, Min(0f)]
         [Tooltip("Endurance consommee par seconde de course. Courir doit se payer, sinon la " +
                  "stamina ne limite que le combat et la course devient gratuite.")]
-        private float _sprintStaminaPerSecond = 13f;
+        private float _sprintStaminaPerSecond = 8f;
 
         [Header("Cout de la glissade")]
         [SerializeField, Min(0f)]

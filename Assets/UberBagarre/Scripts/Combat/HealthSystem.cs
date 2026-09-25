@@ -36,6 +36,13 @@ namespace UberBagarre.Combat
             set { _invulnerable = value; }
         }
 
+        /// <summary>
+        /// Invincibilité du menu de triche. Distincte de <see cref="Invulnerable"/>, que
+        /// l'esquive allume et éteint à chaque roulade : partager le même drapeau aurait coupé
+        /// le godmode à la première esquive.
+        /// </summary>
+        public bool GodMode { get; set; }
+
         private void Awake()
         {
             _current = _maxHealth;
@@ -43,7 +50,7 @@ namespace UberBagarre.Combat
 
         public void ApplyDamage(DamageInfo info)
         {
-            if (!IsAlive || _invulnerable || info.Amount <= 0f) return;
+            if (!IsAlive || _invulnerable || GodMode || info.Amount <= 0f) return;
 
             _current = Mathf.Max(0f, _current - info.Amount);
 

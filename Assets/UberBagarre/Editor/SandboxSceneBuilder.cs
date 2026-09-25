@@ -30,7 +30,7 @@ namespace UberBagarre.EditorTools
         public const string ScenesFolder = "Assets/UberBagarre/Scenes";
         public const string ScenePath = ScenesFolder + "/CombatSandbox.unity";
 
-        private const string SettingsFolder = "Assets/UberBagarre/Settings";
+        internal const string SettingsFolder = "Assets/UberBagarre/Settings";
 
         /// <summary>Sert au tiling des matériaux de sol, pas à une dimension d'arène.</summary>
         private const float ArenaSize = 26f;
@@ -139,7 +139,7 @@ namespace UberBagarre.EditorTools
         /// C'est demandé et pas imposé : le changement déclenche un réimport complet du
         /// projet, ce qui prend du temps et ne doit jamais être une surprise.
         /// </summary>
-        private static void OfferLinearColorSpace()
+        internal static void OfferLinearColorSpace()
         {
             if (PlayerSettings.colorSpace == ColorSpace.Linear) return;
 
@@ -534,6 +534,12 @@ namespace UberBagarre.EditorTools
             AddImpactPhysics(playerGo, combatant, body, punch, cameraGo.transform);
             playerGo.AddComponent<CharacterPusher>();
 
+            // L'adversaire a toujours sa lumiere : entre deux lampadaires, une veste sombre
+            // devenait une silhouette noire sur fond noir.
+            OpponentLight opponentLight = playerGo.AddComponent<OpponentLight>();
+            SerializedWiring.SetObject(opponentLight, "_camera", camera);
+            SerializedWiring.SetObject(opponentLight, "_self", combatant);
+
             // Ramasser et lancer : le point de tenue est sous la camera, en bas a droite du
             // champ, la ou une main tiendrait une bouteille sans masquer la cible.
             GameObject holdPoint = EditorBuildUtility.CreateEmpty("PointDeTenue", cameraGo.transform,
@@ -855,8 +861,12 @@ namespace UberBagarre.EditorTools
             // Fixes explicitement : une valeur par defaut modifiee dans le code ne met PAS a jour
             // un composant deja pose dans une scene existante. Sans ces deux lignes, regenerer la
             // scene laisserait l'ancien delai de regeneration en place.
-            SerializedWiring.SetFloat(staminaSystem, "_regenPerSecond", 32f);
-            SerializedWiring.SetFloat(staminaSystem, "_regenDelay", 0.25f);
+            SerializedWiring.SetFloat(staminaSystem, "_regenPerSecond", 40f);
+            SerializedWiring.SetFloat(staminaSystem, "_regenDelay", 0.3f);
+
+            // Le joueur paie 60 % des couts : sa barre descendait deux fois trop vite pour un
+            // combat nerveux. Les adversaires gardent le tarif plein.
+            SerializedWiring.SetFloat(staminaSystem, "_costMultiplier", faction == Faction.Player ? 0.6f : 1f);
 
             CombatantStats stats = go.AddComponent<CombatantStats>();
             SerializedWiring.SetFloat(stats, "_fallbackMaxHealth", health);
@@ -1032,6 +1042,10 @@ namespace UberBagarre.EditorTools
 
         internal static InputBindings GetOrCreateInputBindings()
         {
+            // Le dossier peut ne pas exister : sur un projet neuf, c'est le PREMIER constructeur
+            // lance qui le cree. Sans cette ligne, construire le jeu avant le bac a sable
+            // echouait ici, en plein milieu, et la scene restait inachevee.
+            EditorBuildUtility.EnsureFolder(SettingsFolder);
             string path = SettingsFolder + "/InputBindings.asset";
             InputBindings bindings = AssetDatabase.LoadAssetAtPath<InputBindings>(path);
 
@@ -1150,6 +1164,13 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(menu, "_statistics", statistics);
             SerializedWiring.SetObject(menu, "_graphics", graphics);
 
+            DebugCheats cheats = directorGo.AddComponent<DebugCheats>();
+            SerializedWiring.SetObject(cheats, "_player", player.GetComponent<Combatant>());
+            SerializedWiring.SetObject(cheats, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(cheats, "_motor", player.GetComponent<PlayerMotor>());
+            SerializedWiring.SetObject(cheats, "_camera", player.GetComponentInChildren<Camera>());
+            SerializedWiring.SetObject(menu, "_cheats", cheats);
+
             SerializedWiring.Verify(menu, "_graphics");
             SerializedWiring.Verify(menu, "_enemyTemplate");
             SerializedWiring.Verify(menu, "_cursor");
@@ -1223,18 +1244,28 @@ namespace UberBagarre.EditorTools
 
         internal static void RegisterSceneInBuildSettings()
         {
+            RegisterSceneInBuildSettings(ScenePath);
+        }
+
+        /// <summary>
+        /// Ajoute une scène aux Build Settings (en tête : la dernière construite est celle qu'une
+        /// build lance). Le jeu passait auparavant par ici avec le chemin du bac à sable : sa
+        /// propre scène n'était jamais enregistrée.
+        /// </summary>
+        internal static void RegisterSceneInBuildSettings(string scenePath)
+        {
             List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
 
             for (int i = 0; i < scenes.Count; i++)
             {
-                if (scenes[i].path != ScenePath) continue;
+                if (scenes[i].path != scenePath) continue;
 
-                if (!scenes[i].enabled) scenes[i] = new EditorBuildSettingsScene(ScenePath, true);
+                if (!scenes[i].enabled) scenes[i] = new EditorBuildSettingsScene(scenePath, true);
                 EditorBuildSettings.scenes = scenes.ToArray();
                 return;
             }
 
-            scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
+            scenes.Insert(0, new EditorBuildSettingsScene(scenePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
         }
     }

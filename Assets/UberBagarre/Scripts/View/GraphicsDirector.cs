@@ -21,7 +21,7 @@ namespace UberBagarre.View
         // Le suffixe de version change quand les valeurs par defaut changent de nature : les
         // anciens reglages sauvegardes (grain et aberration a fond) ne doivent pas ressusciter
         // le bruit qu'on vient justement de retirer.
-        private const string PrefsPrefix = "UberBagarre.Gfx2.";
+        private const string PrefsPrefix = "UberBagarre.Gfx3.";
 
         public enum Preset
         {
@@ -45,7 +45,9 @@ namespace UberBagarre.View
         [SerializeField, Range(0f, 0.5f)] private float _grain;
         [SerializeField, Range(0f, 4f)] private float _aberration;
         [SerializeField, Range(0f, 3f)] private float _volumetric = 1f;
-        [SerializeField] private UberPostProcess.AntiAliasingMode _antiAliasing = UberPostProcess.AntiAliasingMode.Taa;
+        // MSAA par defaut : le TAA faisait trembler l'image en combat (secousses, mouvements
+        // rapides de la main au premier plan) sur certaines machines.
+        [SerializeField] private UberPostProcess.AntiAliasingMode _antiAliasing = UberPostProcess.AntiAliasingMode.Msaa;
         [SerializeField] private bool _postEnabled = true;
         [SerializeField] private bool _reflectionsEnabled = true;
         [SerializeField, Range(1, 8)] private int _reflectionDownsample = 1;

@@ -25,9 +25,11 @@ namespace UberBagarre.Feedback
         [SerializeField, Range(0f, 0.9f)]
         [Tooltip("Vitesse du temps pendant l'arret. 0 = fige completement. En dessous de ~0,15 le " +
                  "jeu arrete de repondre et l'enchainement devient pateux.")]
-        private float _slowTimeScale = 0.25f;
+        private float _slowTimeScale = 0.72f;
 
-        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.032f;
+        // Ralenti a peine perceptible : a 0,25 pendant 32 ms, chaque coup « coupait » l'image
+        // (le temps se fige, la camera saccade) et le combat perdait tout son nerf.
+        [SerializeField, Range(0f, 0.12f)] private float _maxDuration = 0.02f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Temps mort minimal entre deux ralentis. Sans lui, un enchainement rapide " +
@@ -45,6 +47,30 @@ namespace UberBagarre.Feedback
         {
             get { return _slowTimeScale; }
             set { _slowTimeScale = Mathf.Clamp(value, 0f, 1f); }
+        }
+
+        /// <summary>
+        /// Vitesse « normale » du temps, à laquelle le jeu revient après chaque ralenti. 1 en
+        /// jeu ; le menu de triche la change pour ralentir ou accélérer toute la partie.
+        /// </summary>
+        public static float BaseTimeScale
+        {
+            get { return _baseTimeScale; }
+            set
+            {
+                _baseTimeScale = Mathf.Clamp(value, 0.05f, 4f);
+                Time.timeScale = _baseTimeScale;
+            }
+        }
+
+        private static float _baseTimeScale = 1f;
+
+        // Sans rechargement du domaine entre deux lancements, un ralenti de triche laisse en
+        // place survivrait jusqu'a la partie suivante.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            _baseTimeScale = 1f;
         }
 
         private float _timer;
@@ -66,7 +92,7 @@ namespace UberBagarre.Feedback
 
             _cooldownTimer = _cooldown;
             _timer = Mathf.Max(_timer, Mathf.Min(duration, _maxDuration));
-            Time.timeScale = _slowTimeScale;
+            Time.timeScale = _slowTimeScale * _baseTimeScale;
             Time.fixedDeltaTime = _defaultFixedDelta * Mathf.Max(0.02f, _slowTimeScale);
         }
 
@@ -94,7 +120,7 @@ namespace UberBagarre.Feedback
         private void Restore()
         {
             _timer = 0f;
-            Time.timeScale = 1f;
+            Time.timeScale = _baseTimeScale;
             Time.fixedDeltaTime = _defaultFixedDelta;
         }
     }

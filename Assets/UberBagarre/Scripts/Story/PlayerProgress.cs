@@ -109,6 +109,17 @@ namespace UberBagarre.Story
             entry.Client = client ?? string.Empty;
             _reviews.Insert(0, entry);
 
+            AddExperience(experience);
+        }
+
+        /// <summary>De l'argent sans course. Sert au menu de triche.</summary>
+        public void AddMoney(int amount)
+        {
+            Money = Mathf.Max(0, Money + amount);
+        }
+
+        public void AddExperience(int experience)
+        {
             Experience += Mathf.Max(0, experience);
 
             while (Level < _thresholds.Length && Experience >= ThresholdOf(Level + 1))

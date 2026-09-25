@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using UberBagarre.Combat;
+using UberBagarre.Feedback;
 using UberBagarre.Phone;
 using UberBagarre.Player;
+using UberBagarre.Sandbox;
 using UberBagarre.Story;
 using UberBagarre.View;
 using UberBagarre.World;
@@ -68,7 +70,11 @@ namespace UberBagarre.EditorTools
 
         public static void Build()
         {
+            // Tout ce que le bac a sable preparait et dont le jeu avait besoin sans le dire : le
+            // dossier des reglages (touches), et l'espace colorimetrique. Le jeu se construit
+            // maintenant seul, sur un projet neuf.
             EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.ScenesFolder);
+            EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.SettingsFolder);
             ProceduralMeshFactory.EnsureLibrary();
             NightMeshFactory.EnsureLibrary();
 
@@ -127,6 +133,7 @@ namespace UberBagarre.EditorTools
                 briefingTwo, parking, brothers);
 
             WireChapterTwo(player, briefingThree, club, champion, clubDoor);
+            BuildTestTools(player, graphics);
 
             // Le club reste eteint jusqu'a ce qu'on y entre : sa musique, sa foule et ses
             // lyres ne tournent pas pendant qu'on est a la planque.
@@ -137,7 +144,9 @@ namespace UberBagarre.EditorTools
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            if (saved) SandboxSceneBuilder.RegisterSceneInBuildSettings();
+            if (saved) SandboxSceneBuilder.RegisterSceneInBuildSettings(ScenePath);
+
+            SandboxSceneBuilder.OfferLinearColorSpace();
 
             Selection.activeGameObject = player;
 
@@ -288,6 +297,48 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetBool(interactable, "_enabledForPlayer", false);
 
             return interactable;
+        }
+
+        /// <summary>
+        /// Le menu de test DANS le jeu (Tab) : les reglages du bac a sable, et l'onglet TRICHE
+        /// (godmode, vol libre, chapitres, lieux). Temporaire, le temps de tester l'histoire
+        /// sans la rejouer depuis le debut a chaque essai.
+        /// </summary>
+        private static void BuildTestTools(GameObject player, GraphicsDirector graphics)
+        {
+            GameObject root = new GameObject("=== Outils de test ===");
+
+            Combatant combatant = player.GetComponent<Combatant>();
+
+            CombatStatistics statistics = root.AddComponent<CombatStatistics>();
+            SerializedWiring.SetObject(statistics, "_player", combatant);
+            SerializedWiring.SetObject(statistics, "_executor", player.GetComponent<AttackExecutor>());
+            SerializedWiring.SetObject(statistics, "_guard", player.GetComponent<GuardSystem>());
+            SerializedWiring.SetObject(statistics, "_combo", player.GetComponent<ComboTracker>());
+
+            DebugCheats cheats = root.AddComponent<DebugCheats>();
+            SerializedWiring.SetObject(cheats, "_player", combatant);
+            SerializedWiring.SetObject(cheats, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(cheats, "_motor", player.GetComponent<PlayerMotor>());
+            SerializedWiring.SetObject(cheats, "_camera", player.GetComponentInChildren<Camera>());
+            SerializedWiring.SetObject(cheats, "_story", Object.FindAnyObjectByType<StoryDirector>());
+            SerializedWiring.SetObject(cheats, "_prologue", Object.FindAnyObjectByType<PrologueDirector>());
+            SerializedWiring.SetObject(cheats, "_subtitles", Object.FindAnyObjectByType<SubtitleDisplay>());
+            SerializedWiring.SetObject(cheats, "_locations", Object.FindAnyObjectByType<LocationDirector>());
+            SerializedWiring.SetObject(cheats, "_progress", Object.FindAnyObjectByType<PlayerProgress>());
+            SerializedWiring.Verify(cheats, "_prologue");
+
+            SandboxMenu menu = root.AddComponent<SandboxMenu>();
+            SerializedWiring.SetObject(menu, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(menu, "_player", combatant);
+            SerializedWiring.SetObject(menu, "_cursor", player.GetComponent<CursorLockController>());
+            SerializedWiring.SetObject(menu, "_playerCombat", player.GetComponent<PlayerCombat>());
+            SerializedWiring.SetObject(menu, "_hitStop", player.GetComponent<HitStop>());
+            SerializedWiring.SetObject(menu, "_statistics", statistics);
+            SerializedWiring.SetObject(menu, "_graphics", graphics);
+            SerializedWiring.SetObject(menu, "_cheats", cheats);
+            SerializedWiring.SetBool(menu, "_storyMode", true);
+            SerializedWiring.Verify(menu, "_cursor");
         }
 
         /// <summary>Le club devient un lieu, et le chapitre 2 reçoit tout ce qu'il pilote.</summary>
@@ -553,7 +604,7 @@ namespace UberBagarre.EditorTools
                 new Color(0.055f, 0.055f, 0.065f), 0.72f, 0.5f);
 
             Material glass = NightMaterialFactory.CreateNeon(NightMaterialFactory.MaterialsFolder,
-                "M_EcranTelephone", new Color(0.85f, 0.88f, 1f), 1.6f);
+                "M_EcranTelephone", new Color(0.85f, 0.88f, 1f), 0.5f);
 
             GameObject phoneGo = EditorBuildUtility.CreateEmpty("Telephone", camera.transform, Vector3.zero);
 
@@ -571,8 +622,8 @@ namespace UberBagarre.EditorTools
 
             Light light = lightGo.AddComponent<Light>();
             light.type = LightType.Point;
-            light.range = 2.4f;
-            light.intensity = 0.85f;
+            light.range = 1.4f;
+            light.intensity = 0.2f;
             light.color = new Color(0.85f, 0.88f, 1f);
             light.renderMode = LightRenderMode.ForcePixel;
             light.shadows = LightShadows.None;
@@ -585,6 +636,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(device, "_screenRenderer", screen.GetComponent<Renderer>());
             SerializedWiring.SetObject(device, "_screenLight", light);
             SerializedWiring.SetObject(device, "_input", input);
+            SerializedWiring.SetObject(device, "_hands", player.GetComponentInChildren<FirstPersonHands>());
             SerializedWiring.Verify(device, "_screenTransform");
 
             PhoneDisplay display = phoneGo.AddComponent<PhoneDisplay>();
@@ -614,6 +666,13 @@ namespace UberBagarre.EditorTools
             Camera camera = player.GetComponentInChildren<Camera>();
 
             SubtitleDisplay subtitles = root.AddComponent<SubtitleDisplay>();
+
+            // La voix des sous-titres : les fichiers pre-enregistres de Resources/Voix, ou un
+            // babillage pour les repliques calculees en jeu.
+            root.AddComponent<AudioSource>();
+            DialogueVoice voice = root.AddComponent<DialogueVoice>();
+            SerializedWiring.SetObject(subtitles, "_voice", voice);
+
             ObjectiveDisplay objectives = root.AddComponent<ObjectiveDisplay>();
             ScreenFader fader = root.AddComponent<ScreenFader>();
             TutorialPrompt tutorial = root.AddComponent<TutorialPrompt>();

@@ -21,7 +21,12 @@ namespace UberBagarre.Combat
     public class StaminaSystem : MonoBehaviour
     {
         [SerializeField, Min(1f)] private float _maxStamina = 100f;
-        [SerializeField, Min(0f)] private float _regenPerSecond = 32f;
+        [SerializeField, Min(0f)] private float _regenPerSecond = 40f;
+
+        [SerializeField, Range(0.1f, 2f)]
+        [Tooltip("Multiplie tous les couts. Le joueur est a 0,6 : a 1, trois directs et une " +
+                 "esquive vidaient la moitie de la barre.")]
+        private float _costMultiplier = 1f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Delai apres une depense avant que la regeneration reprenne. Il repart a zero a " +
@@ -36,11 +41,11 @@ namespace UberBagarre.Combat
         [SerializeField, Min(0f)]
         [Tooltip("Arrive a zero, le combattant est EPUISE pendant au moins ce temps : aucun coup, " +
                  "aucune esquive, aucune glissade, et la regeneration ne reprend qu'apres.")]
-        private float _exhaustionDuration = 1.2f;
+        private float _exhaustionDuration = 0.9f;
 
         [SerializeField, Range(0f, 1f)]
         [Tooltip("Part de l'endurance a recuperer avant de pouvoir agir a nouveau.")]
-        private float _recoverThreshold = 0.3f;
+        private float _recoverThreshold = 0.25f;
 
         private float _current;
         private float _regenBlockedUntil;
@@ -90,12 +95,22 @@ namespace UberBagarre.Combat
         {
             if (amount <= 0f) return true;
             if (_exhausted) return false;
-            return _allowPartialSpend ? _current > 0.01f : _current >= amount;
+            return _allowPartialSpend ? _current > 0.01f : _current >= amount * _costMultiplier;
+        }
+
+        /// <summary>Multiplicateur de coût (0,6 pour le joueur). Réglable, pour la triche notamment.</summary>
+        public float CostMultiplier
+        {
+            get { return _costMultiplier; }
+            set { _costMultiplier = Mathf.Clamp(value, 0f, 2f); }
         }
 
         public bool TrySpend(float amount)
         {
             if (!CanSpend(amount)) return false;
+
+            amount *= _costMultiplier;
+            if (amount <= 0f) return true;
 
             _current = Mathf.Max(0f, _current - amount);
             _regenBlockedUntil = Time.time + _regenDelay;

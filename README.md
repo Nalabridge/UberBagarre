@@ -60,6 +60,9 @@ commande tombe sur le téléphone : **E** pour l'accepter, et l'adversaire attaq
 
 ### 4. Après chaque mise à jour du code
 
+> ⚠️ **Relance toujours « 3 - Construire le JEU »** après une mise à jour : la scène est générée,
+> et les nouveautés (voix, ambiances, menu de triche, lampadaires) n'y apparaissent qu'après.
+
 1. Récupère le code (`Fetch origin` → `Pull origin` dans GitHub Desktop), puis reviens dans Unity :
    il recompile tout seul dès que la fenêtre reprend le focus.
 2. Menu **Uber Bagarre → 6 - Reinitialiser les touches par defaut** — *uniquement si j'ai changé
@@ -113,8 +116,8 @@ Dans l'ordre :
 | **V** | **Coup de pied bas** — peu de dégâts, mais c'est lui qui fait **tomber** |
 | **Maintenir** molette / F / V | **CHARGE** le coup lourd : jusqu'à ×2,2 dégâts, ×2,8 recul, +45 % de chute |
 | **Maintenir** molette / F / V | Charge le coup lourd. Les coups rapides, eux, ne se répètent **plus** en maintenant : un coup = un appui |
-| *Cadence* | Au moins **0,5 s** entre deux coups, plus la durée du coup lourd. Un appui fait trop tôt est **ignoré** : on frappe en rythme, pas en martelant |
-| *Endurance à zéro* | **Épuisé** : plus aucun coup, esquive ni glissade pendant au moins 1,2 s, et tant que 30 % de l'endurance ne sont pas revenus |
+| *Cadence* | Au moins **0,34 s** entre deux coups (ou la durée du coup + 0,08 s). Un appui fait un peu trop tôt est **gardé** 0,26 s et part dès que possible : on frappe en rythme, sans perdre ses appuis |
+| *Endurance* | Tes coups coûtent 40 % de moins qu'à l'adversaire et elle remonte vite (40/s après 0,3 s). **À zéro** : épuisé 0,9 s, et tant que 25 % ne sont pas revenus |
 | **En sprintant** + attaque | **Charge d'épaule** — 14 de force d'impact, 45 % de chute |
 | **En l'air** + attaque | **Coup plongeant** — 24 dégâts, 75 % de chute |
 | **En glissade** + attaque | **Balayage** — 85 % de chute |
@@ -129,7 +132,9 @@ Dans l'ordre :
 | **Espace** | Saut |
 | **E** | **Interagir** : répondre au téléphone, lire le courrier, monter en voiture, valider un écran |
 | **T** | **Sortir / ranger le téléphone** (on peut marcher en le regardant, pas frapper) |
-| **Tab** | **Menu de bac à sable** (sandbox uniquement), 5 onglets : Combat (PV, dégâts, nervosité, profils), Vagues, Statistiques, **Graphismes**, Commandes |
+| **Tab** | **Menu de test** — dans le jeu **et** dans le bac à sable : Combat (PV, dégâts, nervosité, profils), **TRICHE**, Vagues (bac à sable), Statistiques, **Graphismes**, Commandes |
+| **F6** | **Noclip** : vol à travers les murs (ZQSD dans le regard, Espace monte, C descend, Maj accélère) |
+| **F7** | **Godmode** |
 | **F1** | Overlay de debug (états, zones, cadence réelle en coups/s, tampon d'entrée, distances) |
 | **F3** | **Caméra d'observation** — orbite autour de toi, et le combat continue |
 | **+** / **-** | Zoom de la caméra d'observation |
@@ -172,7 +177,8 @@ Tu peux les changer sans toucher à une ligne de code.
 | 22 | Rendu différé, lumière volumétrique réelle, PBR (relief, sondes), TAA, bruit d'image supprimé | ✅ |
 | 23 | Chapitre 2 : intérieur du Vertigo, public animé, musique générée, la commande déclenche le combat | ✅ |
 | 24 | Vraies mains (maillage continu déformé par les os), anti-spam, épuisement, TAA, anti-chute | ✅ |
-| 25 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 25 | Voix des personnages, ambiances sonores par lieu, caméra stable, combat nerveux, adversaire toujours lisible, menu de triche dans le jeu | ✅ |
+| 26 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -402,6 +408,38 @@ Pour y aller directement : coche **`Start At Chapter Two`** sur `PrologueDirecto
 
 ---
 
+## Les voix et les ambiances
+
+**Chaque réplique est dite.** Les répliques du scénario ont été enregistrées par une voix de
+synthèse neuronale **hors-ligne** ([Piper](https://github.com/rhasspy/piper), voix françaises) :
+le personnage a une voix d'homme posée, **Sami** une voix plus aiguë passée dans un combiné de
+téléphone, les **frères Kovac** et **le Taureau** des voix plus graves (Dragan plus lent, Milan plus
+nerveux), et **l'appli** une voix de femme synthétique. Les fichiers sont dans
+`Assets/UberBagarre/Resources/Voix/` (`_liste.txt` dit qui dit quoi). Le sous-titre reste affiché
+tant que la voix parle ; **E** passe la réplique et coupe la voix.
+
+Les répliques **calculées en jeu** (une somme, un compte de photos) n'ont pas d'enregistrement : elles
+sont **babillées** — des syllabes synthétisées à la hauteur de voix du personnage, au rythme du texte.
+Une réplique modifiée dans le code devient babillée jusqu'à ce qu'on relance le générateur :
+
+```
+pip install piper-tts soundfile scipy numpy
+python3 Tools/generer_voix.py          # --force pour tout régénérer
+```
+
+**Chaque lieu a son fond sonore**, synthétisé au premier passage :
+
+| Lieu | Ce qu'on entend |
+|---|---|
+| **Maison** | la pièce, la pluie étouffée contre la vitre, la ville à travers les murs ; le **frigo** qui ronronne et l'**horloge** de la cuisine (on s'en approche, ça monte) ; parfois une voiture dehors, une sirène au loin |
+| **Rue** | la rumeur de la ville, la bruine et ses gouttes, le vent entre les façades ; la **basse du club** à travers la façade, de plus en plus forte vers l'entrée ; voitures qui chuintent sur le bitume mouillé, klaxon, **pin-pon** |
+| **Parking** | le vent, la ville plus loin, des gouttes qui résonnent, le **néon** du mât fatigué qui grésille |
+| **Club** | la musique et la foule (déjà là au chapitre 2) |
+
+Pendant qu'un personnage parle, l'ambiance s'efface un peu : la pluie ne couvre jamais une réplique.
+
+---
+
 ## La lumière
 
 - **Rendu différé** : chaque lampe est calculée par pixel, avec ses ombres. Avant, Unity n'en
@@ -535,12 +573,21 @@ marcher, courir, frapper, te faire toucher et tomber pendant que tu regardes. C'
 voir ton propre personnage — un FPS a cet angle mort énorme, et tout le travail d'animation, de
 matière et de marques de coup porte sur un corps que le joueur ne regarde jamais.
 
+**Tab — TRICHE** *(temporaire, pour tester)*. **Godmode**, **endurance infinie**, **noclip**
+(on traverse les murs) et **vol** (les murs arrêtent), **un coup = K.O.**, multiplicateur de
+**dégâts** jusqu'à ×10, **vitesse du temps**, **figer** les adversaires ou les mettre **tous K.O.**,
+**soigner**. Dans le jeu, en plus : passer une réplique ou une **étape**, relancer au **prologue**,
+au **chapitre 1** ou au **chapitre 2**, se **téléporter** (maison, rue, parking, club), **+500 €**,
+**+1 niveau**. Rien de tout ça n'est sauvegardé : une invincibilité oubliée d'une session à l'autre
+fausserait tous les tests suivants. **F6** et **F7** basculent noclip et godmode sans ouvrir le menu.
+
 **F1 — Diagnostic.** Cadence réelle en coups/s, écart en ms entre tes deux derniers coups, échelle
 de temps courante, état du tampon d'entrée, et les trois zones de l'adversaire avec leur
 multiplicateur.
 
-Les réglages sont **sauvegardés** : un réglage trouvé après dix minutes d'essais et perdu au
-redémarrage ne vaut rien.
+Les réglages du bac à sable sont **sauvegardés** : un réglage trouvé après dix minutes d'essais et
+perdu au redémarrage ne vaut rien. Dans le jeu, ils ne le sont **pas** : l'équilibrage du bac à sable
+ne doit pas fausser l'histoire.
 
 ---
 
@@ -556,7 +603,8 @@ réécrire le combat.
 | Input abstrait derrière `IInputProvider` | Fonctionne avec l'ancien Input Manager **et** le nouveau Input System | Asset `.inputactions` si besoin de manettes/rebinding runtime |
 | Animations **procédurales** pilotées par données | Le projet n'a aucun clip ni rig : impossible de livrer de « vraies » animations. Les poses-clés sont éditables dans l'Inspector. | `ICombatAnimator` → implémentation Animator/Mecanim |
 | HUD et vignette en `OnGUI` | Pas de TextMeshPro, pas de police, pas de post-processing requis. Paramétrable dans l'Inspector. | Canvas uGUI / UI Toolkit |
-| Sons générés par code | Aucun fichier audio dans le projet | Vrais samples |
+| Sons générés par code | Aucun fichier audio dans le projet, sauf les voix | Vrais samples |
+| Voix de synthèse neuronale (Piper, hors-ligne) | Un jeu où l'on parle en silence paraît en panne ; des comédiens ne sont pas disponibles pour un prototype | Doublage réel : il suffit de remplacer les `.ogg` de `Resources/Voix` (même nom) |
 | Primitives Unity pour le corps et les mains | Aucun modèle 3D disponible | **Un clic** : `Uber Bagarre → 5 - Brancher le modele 3D`, voir [Docs/MODELE_3D.md](Docs/MODELE_3D.md) |
 | Chute sur coup bas **procédurale**, ragdoll **seulement à la mort** | Tant que le combattant est vivant, son squelette est piloté à chaque image par l'IK et le cycle de marche : un ragdoll se battrait avec eux, et la chute doit finir par un relevé reproductible. La mort, elle, est définitive — plus rien n'a besoin d'être reproductible, et c'est le seul moment où la physique peut prendre la main sans rien casser. | Ragdoll sur un vrai rig importé, avec un mélange de sortie |
 | Matières **texturées par code** (grain, tissage) plutôt que couleurs plates | Une couleur plate ne réagit à la lumière que par son orientation : deux surfaces tournées pareil sont identiques, et l'ensemble se lit comme une maquette en plastique. C'est ça que « trop low poly » décrit en réalité. | Vraies textures + normal maps importées |

@@ -125,6 +125,24 @@ namespace UberBagarre.Story
 
             if (!linesDone || !waitDone || !conditionDone) return;
 
+            Advance();
+        }
+
+        /// <summary>
+        /// Passe l'étape en cours sans attendre sa condition. Réservé au menu de triche : une
+        /// étape sautée peut laisser le décor dans un état que la suite n'attend pas (une cible
+        /// debout alors que l'étape suivante la croit au sol).
+        /// </summary>
+        public void SkipBeat()
+        {
+            if (!_running || _index < 0 || _index >= _beats.Count) return;
+
+            if (_subtitles != null) _subtitles.Clear();
+            Advance();
+        }
+
+        private void Advance()
+        {
             ExitBeat();
 
             int next = _index + 1;

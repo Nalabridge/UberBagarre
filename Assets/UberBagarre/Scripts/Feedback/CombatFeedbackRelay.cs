@@ -28,18 +28,18 @@ namespace UberBagarre.Feedback
         [Header("Coup recu")]
         [SerializeField, Min(0f)]
         [Tooltip("Secousse quand c'est NOUS qui encaissons. Toujours plus forte que celle d'un coup porte.")]
-        private float _takenHitShake = 0.45f;
+        private float _takenHitShake = 0.28f;
 
-        [SerializeField, Min(0f)] private float _takenHitShakeDuration = 0.35f;
+        [SerializeField, Min(0f)] private float _takenHitShakeDuration = 0.25f;
 
         [Header("Garde")]
         [SerializeField, Min(0f)]
         [Tooltip("Secousse d'un coup bloque : nette mais courte. Le coup est arrete, pas encaisse.")]
-        private float _blockShake = 0.18f;
+        private float _blockShake = 0.10f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Secousse d'une parade reussie. Franche : c'est un moment fort, il doit se sentir.")]
-        private float _parryShake = 0.30f;
+        private float _parryShake = 0.18f;
 
         /// <summary>
         /// Vrai pendant la frame où un coup vient d'être paré.
@@ -121,7 +121,7 @@ namespace UberBagarre.Feedback
 
         private void OnHitLanded(AttackData attack, Hurtbox hurtbox, Vector3 point)
         {
-            if (_cameraShake != null) _cameraShake.Play(attack.shakeIntensity * 2.2f, attack.shakeDuration);
+            if (_cameraShake != null) _cameraShake.Play(attack.shakeIntensity * 1.1f, attack.shakeDuration);
             if (_audio != null) _audio.PlayImpact(attack.isHeavy);
         }
 

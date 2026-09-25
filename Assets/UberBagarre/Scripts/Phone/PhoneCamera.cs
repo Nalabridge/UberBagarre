@@ -103,7 +103,7 @@ namespace UberBagarre.Phone
             // Le flash couvre l'ecran entier et blanchit tres vite : c'est ce qui fait que la
             // photo a ete PRISE, plutot qu'un compteur qui change quelque part.
             GuiKit.Fill(new Rect(0f, 0f, UnityEngine.Screen.width, UnityEngine.Screen.height),
-                new Color(1f, 1f, 1f, _flash * _flash * 0.85f));
+                new Color(1f, 1f, 1f, _flash * _flash * 0.3f));
         }
     }
 }

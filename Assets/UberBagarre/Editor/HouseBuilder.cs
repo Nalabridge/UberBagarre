@@ -82,6 +82,11 @@ namespace UberBagarre.EditorTools
             BuildInterior(root.transform, night, palette, result);
             BuildYard(root.transform, night, palette, result);
 
+            // La pluie contre la vitre, la ville derriere les murs : la planque n'est jamais
+            // silencieuse, meme a 2 h du matin.
+            NightStreetBuilder.AddAmbience(root.transform, "Ambiance (maison)", new Vector3(0f, 0f, HouseZ),
+                AmbientSoundscape.Kind.Maison, 0.34f, 0.4f, 1f, 12f);
+
             // Sonde a projection en boite, calee sur la piece : les reflets du lino, de la
             // vitre et de la bouteille viennent de la piece elle-meme, pas du ciel.
             EditorBuildUtility.AddReflectionProbe(root.transform, "Sonde de reflexion (piece)",
@@ -520,6 +525,30 @@ namespace UberBagarre.EditorTools
 
             Box(t, "Poignee", new Vector3(0.87f, 0.95f, wallZ - 0.33f),
                 new Vector3(0.04f, 0.5f, 0.04f), night.Chrome, false);
+
+            NightStreetBuilder.AddAmbience(t, "Ronron du frigo", new Vector3(1.2f, 0.9f, wallZ - 0.35f),
+                AmbientSoundscape.Kind.Frigo, 0.16f, 0f, 0.6f, 5.5f);
+
+            // L'horloge de la cuisine : on l'entend avant de la voir.
+            GameObject clock = EditorBuildUtility.CreateEmpty("Horloge", t,
+                new Vector3(2.4f, 1.85f, RoomDepth * 0.5f - 0.13f));
+
+            Cylinder(clock.transform, "Cadran", Vector3.zero, new Vector3(0.3f, 0.012f, 0.3f),
+                palette.Porcelain, false).transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            Cylinder(clock.transform, "Cerclage", new Vector3(0f, 0f, 0.006f), new Vector3(0.33f, 0.01f, 0.33f),
+                night.DarkMetal, false).transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            Box(clock.transform, "Grande aiguille", new Vector3(0.028f, 0.045f, -0.016f),
+                new Vector3(0.012f, 0.11f, 0.006f), night.DarkMetal, false)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, -32f);
+
+            Box(clock.transform, "Petite aiguille", new Vector3(-0.024f, -0.012f, -0.016f),
+                new Vector3(0.014f, 0.07f, 0.006f), night.DarkMetal, false)
+                .transform.localRotation = Quaternion.Euler(0f, 0f, 112f);
+
+            NightStreetBuilder.AddAmbience(clock.transform, "Tic-tac", Vector3.zero,
+                AmbientSoundscape.Kind.Horloge, 0.14f, 0f, 0.5f, 6.5f);
 
             // Deux plaques posées sur le plan : la cuisine complète tient en deux feux.
             for (int i = 0; i < 2; i++)

@@ -2,8 +2,10 @@ using System.Collections.Generic;
 using UberBagarre.Combat;
 using UberBagarre.Feedback;
 using UberBagarre.Player;
+using UberBagarre.Story;
 using UberBagarre.UI;
 using UberBagarre.View;
+using UberBagarre.World;
 using UnityEngine;
 
 namespace UberBagarre.Sandbox
@@ -29,7 +31,8 @@ namespace UberBagarre.Sandbox
             Waves = 1,
             Stats = 2,
             Graphics = 3,
-            Help = 4
+            Help = 4,
+            Cheats = 5
         }
 
         /// <summary>
@@ -76,13 +79,22 @@ namespace UberBagarre.Sandbox
                  "a la fois : sans elle, regler le bloom ne toucherait que le point de vue actif.")]
         private GraphicsDirector _graphics;
 
+        [SerializeField]
+        [Tooltip("Triches de test : godmode, vol libre, chapitres, lieux. Onglet TRICHE.")]
+        private DebugCheats _cheats;
+
+        [SerializeField]
+        [Tooltip("Coche dans le jeu (histoire) : pas d'onglet vagues, et les reglages ne sont ni " +
+                 "relus ni sauvegardes — un equilibrage de bac a sable ne doit pas fausser l'histoire.")]
+        private bool _storyMode;
+
         [Header("Apparition")]
         [SerializeField, Min(1f)] private float _spawnDistance = 4.5f;
         [SerializeField, Min(1)] private int _maxEnemies = 12;
 
         [Header("Bornes des reglages")]
         [SerializeField] private Vector2 _healthRange = new Vector2(10f, 500f);
-        [SerializeField] private Vector2 _damageMultiplierRange = new Vector2(0.1f, 5f);
+        [SerializeField] private Vector2 _damageMultiplierRange = new Vector2(0.1f, 10f);
         [SerializeField] private Vector2 _attackSpeedRange = new Vector2(0.5f, 2.5f);
         [SerializeField] private Vector2 _hitStopRange = new Vector2(0.05f, 1f);
         [SerializeField] private Vector2 _inputBufferRange = new Vector2(0f, 0.4f);
@@ -94,11 +106,14 @@ namespace UberBagarre.Sandbox
         [SerializeField] private Color _playerAccent = new Color(0.42f, 0.82f, 1f);
         [SerializeField] private Color _enemyAccent = new Color(1f, 0.46f, 0.38f);
 
-        private const string PrefsPrefix = "UberBagarre.Sandbox.";
+        // Version 2 : les anciens reglages sauvegardes (ralenti d'impact a 0,25) ne doivent pas
+        // ressusciter les saccades qu'on vient de retirer.
+        private const string PrefsPrefix = "UberBagarre.Sandbox2.";
 
         private readonly List<GameObject> _spawned = new List<GameObject>();
 
         private Tab _tab = Tab.Combat;
+        private Tab[] _tabs = { Tab.Combat, Tab.Cheats, Tab.Waves, Tab.Stats, Tab.Graphics, Tab.Help };
         private bool _open;
         private bool _initialised;
 
@@ -107,7 +122,7 @@ namespace UberBagarre.Sandbox
         private float _enemyHealth = 90f;
         private float _enemyDamage = 1f;
         private float _attackSpeed = 1f;
-        private float _hitStopStrength = 0.25f;
+        private float _hitStopStrength = 0.72f;
         private float _inputBufferSeconds = 0.22f;
         private float _impactPhysics = 1f;
         private Archetype _archetype = Archetype.Voyou;
@@ -116,8 +131,13 @@ namespace UberBagarre.Sandbox
 
         private void Start()
         {
+            if (_storyMode || _waves == null)
+            {
+                _tabs = new[] { Tab.Combat, Tab.Cheats, Tab.Stats, Tab.Graphics, Tab.Help };
+            }
+
             ReadCurrentValues();
-            LoadPreferences();
+            if (!_storyMode) LoadPreferences();
             _initialised = true;
         }
 
@@ -180,6 +200,8 @@ namespace UberBagarre.Sandbox
 
         private void SavePreferences()
         {
+            if (_storyMode) return;
+
             PlayerPrefs.SetInt(PrefsPrefix + "saved", 1);
             PlayerPrefs.SetFloat(PrefsPrefix + "playerHealth", _playerHealth);
             PlayerPrefs.SetFloat(PrefsPrefix + "playerDamage", _playerDamage);
@@ -476,8 +498,8 @@ namespace UberBagarre.Sandbox
 
             GuiKit.Fill(new Rect(panel.x, panel.y, panel.width, 34f), new Color(1f, 1f, 1f, 0.07f));
 
-            GuiKit.OutlinedLabel(new Rect(panel.x + 16f, panel.y + 4f, 260f, 26f),
-                "UBER BAGARRE  —  BAC A SABLE", GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleLeft),
+            GuiKit.OutlinedLabel(new Rect(panel.x + 16f, panel.y + 4f, 360f, 26f),
+                _storyMode ? "UBER BAGARRE  —  MENU DE TEST" : "UBER BAGARRE  —  BAC A SABLE", GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleLeft),
                 _accent, new Color(0f, 0f, 0f, 0.9f), 1.5f);
 
             GuiKit.OutlinedLabel(new Rect(panel.xMax - 180f, panel.y + 4f, 164f, 26f),
@@ -494,29 +516,42 @@ namespace UberBagarre.Sandbox
                 case Tab.Stats: DrawStatsTab(content); break;
                 case Tab.Graphics: DrawGraphicsTab(content); break;
                 case Tab.Help: DrawHelpTab(content); break;
+                case Tab.Cheats: DrawCheatsTab(content); break;
                 default: DrawCombatTab(content); break;
+            }
+        }
+
+        private static string TabName(Tab tab)
+        {
+            switch (tab)
+            {
+                case Tab.Waves: return "VAGUES";
+                case Tab.Stats: return "STATISTIQUES";
+                case Tab.Graphics: return "GRAPHISMES";
+                case Tab.Help: return "COMMANDES";
+                case Tab.Cheats: return "TRICHE";
+                default: return "COMBAT";
             }
         }
 
         private void DrawTabs(Rect rect)
         {
-            string[] names = { "COMBAT", "VAGUES", "STATISTIQUES", "GRAPHISMES", "COMMANDES" };
-            float width = rect.width / names.Length;
+            float width = rect.width / _tabs.Length;
 
-            for (int i = 0; i < names.Length; i++)
+            for (int i = 0; i < _tabs.Length; i++)
             {
                 Rect tab = new Rect(rect.x + i * width, rect.y, width - 4f, rect.height);
-                bool active = (int)_tab == i;
+                bool active = _tab == _tabs[i];
 
                 GuiKit.Fill(tab, active ? new Color(_accent.r * 0.28f, _accent.g * 0.24f, _accent.b * 0.12f, 1f)
                                         : new Color(0f, 0f, 0f, 0.35f));
 
                 if (active) GuiKit.Fill(new Rect(tab.x, tab.yMax - 2f, tab.width, 2f), _accent);
 
-                GuiKit.OutlinedLabel(tab, names[i], GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter),
+                GuiKit.OutlinedLabel(tab, TabName(_tabs[i]), GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter),
                     active ? _accent : new Color(1f, 1f, 1f, 0.55f), new Color(0f, 0f, 0f, 0.85f), 1f);
 
-                if (GUI.Button(tab, GUIContent.none, GUIStyle.none)) _tab = (Tab)i;
+                if (GUI.Button(tab, GUIContent.none, GUIStyle.none)) _tab = _tabs[i];
             }
         }
 
@@ -600,10 +635,13 @@ namespace UberBagarre.Sandbox
 
             float half = (column - 10f) * 0.5f;
 
-            if (Button(new Rect(right, ry, half, 30f), "+ ADVERSAIRE", _enemyAccent)) SpawnEnemy();
-            if (Button(new Rect(right + half + 10f, ry, half, 30f), "RETIRER", _accent)) RemoveSpawned();
+            if (_enemyTemplate != null)
+            {
+                if (Button(new Rect(right, ry, half, 30f), "+ ADVERSAIRE", _enemyAccent)) SpawnEnemy();
+                if (Button(new Rect(right + half + 10f, ry, half, 30f), "RETIRER", _accent)) RemoveSpawned();
 
-            ry += 38f;
+                ry += 38f;
+            }
 
             if (Button(new Rect(right, ry, half, 30f), "TOUT A NEUF", _playerAccent)) ReviveEverybody();
             if (Button(new Rect(right + half + 10f, ry, half, 30f), "D'ORIGINE", _accent)) ResetToDefaults();
@@ -646,6 +684,172 @@ namespace UberBagarre.Sandbox
                 case Archetype.Brute: return "Tres lente, tres dure. Le balayage est la seule reponse.";
                 default: return "Equilibre. La reference pour regler le reste.";
             }
+        }
+
+        // ------------------------------------------------------------------ onglet triche
+
+        /// <summary>
+        /// Les triches de test. Tout y est à effet immédiat et rien n'est sauvegardé : une
+        /// invincibilité oubliée d'une session à l'autre fausserait chaque test suivant.
+        /// </summary>
+        private void DrawCheatsTab(Rect rect)
+        {
+            if (_cheats == null)
+            {
+                float y0 = Section(rect.x, rect.y, rect.width, "TRICHE", _accent);
+
+                GuiKit.OutlinedLabel(new Rect(rect.x, y0, rect.width, 22f),
+                    "Aucun DebugCheats dans la scene. Regenere la scene (Uber Bagarre > 2 ou 3).",
+                    GuiKit.Style(13, FontStyle.Normal, TextAnchor.MiddleLeft),
+                    new Color(1f, 0.6f, 0.5f), new Color(0f, 0f, 0f, 0.85f), 1f);
+                return;
+            }
+
+            float column = (rect.width - 20f) * 0.5f;
+            float half = (column - 10f) * 0.5f;
+            float left = rect.x;
+            float right = rect.x + column + 20f;
+
+            // ----- colonne gauche : le joueur
+            float y = Section(left, rect.y, column, "TOI", _playerAccent);
+
+            if (Toggle(new Rect(left, y, half, 28f), "GODMODE", _cheats.GodMode)) _cheats.GodMode = !_cheats.GodMode;
+
+            if (Toggle(new Rect(left + half + 10f, y, half, 28f), "ENDURANCE INF.", _cheats.InfiniteStamina))
+            {
+                _cheats.InfiniteStamina = !_cheats.InfiniteStamina;
+            }
+
+            y += 34f;
+
+            if (Toggle(new Rect(left, y, half, 28f), "NOCLIP", _cheats.Noclip)) _cheats.Noclip = !_cheats.Noclip;
+            if (Toggle(new Rect(left + half + 10f, y, half, 28f), "VOL", _cheats.Fly)) _cheats.Fly = !_cheats.Fly;
+
+            y += 34f;
+
+            if (Toggle(new Rect(left, y, half, 28f), "1 COUP = K.O.", _cheats.OneHitKo))
+            {
+                _cheats.OneHitKo = !_cheats.OneHitKo;
+            }
+
+            if (Button(new Rect(left + half + 10f, y, half, 28f), "SOIGNER", _playerAccent)) _cheats.HealPlayer();
+
+            y += 38f;
+
+            float damage = Row(left, ref y, column, "Degats infliges", _playerDamage, _damageMultiplierRange,
+                "x0.0", _playerAccent);
+
+            if (Changed(damage, _playerDamage))
+            {
+                _playerDamage = damage;
+                ApplyPlayer();
+            }
+
+            float flySpeed = Row(left, ref y, column, "Vitesse de vol", _cheats.FlySpeed, new Vector2(2f, 40f),
+                "0", _accent);
+            if (Changed(flySpeed, _cheats.FlySpeed)) _cheats.FlySpeed = flySpeed;
+
+            float time = Row(left, ref y, column, "Vitesse du temps", _cheats.TimeScale, new Vector2(0.1f, 2f),
+                "x0.00", _accent);
+            if (Changed(time, _cheats.TimeScale)) _cheats.TimeScale = time;
+
+            y += 4f;
+
+            GuiKit.OutlinedLabel(new Rect(left, y, column, 60f),
+                "Vol : ZQSD/WASD dans la direction du regard, Espace monte,\n" +
+                "C descend, Maj accelere. NOCLIP traverse les murs, VOL non.\n" +
+                "F6 = noclip, F7 = godmode, sans ouvrir ce menu.",
+                GuiKit.Style(11, FontStyle.Italic, TextAnchor.UpperLeft),
+                new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            // ----- colonne droite : le monde et l'histoire
+            float ry = Section(right, rect.y, column, "ADVERSAIRES", _enemyAccent);
+
+            if (Toggle(new Rect(right, ry, half, 28f), "FIGER", _cheats.FreezeEnemies))
+            {
+                _cheats.FreezeEnemies = !_cheats.FreezeEnemies;
+            }
+
+            if (Button(new Rect(right + half + 10f, ry, half, 28f), "K.O. TOUS", _enemyAccent)) _cheats.KillEnemies();
+
+            ry += 38f;
+
+            if (!_cheats.HasStory && _cheats.Locations == null) return;
+
+            ry = Section(right, ry, column, "HISTOIRE", _accent);
+
+            GuiKit.OutlinedLabel(new Rect(right, ry, column, 18f), "Etape : " + _cheats.CurrentBeat,
+                GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft),
+                new Color(1f, 1f, 1f, 0.7f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            ry += 24f;
+
+            if (Button(new Rect(right, ry, half, 28f), "PASSER REPLIQUE", _accent)) _cheats.SkipLine();
+            if (Button(new Rect(right + half + 10f, ry, half, 28f), "ETAPE SUIVANTE", _accent)) _cheats.SkipBeat();
+
+            ry += 34f;
+
+            float third = (column - 20f) / 3f;
+            string[] chapters = { "PROLOGUE", "CHAPITRE 1", "CHAPITRE 2" };
+
+            for (int i = 0; i < chapters.Length; i++)
+            {
+                if (!Button(new Rect(right + i * (third + 10f), ry, third, 28f), chapters[i], _playerAccent)) continue;
+
+                _cheats.StartChapter(i);
+                SetOpen(false);
+            }
+
+            ry += 38f;
+
+            LocationDirector locations = _cheats.Locations;
+
+            if (locations != null && locations.Count > 0)
+            {
+                ry = Section(right, ry, column, "ALLER A", _playerAccent);
+
+                int perRow = Mathf.Min(4, locations.Count);
+                float slot = (column - (perRow - 1) * 6f) / perRow;
+
+                for (int i = 0; i < locations.Count; i++)
+                {
+                    Rect button = new Rect(right + (i % perRow) * (slot + 6f), ry + (i / perRow) * 34f, slot, 28f);
+                    bool here = locations.CurrentName == locations.NameAt(i);
+
+                    if (Button(button, locations.NameAt(i).ToUpperInvariant(), here ? _accent : _playerAccent))
+                    {
+                        _cheats.GoTo(i);
+                    }
+                }
+
+                ry += Mathf.CeilToInt(locations.Count / (float)perRow) * 34f + 4f;
+            }
+
+            PlayerProgress progress = _cheats.Progress;
+            if (progress == null) return;
+
+            ry = Section(right, ry, column, "ARGENT", _accent);
+
+            GuiKit.OutlinedLabel(new Rect(right, ry, column, 18f),
+                progress.Money + " €   —   niveau " + progress.Level + "   (" + progress.Experience + " XP)",
+                GuiKit.Style(12, FontStyle.Normal, TextAnchor.MiddleLeft),
+                new Color(1f, 1f, 1f, 0.7f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            ry += 24f;
+
+            if (Button(new Rect(right, ry, half, 28f), "+500 €", _accent)) _cheats.AddMoney(500);
+
+            if (Button(new Rect(right + half + 10f, ry, half, 28f), "+1 NIVEAU", _accent))
+            {
+                _cheats.AddExperience(Mathf.Max(1, progress.NextThreshold - progress.Experience));
+            }
+        }
+
+        /// <summary>Un bouton à deux états : allumé, il est teinté de vert et porte « ON ».</summary>
+        private bool Toggle(Rect rect, string label, bool value)
+        {
+            Color color = value ? new Color(0.45f, 1f, 0.55f) : new Color(0.7f, 0.7f, 0.75f);
+            return Button(rect, label + (value ? " : ON" : " : OFF"), color);
         }
 
         // ------------------------------------------------------------------ onglet vagues
@@ -960,8 +1164,9 @@ namespace UberBagarre.Sandbox
                 { "Ctrl maintenu", "Garde  (-72 %)" },
                 { "Ctrl au bon moment", "PARADE, puis RIPOSTE x2,2" },
                 { "", "" },
-                { "Tab", "Ce menu" },
+                { "Tab", "Ce menu  (onglet TRICHE)" },
                 { "F1", "Diagnostic" },
+                { "F6 / F7", "Noclip / Godmode" },
                 { "F3", "Camera d'observation" },
                 { "+ / -", "Zoom de l'observation" },
                 { "R", "Relancer le combat" },
@@ -977,8 +1182,8 @@ namespace UberBagarre.Sandbox
                 { "V", "Coup de pied bas  (chargeable)" },
                 { "", "" },
                 { "Maintenir un coup lourd", "CHARGE : jusqu'a x2,2 degats" },
-                { "Cadence", "Un coup = un appui, 0,5 s mini entre deux" },
-                { "Endurance a zero", "EPUISE : plus rien pendant 1,2 s" },
+                { "Cadence", "Un coup = un appui, 0,34 s mini entre deux" },
+                { "Endurance a zero", "EPUISE : plus rien pendant 0,9 s" },
                 { "", "" },
                 { "En sprintant", "Charge d'epaule" },
                 { "En l'air", "Coup plongeant" },

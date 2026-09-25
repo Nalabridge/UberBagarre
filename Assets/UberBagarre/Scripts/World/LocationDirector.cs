@@ -62,6 +62,29 @@ namespace UberBagarre.World
         /// <summary>Déclenché après chaque arrivée, avec le nom du lieu.</summary>
         public event Action<string> Arrived;
 
+        /// <summary>
+        /// Filet de sécurité sous le décor. Le menu de triche le coupe pendant le vol libre :
+        /// passer sous le sol y est voulu.
+        /// </summary>
+        public bool FallGuard
+        {
+            get { return !_fallGuardSuspended; }
+            set { _fallGuardSuspended = !value; }
+        }
+
+        private bool _fallGuardSuspended;
+
+        public int Count
+        {
+            get { return _locations.Length; }
+        }
+
+        public string NameAt(int index)
+        {
+            if (index < 0 || index >= _locations.Length || _locations[index] == null) return string.Empty;
+            return _locations[index].name;
+        }
+
         public string CurrentName
         {
             get
@@ -97,6 +120,7 @@ namespace UberBagarre.World
         private void LateUpdate()
         {
             if (_player == null || _current < 0 || _current >= _locations.Length) return;
+            if (_fallGuardSuspended) return;
 
             Location location = _locations[_current];
             if (location == null || location.arrival == null) return;

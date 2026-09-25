@@ -155,9 +155,9 @@ namespace UberBagarre.View
 
         [Header("Anticrenelage")]
         [SerializeField]
-        [Tooltip("TAA = le plus stable en mouvement (defaut). FXAA = rapide mais scintille. " +
-                 "MSAA = rendu avant avec MSAA x8, aretes nettes mais moins de lampes par pixel.")]
-        private AntiAliasingMode _antiAliasing = AntiAliasingMode.Taa;
+        [Tooltip("MSAA = aretes nettes, image stable (defaut). TAA = lisse aussi les reflets, mais " +
+                 "l'image tremble si les vecteurs de mouvement ne suivent pas. FXAA = rapide.")]
+        private AntiAliasingMode _antiAliasing = AntiAliasingMode.Msaa;
 
         [SerializeField, Range(0.5f, 0.98f)]
         [Tooltip("Part de l'historique gardee a chaque image quand rien ne bouge. Plus haut = plus lisse.")]

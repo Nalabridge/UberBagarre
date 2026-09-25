@@ -18,9 +18,11 @@ namespace UberBagarre.Feedback
     {
         [SerializeField] private bool _enabled = true;
 
-        [SerializeField, Min(0f)] private float _positionAmplitude = 0.085f;
-        [SerializeField, Min(0f)] private float _rotationAmplitude = 2.6f;
-        [SerializeField, Min(1f)] private float _frequency = 24f;
+        // Amplitudes divisees par ~3 : a 8,5 cm et 2,6 degres, la camera tremblait a chaque
+        // echange et le combat devenait illisible — l'inverse de ce qu'une secousse doit faire.
+        [SerializeField, Min(0f)] private float _positionAmplitude = 0.028f;
+        [SerializeField, Min(0f)] private float _rotationAmplitude = 0.95f;
+        [SerializeField, Min(1f)] private float _frequency = 16f;
 
         [SerializeField, Min(0.1f)]
         [Tooltip("Vitesse a laquelle la secousse retombe.")]

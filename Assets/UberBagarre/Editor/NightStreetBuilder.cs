@@ -117,6 +117,13 @@ namespace UberBagarre.EditorTools
             BuildProps(root.transform, palette);
             BuildDrizzle(root.transform);
 
+            // Le son de la rue : la ville et la bruine partout, la basse du club qui passe à
+            // travers la façade et monte à mesure qu'on s'approche de l'entrée.
+            AddAmbience(root.transform, "Ambiance (rue)", Vector3.zero, AmbientSoundscape.Kind.Rue,
+                0.4f, 0.45f, 1f, 12f);
+            AddAmbience(root.transform, "Basse du club (a travers la facade)",
+                new Vector3(0f, 1.6f, ClubFront + 1.2f), AmbientSoundscape.Kind.BasseDuClub, 0.6f, 0f, 4f, 36f);
+
             // Ce que les surfaces lisses reflètent : les neons, les lampadaires et les facades
             // de CETTE rue. Sans sonde, le chrome et les vitrines refletaient le ciel noir.
             EditorBuildUtility.AddReflectionProbe(root.transform, "Sonde de reflexion (rue)",
@@ -335,6 +342,25 @@ namespace UberBagarre.EditorTools
             return flicker;
         }
 
+        /// <summary>
+        /// Pose une ambiance sonore : la couche continue d'un lieu (sur sa racine), ou une
+        /// source ponctuelle spatialisée (frigo, néon, basse du club) là où elle se trouve.
+        /// </summary>
+        internal static AmbientSoundscape AddAmbience(Transform parent, string name, Vector3 localPosition,
+            AmbientSoundscape.Kind kind, float volume, float eventVolume, float minDistance, float maxDistance)
+        {
+            GameObject go = EditorBuildUtility.CreateEmpty(name, parent, localPosition);
+            AmbientSoundscape ambience = go.AddComponent<AmbientSoundscape>();
+
+            SerializedWiring.SetEnum(ambience, "_kind", (int)kind);
+            SerializedWiring.SetFloat(ambience, "_volume", volume);
+            SerializedWiring.SetFloat(ambience, "_eventVolume", eventVolume);
+            SerializedWiring.SetFloat(ambience, "_minDistance", minDistance);
+            SerializedWiring.SetFloat(ambience, "_maxDistance", maxDistance);
+
+            return ambience;
+        }
+
         // ------------------------------------------------------------------ la boîte de nuit
 
         /// <summary>
@@ -395,6 +421,13 @@ namespace UberBagarre.EditorTools
                 new Color(1f, 0.82f, 0.55f), 2.6f, 9f, true, true);
 
             AddFlicker(marqueeLights, NeonFlicker.Pattern.Calme, 4.5f, 0.06f, 0.8f, 17f);
+
+            // Le projecteur du videur : sous le rebord de la marquise, tourne vers le trottoir
+            // et la chaussee. Il eclaire les visages de ceux qui attendent devant l'entree, et
+            // donc ceux de la bagarre.
+            Light doorman = AddSpot(t, "Projecteur du videur", new Vector3(0f, 4.45f, -3.3f),
+                new Vector3(0f, -0.62f, -1f), new Color(1f, 0.86f, 0.66f), 3.2f, 16f, 96f, false);
+            MakeVolumetric(doorman, 0.6f);
 
             BuildClubSigns(t, palette);
             BuildClubForecourt(t, palette);
@@ -863,13 +896,20 @@ namespace UberBagarre.EditorTools
 
             for (int i = 0; i < clubSide.Length; i++)
             {
-                StreetLamp(parent, palette, new Vector3(clubSide[i], SidewalkHeight, RoadFar + 0.9f), 180f, i);
+                StreetLamp(parent, palette, new Vector3(clubSide[i], SidewalkHeight, RoadFar + 0.9f), 180f, i, false);
             }
 
             for (int i = 0; i < otherSide.Length; i++)
             {
-                StreetLamp(parent, palette, new Vector3(otherSide[i], SidewalkHeight, RoadNear - 0.9f), 0f, i + 4);
+                StreetLamp(parent, palette, new Vector3(otherSide[i], SidewalkHeight, RoadNear - 0.9f), 0f, i + 4,
+                    i == 1 || i == 2);
             }
+
+            // Les deux lampadaires qui encadrent l'entree du club : c'est LA que se bat le
+            // prologue. Sans eux, le combat tombait dans le trou noir entre deux lampes a
+            // quarante metres l'une de l'autre, et on ne voyait pas l'adversaire.
+            StreetLamp(parent, palette, new Vector3(-9.5f, SidewalkHeight, RoadFar + 0.9f), 180f, 8, true);
+            StreetLamp(parent, palette, new Vector3(9.5f, SidewalkHeight, RoadFar + 0.9f), 180f, 9, true);
         }
 
         /// <summary>
@@ -884,7 +924,7 @@ namespace UberBagarre.EditorTools
         /// des objets posés à côté de la lumière — on les voyait comme des cônes.
         /// </summary>
         private static void StreetLamp(Transform parent, NightMaterialFactory.Palette palette,
-            Vector3 position, float yaw, int index)
+            Vector3 position, float yaw, int index, bool shadows)
         {
             GameObject lamp = EditorBuildUtility.CreateEmpty("Lampadaire", parent, position);
             lamp.transform.localRotation = Quaternion.Euler(0f, yaw, 0f);
@@ -907,7 +947,7 @@ namespace UberBagarre.EditorTools
             // Ombres sur les lampadaires qui encadrent le combat : ce sont elles qui posent
             // les combattants SUR la chaussee. Plus loin, elles couteraient sans se voir.
             Light light = AddSpot(lamp.transform, "Lumiere", new Vector3(0f, 5.72f, 1.75f), Vector3.down,
-                new Color(1f, 0.72f, 0.42f), 4.6f, 14f, 124f, index % 4 == 1 || index % 4 == 2);
+                new Color(1f, 0.72f, 0.42f), 4.6f, 14f, 124f, shadows);
 
             MakeVolumetric(light, 1f);
 

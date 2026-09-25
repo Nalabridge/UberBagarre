@@ -98,6 +98,15 @@ namespace UberBagarre.View
         private float _leftAttackGrip = -1f;
         private float _rightAttackGrip = -1f;
 
+        private Vector3 _leftHoldPosition;
+        private Quaternion _leftHoldRotation = Quaternion.identity;
+        private float _leftHoldWeight;
+        private float _leftHoldGrip;
+        private Vector3 _rightHoldPosition;
+        private Quaternion _rightHoldRotation = Quaternion.identity;
+        private float _rightHoldWeight;
+        private float _rightHoldGrip;
+
         /// <summary>Repère dans lequel les poses sont exprimées. Les coups de pied s'en servent aussi.</summary>
         public Transform PoseSpace
         {
@@ -140,6 +149,31 @@ namespace UberBagarre.View
                 _rightAttackPose = pose;
                 _rightAttackWeight = weight;
                 _rightAttackGrip = grip;
+            }
+        }
+
+        /// <summary>
+        /// La main tient un objet : le poignet va à cette pose MONDE, les doigts se ferment
+        /// autour. À appeler à chaque image par l'objet tenu (le téléphone), avant les mains.
+        /// Un poids de 0 rend la main à la garde.
+        /// </summary>
+        public void SetHold(HandSide side, Vector3 wristPosition, Quaternion wristRotation, float weight, float grip)
+        {
+            weight = Mathf.Clamp01(weight);
+
+            if (side == HandSide.Left)
+            {
+                _leftHoldPosition = wristPosition;
+                _leftHoldRotation = wristRotation;
+                _leftHoldWeight = weight;
+                _leftHoldGrip = grip;
+            }
+            else
+            {
+                _rightHoldPosition = wristPosition;
+                _rightHoldRotation = wristRotation;
+                _rightHoldWeight = weight;
+                _rightHoldGrip = grip;
             }
         }
 
@@ -264,12 +298,24 @@ namespace UberBagarre.View
 
             Vector3 worldPosition = _poseSpace.TransformPoint(finalPose.position);
             Quaternion worldRotation = _poseSpace.rotation * finalPose.Rotation;
+
+            // Objet tenu (le telephone) : il l'emporte sur la garde, au prorata de son poids.
+            bool isLeft = side == HandSide.Left;
+            float holdWeight = isLeft ? _leftHoldWeight : _rightHoldWeight;
+
+            if (holdWeight > 0f)
+            {
+                worldPosition = Vector3.Lerp(worldPosition, isLeft ? _leftHoldPosition : _rightHoldPosition, holdWeight);
+                worldRotation = Quaternion.Slerp(worldRotation, isLeft ? _leftHoldRotation : _rightHoldRotation, holdWeight);
+            }
+
             arm.ApplyWorldPose(worldPosition, worldRotation);
 
             if (hand == null) return;
 
             float grip = Mathf.Lerp(_guardGrip, _sprintGrip, Mathf.Clamp01(SprintWeight));
             if (attackGrip >= 0f) grip = Mathf.Lerp(grip, attackGrip, attackWeight);
+            if (holdWeight > 0f) grip = Mathf.Lerp(grip, isLeft ? _leftHoldGrip : _rightHoldGrip, holdWeight);
 
             hand.TargetGrip = grip;
         }

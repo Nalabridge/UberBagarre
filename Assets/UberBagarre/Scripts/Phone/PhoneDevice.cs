@@ -1,5 +1,6 @@
 using System;
 using UberBagarre.Player;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.Phone
@@ -24,6 +25,7 @@ namespace UberBagarre.Phone
     /// du mouvement. Mélanger les deux donnerait un fichier où changer l'inclinaison du poignet
     /// demande de relire la mise en page d'une fiche de mission.
     /// </summary>
+    [DefaultExecutionOrder(95)]
     public class PhoneDevice : MonoBehaviour
     {
         /// <summary>Les écrans du téléphone, dans l'ordre du prologue.</summary>
@@ -82,6 +84,10 @@ namespace UberBagarre.Phone
         private Light _screenLight;
 
         [SerializeField] private PlayerInputReader _input;
+
+        [SerializeField]
+        [Tooltip("Les mains du personnage : la main droite tient le telephone quand il est leve.")]
+        private FirstPersonHands _hands;
 
         [Header("Poses")]
         [SerializeField] private Vector3 _loweredPosition = new Vector3(0.17f, -0.31f, 0.20f);
@@ -266,9 +272,44 @@ namespace UberBagarre.Phone
             float target = _wantRaised ? 1f : 0f;
             _raise = Mathf.MoveTowards(_raise, target, _raiseSpeed * Time.unscaledDeltaTime);
 
-            ApplyPose();
             ApplyScreenLight();
             ApplyCombatLock();
+        }
+
+        /// <summary>
+        /// La pose est appliquée APRÈS les secousses et le balancement de la caméra (ordre 95) :
+        /// placé dans Update, le téléphone avait une image de retard sur la vue et tremblait
+        /// pendant les combats.
+        /// </summary>
+        private void LateUpdate()
+        {
+            ApplyPose();
+            ApplyGrip();
+        }
+
+        /// <summary>
+        /// La main droite tient le téléphone : paume contre le dos de l'appareil, doigts vers le
+        /// haut qui se referment sur les bords, pouce côté écran. Le poignet est placé sous le
+        /// milieu du téléphone, un peu derrière — là où il serait vraiment.
+        /// </summary>
+        private void ApplyGrip()
+        {
+            if (_hands == null) return;
+
+            float weight = Mathf.SmoothStep(0f, 1f, _raise);
+            if (weight <= 0.001f)
+            {
+                _hands.SetHold(HandSide.Right, transform.position, transform.rotation, 0f, 0f);
+                return;
+            }
+
+            Vector3 up = transform.up;
+            Vector3 back = transform.forward;
+
+            Vector3 wrist = transform.position - up * 0.078f + back * 0.024f;
+            Quaternion rotation = Quaternion.LookRotation(up, back);
+
+            _hands.SetHold(HandSide.Right, wrist, rotation, weight, 0.42f);
         }
 
         private void ApplyPose()
@@ -311,8 +352,10 @@ namespace UberBagarre.Phone
 
             if (_screenLight != null)
             {
+                // Faible : a quelques centimetres des mains, 0,85 les brulait litteralement et le
+                // bloom faisait du telephone un flash en pleine nuit.
                 _screenLight.color = tint;
-                _screenLight.intensity = 0.85f * power;
+                _screenLight.intensity = 0.2f * power;
                 _screenLight.enabled = power > 0.02f;
             }
 
@@ -321,8 +364,10 @@ namespace UberBagarre.Phone
             // L'écran s'éteint quand le téléphone est rangé : un rectangle lumineux qui flotte
             // à la hanche pendant tout le jeu est le genre de détail qui détruit une nuit.
             _screenRenderer.GetPropertyBlock(_block);
-            _block.SetColor(EmissionColorId, tint * Mathf.Lerp(0.15f, 2.2f, power));
-            _block.SetFloat(IntensityId, Mathf.Lerp(0.2f, 3.4f, power));
+            // L'ecran reste SOUS le seuil du bloom : un vrai ecran de telephone est lisible dans
+            // le noir sans eblouir. Au-dessus du seuil, il debordait sur toute l'image.
+            _block.SetColor(EmissionColorId, tint * Mathf.Lerp(0.05f, 0.4f, power));
+            _block.SetFloat(IntensityId, Mathf.Lerp(0.06f, 0.55f, power));
             _screenRenderer.SetPropertyBlock(_block);
         }
 

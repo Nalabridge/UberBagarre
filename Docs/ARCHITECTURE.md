@@ -1752,3 +1752,102 @@ mouvement, et le borne par les couleurs voisines de l'image courante pour évite
 mouvement est lu sur le pixel le plus proche du voisinage, et le calcul se fait sur des couleurs
 compressées pour qu'un néon isolé ne clignote pas. MSAA ×8 (en rendu avant) et FXAA restent
 disponibles depuis le menu.
+
+## 21. Un jeu qui parle, une caméra qui tient, un adversaire qu'on voit
+
+Demande : *« la caméra est bizarre, jittery, ça se coupe, surtout quand je tape ; le téléphone est
+une vraie flashbang, et le perso devrait le tenir ; qu'il parle au téléphone, ou au moins des
+bruitages ; des bruits de fond chez lui, des bruits de ville devant le club ; le combat n'est pas
+snappy et l'endurance baisse trop vite ; dans le combat contre le gars on ne le voit pas du tout ;
+pas de menu de debug en jeu ; il faut lancer le bac à sable avant le jeu pour que ça marche ; et un
+menu de triche : noclip, vol, godmode, multiplicateur de dégâts… »*
+
+### 21.1 La caméra : cinq secousses qui s'additionnaient
+
+Chaque coup déclenchait en même temps un ralenti (0,25 pendant 32 ms), une secousse, un « punch »
+de caméra, un recul de la tête par la physique des os, et le TAA reprojetait tout ça avec un
+historique qui n'était plus valable. Chacun, seul, était raisonnable ; ensemble ils faisaient
+sauter l'image à chaque impact. Tout a été ramené à ce qui se sent sans se voir : ralenti à 0,72
+pendant 20 ms au plus, secousses d'amplitude divisée par trois et déclenchées deux fois moins
+fort, punch amorti plus vite (retour en ~90 ms), recul de la caméra par la physique à 45 % et plafonné à 6°. L'anticrénelage par défaut
+passe au **MSAA ×8** (rendu avant) : il ne dépend d'aucun historique, donc rien ne « traîne » ni ne
+« saute » quand la vue bouge brutalement. Le TAA reste disponible dans le menu. Les préférences
+graphiques et de bac à sable changent de clé : les anciennes valeurs sauvegardées ne ressuscitent
+pas les saccades.
+
+### 21.2 Un combat nerveux sans redevenir du martelage
+
+Le rythme de la phase 20 était juste dans son principe (un appui = un coup, un intervalle minimal)
+mais trop lent dans ses valeurs. Intervalle 0,34 s, récupération 0,08 s, et l'appui fait un peu
+trop tôt est **gardé** 0,26 s au lieu d'être ignoré : on ne perd plus un coup parce qu'on a cliqué
+deux images trop tôt. L'endurance du joueur coûte 40 % de moins que celle des adversaires, se
+régénère à 40/s après 0,3 s, et l'épuisement dure 0,9 s jusqu'à 25 %.
+
+### 21.3 Le téléphone : une lampe de poche devenue un écran
+
+L'écran émettait assez pour allumer le bloom de toute l'image, et une lampe posée devant lui
+éclairait le décor comme un projecteur. Émission, lampe, flash de photo et néon du téléphone sont
+divisés par trois à cinq. Et il est **tenu** : `FirstPersonHands.SetHold` amène la main droite sur le
+téléphone (poignet sous l'appareil, doigts refermés sur le bord) avec un poids qui suit
+l'animation de sortie. La pose est appliquée en `LateUpdate`, après les mains, pour que la main
+suive le téléphone et pas l'inverse.
+
+### 21.4 Les voix
+
+Un sous-titre silencieux se lit comme un bug d'audio. Les 75 répliques fixes du scénario sont
+**enregistrées** par une synthèse neuronale hors-ligne (Piper) : `Tools/generer_voix.py` lit
+`PrologueDirector.cs`, évalue les concaténations (noms des cibles, tenues, récompenses) avec les
+valeurs que pose le générateur de scène, synthétise, transforme la voix par personnage (hauteur,
+débit, filtre de combiné pour Sami et l'appli), et écrit des OGG dans `Resources/Voix`.
+
+Le lien entre le code et le fichier est une **empreinte** FNV-1a 32 bits de « PERSONNAGE|texte »,
+calculée à l'identique en Python et en C# (`DialogueVoice.Key`, sur les unités UTF-16). Il n'y a
+donc aucune table à tenir à jour : changer une réplique la rend muette (babillée) jusqu'à la
+prochaine génération — jamais fausse. Les répliques calculées en jeu sont **babillées** : une source
+glottale à la hauteur du personnage, deux formants de voyelle tirés au hasard, une syllabe toutes
+les trois lettres, des silences sur la ponctuation — la même réplique donne toujours le même
+babillage. Le sous-titre dure au moins autant que la voix.
+
+### 21.5 Les ambiances
+
+`AmbientSoundscape` a deux formes : une **couche** de lieu (2D, continue, avec des événements rares
+tirés au hasard) et une **source ponctuelle** spatialisée (frigo, horloge, néon, basse du club).
+Tout est synthétisé au premier passage puis gardé en mémoire : bruit brun filtré pour la rumeur et
+le vent, bruit blanc en bande pour la pluie, chocs amortis pour les gouttes, sirène deux tons,
+voiture avec Doppler et chuintement des pneus mouillés, grosse caisse et basse filtrées à 160 Hz
+pour le club vu de la rue. Les boucles sont sans couture (la fin est fondue dans le début ; les
+sons périodiques ont une période qui divise la boucle). Les composants vivent sous la racine de leur
+lieu : `LocationDirector` éteint l'ambiance avec le lieu. Et quand un personnage parle, l'ambiance
+baisse de 45 %.
+
+### 21.6 On ne voyait pas l'adversaire
+
+Le combat du prologue a lieu devant l'entrée du club, exactement dans le trou entre deux
+lampadaires espacés de 44 m. Deux réponses :
+
+- **le décor** : deux lampadaires de plus qui encadrent l'entrée (avec ombres) et le **projecteur
+  du videur** sous la marquise, tourné vers le trottoir ;
+- **la lumière de lecture** (`OpponentLight`) : une petite lampe invisible, placée devant et
+  au-dessus de la tête de l'adversaire le plus proche, côté joueur. Elle n'éclaire que la face
+  tournée vers nous, sur quelques mètres, et suit la cible en douceur. Le cinéma a la même règle :
+  l'acteur a toujours sa lumière, même dans une ruelle « sans éclairage ». Elle vaut pour tous les
+  lieux, parking et fosse compris.
+
+### 21.7 Le jeu se construit seul
+
+La scène du jeu ne se construisait correctement qu'après celle du bac à sable, parce que le dossier
+`Settings` (où vit l'asset de touches) n'était créé que par elle : sans lui, la création de l'asset
+échouait et la construction s'arrêtait en route. Le générateur du jeu crée maintenant tout ce dont
+il a besoin (dossiers, touches, espace colorimétrique linéaire, inscription dans les Build Settings).
+
+### 21.8 Le menu de test dans le jeu
+
+Le menu du bac à sable (Tab) existe aussi dans le jeu, en **mode histoire** : pas d'onglet vagues,
+et aucun réglage relu ou sauvegardé. Un nouvel onglet **TRICHE** pilote `DebugCheats` : godmode
+(un drapeau `HealthSystem.GodMode` distinct de l'invulnérabilité de l'esquive, qui l'aurait
+éteint à chaque roulade), noclip et vol (le `PlayerMotor` est coupé, le `CharacterController`
+aussi pour le noclip, et le filet anti-chute du lieu est suspendu), endurance infinie, K.O. en un
+coup, multiplicateur de dégâts, vitesse du temps (`HitStop.BaseTimeScale` : le ralenti d'impact y
+revient au lieu de remettre le temps à 1), adversaires figés, et les raccourcis de l'histoire —
+réplique, étape (`StoryDirector.SkipBeat`), chapitre (`PrologueDirector.StartAt`), lieu, argent,
+niveau. Rien n'est sauvegardé, et un `DebugCheats` désactivé ne laisse aucune triche derrière lui.

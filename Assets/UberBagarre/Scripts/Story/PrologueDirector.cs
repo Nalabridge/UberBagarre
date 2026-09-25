@@ -244,6 +244,19 @@ namespace UberBagarre.Story
             else if (_startAtChapterOne) _story.JumpTo("chapitre-1");
         }
 
+        /// <summary>
+        /// Relance l'histoire depuis une étape donnée (« chapitre-1 », « chapitre-2 »…). Les
+        /// étapes de début de chapitre remettent elles-mêmes le décor en ordre. Sert au menu de
+        /// triche.
+        /// </summary>
+        public bool StartAt(string beatId)
+        {
+            Begin();
+
+            if (_story == null || string.IsNullOrEmpty(beatId)) return false;
+            return _story.JumpTo(beatId);
+        }
+
         private void Update()
         {
             // Une confirmation sur le telephone est une pression sur E pendant qu'il est LEVE.

@@ -7,9 +7,10 @@ namespace UberBagarre.Story
     /// <summary>
     /// Les sous-titres.
     ///
-    /// Ils sont le SEUL canal de dialogue du prototype : il n'y a pas une ligne de voix
-    /// enregistrée, et il n'y en aura pas. Ce n'est pas un pis-aller — un prologue qui se lit
-    /// se teste et se réécrit en trente secondes, là où une réplique doublée fige le texte.
+    /// Chaque réplique est aussi DITE par <see cref="DialogueVoice"/> (voix de synthèse
+    /// pré-enregistrée, ou babillage pour les répliques calculées). Le sous-titre reste
+    /// affiché au moins aussi longtemps que la voix parle : un texte qui disparaît pendant que
+    /// le personnage finit sa phrase se lit comme un bug.
     ///
     /// Deux règles d'affichage qui comptent plus que le style :
     ///
@@ -37,6 +38,13 @@ namespace UberBagarre.Story
         [SerializeField, Min(0.05f)]
         [Tooltip("Durée du fondu d'entrée et de sortie.")]
         private float _fade = 0.18f;
+
+        [Header("Voix")]
+        [SerializeField] private DialogueVoice _voice;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Silence laissé après la voix avant la réplique suivante.")]
+        private float _voiceTail = 0.3f;
 
         private readonly Queue<DialogueLine> _queue = new Queue<DialogueLine>();
         private DialogueLine _current;
@@ -69,10 +77,12 @@ namespace UberBagarre.Story
             if (!_hasCurrent) return;
 
             _elapsed = _current.Duration;
+            if (_voice != null) _voice.Stop();
         }
 
         public void Clear()
         {
+            if (_voice != null) _voice.Stop();
             _queue.Clear();
             _hasCurrent = false;
             _elapsed = 0f;
@@ -85,6 +95,12 @@ namespace UberBagarre.Story
                 _current = _queue.Dequeue();
                 _hasCurrent = true;
                 _elapsed = 0f;
+
+                if (_voice != null)
+                {
+                    float spoken = _voice.Speak(_current.Speaker, _current.Text);
+                    if (spoken > 0f) _current.Duration = Mathf.Max(_current.Duration, spoken + _voiceTail);
+                }
             }
 
             if (_hasCurrent)

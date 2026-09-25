@@ -15,9 +15,18 @@ namespace UberBagarre.Feedback
     [DefaultExecutionOrder(60)]
     public class CameraPunch : MonoBehaviour
     {
-        [SerializeField, Min(0.5f)] private float _impulseDecay = 9f;
-        [SerializeField, Min(0.5f)] private float _drivenResponse = 22f;
+        [SerializeField, Min(0.5f)] private float _impulseDecay = 11f;
+        [SerializeField, Min(0.5f)] private float _drivenResponse = 13f;
         [SerializeField] private bool _enabled = true;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part du mouvement de camera des coups (elan, recul) reellement applique. A 1, la " +
+                 "vue suivait chaque coup de poing et le combat donnait le mal de mer.")]
+        private float _drivenScale = 0.4f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part des chocs (coup recu) appliquee a la camera.")]
+        private float _impulseScale = 0.5f;
 
         private Vector3 _drivenPosition;
         private Vector3 _drivenEuler;
@@ -29,15 +38,15 @@ namespace UberBagarre.Feedback
         /// <summary>Suivi continu de l'animation d'attaque. À appeler chaque frame pendant le coup.</summary>
         public void SetDriven(Vector3 position, Vector3 euler)
         {
-            _drivenPosition = position;
-            _drivenEuler = euler;
+            _drivenPosition = position * _drivenScale;
+            _drivenEuler = euler * _drivenScale;
         }
 
         /// <summary>À-coup ponctuel, au contact.</summary>
         public void AddImpulse(Vector3 position, Vector3 euler)
         {
-            _impulsePosition += position;
-            _impulseEuler += euler;
+            _impulsePosition += position * _impulseScale;
+            _impulseEuler += euler * _impulseScale;
         }
 
         private void LateUpdate()

@@ -80,6 +80,12 @@ namespace UberBagarre.EditorTools
 
             BuildProps(t, night);
 
+            // Le vent, la ville plus loin, des gouttes ; et le mat fatigue qui gresille.
+            NightStreetBuilder.AddAmbience(t, "Ambiance (parking)", Vector3.zero, AmbientSoundscape.Kind.Parking,
+                0.36f, 0.5f, 1f, 12f);
+            NightStreetBuilder.AddAmbience(t, "Gresillement du mat", new Vector3(0f, 7.9f, -9.5f),
+                AmbientSoundscape.Kind.Neon, 0.22f, 0f, 1.5f, 16f);
+
             EditorBuildUtility.AddReflectionProbe(t, "Sonde de reflexion (parking)",
                 new Vector3(0f, 3f, 0f), new Vector3(Width, 16f, Depth), false, 1f);
 

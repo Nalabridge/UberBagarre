@@ -40,3 +40,5 @@ Thumbs.db
 *.app
 sysinfo.txt
 crashlytics-build.properties
+Tools/.voix/
+__pycache__/
