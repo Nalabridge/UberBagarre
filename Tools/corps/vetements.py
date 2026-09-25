@@ -34,7 +34,7 @@ ARM, TORSO, LEG, FOOT, HEAD = "bras", "torse", "jambe", "pied", "tete"
 TOP_CUT = {
     #            manche (m le long du bras), ourlet (/ bassin), col avant, col arrière, décollement, drapé
     "TShirt":    dict(sleeve=0.13, hem=-0.085, front=-0.050, back=-0.012, offset=0.007, drape=0.6, thick=0.0035),
-    "Veste":     dict(sleeve=None, hem=-0.125, front=-0.012, back=0.018, offset=0.014, drape=0.95, thick=0.006),
+    "Veste":     dict(sleeve=None, hem=-0.08, front=-0.012, back=0.018, offset=0.014, drape=0.95, thick=0.006),
     "Debardeur": dict(sleeve=-1.0, hem=-0.02, front=-0.105, back=-0.045, offset=0.004, drape=0.55, thick=0.0025),
 }
 
@@ -114,12 +114,16 @@ class Anatomy:
             return s < limit - m
         # torse
         if name == "Debardeur":
-            # Encolure échancrée seulement entre les bretelles ; les bretelles montent sur
-            # le haut des épaules, près du cou ; l'emmanchure dégage tout le deltoïde et
-            # descend sous l'aisselle.
-            if abs(p[0]) < 0.078 + m and p[1] > self.collar_y(p, cut["front"], cut["back"]) - m:
+            # Proportionné à la carrure : encolure échancrée entre les bretelles, bretelles
+            # sur le haut des épaules près du cou, emmanchure sous le deltoïde seulement (le
+            # deltoïde lui-même est déjà « bras », donc nu). Des bornes fixes découpaient les
+            # flancs d'un gros gabarit jusqu'à la taille : un tablier, pas un débardeur.
+            sh_x = abs(self.J[self.side(p) + "UpperArm"][0])
+            if abs(p[0]) < sh_x * 0.40 + m and p[1] > self.collar_y(p, cut["front"], cut["back"]) - m:
                 return False
-            if abs(p[0]) > 0.128 - m and p[1] > self.shoulder_y - 0.20 - m:
+            if abs(p[0]) > sh_x * 0.62 - m and p[1] > self.shoulder_y - 0.03 - m:
+                return False
+            if abs(p[0]) > sh_x - 0.035 - m and p[1] > self.shoulder_y - 0.16 - m:
                 return False
             if p[1] > self.neck[1] - 0.004 - m:
                 return False
