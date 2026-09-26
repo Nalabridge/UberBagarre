@@ -71,6 +71,9 @@ namespace UberBagarre.Player
         public bool ObserverZoomOutHeld { get; private set; }
         public bool RestartFightPressed { get; private set; }
 
+        /// <summary>Monde ouvert : la grande carte.</summary>
+        public bool MapPressed { get; private set; }
+
         /// <summary>
         /// Interaction et telephone : lus HORS du bloc de jeu, comme les touches d'interface.
         ///
@@ -195,6 +198,7 @@ namespace UberBagarre.Player
             ObserverZoomInHeld = _provider.GetHeld(_bindings.observerZoomIn);
             ObserverZoomOutHeld = _provider.GetHeld(_bindings.observerZoomOut);
             RestartFightPressed = _provider.GetPressedThisFrame(_bindings.restartFight);
+            MapPressed = _provider.GetPressedThisFrame(_bindings.openMap);
             InteractPressed = _provider.GetPressedThisFrame(_bindings.interact);
             InteractHeld = _provider.GetHeld(_bindings.interact);
             PhonePressed = _provider.GetPressedThisFrame(_bindings.phone);

@@ -2,7 +2,7 @@
 
 Prototype de combat aux poings en vue première personne, qui servira plus tard de base au jeu
 « Über Bagarre » (commander un bagarreur comme on commande un Uber).
-Le dépôt contient **deux scènes**, générées par le menu **Uber Bagarre** :
+Le dépôt contient **trois scènes**, générées par le menu **Uber Bagarre** :
 
 - **LE JEU** (`Prologue.unity`, menu **3 - Construire le JEU (histoire complete)**) — toute l'histoire :
   le prologue (la planque, l'appel de Sami, l'appli illégale, la course à une étoile, le groupe devant
@@ -11,6 +11,8 @@ Le dépôt contient **deux scènes**, générées par le menu **Uber Bagarre** :
   sur l'**écran titre** (Nouvelle partie, Chapitres, Bac à sable, Graphismes, Commandes).
 - **Le bac à sable** (`CombatSandbox.unity`, menu **2**) — l'établi de combat, sans histoire, tous les
   réglages sous la main. Même là, l'adversaire attend qu'on ait **accepté la course au téléphone**.
+- **Le MONDE OUVERT** (`MondeOuvert.unity`, menu **3b**) — toute la ville d'un seul tenant, et des
+  courses qui tombent sur le téléphone sans fin. Lancée depuis l'écran titre : **MONDE OUVERT**.
 
 Le rendu est en **différé** (toutes les lampes calculées par pixel, avec leurs ombres), avec une
 lumière **volumétrique** calculée à partir des vraies lampes, des matériaux **PBR** (cartes de relief,
@@ -326,8 +328,59 @@ Menu de triche → **« ANIMATIONS CAPTUREES (MOCAP) »** : couper / remettre, p
 (`Art/Animations/Generes/Mocap_FS.asset`) et fabrique l'avatar humanoïde de chaque corps
 (`Art/Models/Corps/Generes/Avatar_*.asset`). Sans le paquet, tout retombe sur les poses calculées.
 
+**Tes bras aussi** : tes directs et tes crochets sont les gestes capturés du paquet, vus de tes
+propres yeux. Les clips ont été lus hors ligne (`Tools/mocap`) et réduits à ce que verrait le
+boxeur capturé — la trajectoire de chaque poing et son orientation — puis rejoués à partir de TA
+garde, à l'amplitude de tes coups, et guidés sur la cible comme avant (visée, élan, gel de contact
+inchangés). Une main sans geste capturé prend celui de l'autre main, en miroir. L'uppercut et les
+coups au corps capturés (qui partent de la hanche, tête plongée) gardent leurs poses écrites.
+
+**Les mains des adversaires** suivent leur état : poings serrés en combat, doigts à demi fermés
+quand ils attendent ou marchent, mains qui se relâchent quand ils tombent.
+
+**La photo du K.O.** marche avec la mort animée : le corps garde des formes que le viseur accroche.
+
 > ⚠️ **Le dépôt doit rester privé** : la licence de l'Asset Store interdit de redistribuer le
 > contenu du paquet.
+
+## Le monde ouvert
+
+Menu **Uber Bagarre → 3b - Construire le MONDE OUVERT (la ville)**, puis Play — ou, depuis l'écran
+titre du jeu, **MONDE OUVERT**.
+
+**La ville** : le boulevard (la rue du Vertigo, prolongée des deux côtés), la rue du Nord, la rue du
+Sud, quatre avenues ; des îlots d'immeubles aux fenêtres allumées, des vitrines et leurs néons, des
+lampadaires, des voitures garées ; les bords de la ville fermés par des tours, la ville au loin
+derrière. Et tous les lieux du jeu, **à leur place**, reliés par de vraies rues :
+
+- **la planque** (tu t'y réveilles) dans son lotissement de pavillons, sa rue ouverte aux deux bouts ;
+- **le Vertigo** : la rue, la file, et **E à la porte** pour entrer dans la salle (la fosse, le bar,
+  la piste) — E à la sortie pour revenir sur le trottoir ;
+- **le parking du Vertigo**, derrière le club, qu'on rejoint par la rue du Nord ou la ruelle ;
+- **le square des Tilleuls** : arbres, bancs, allées ;
+- l'îlot d'en face (tabac, snack, nuit 24h, pressing).
+
+**La vie** : des passants qui font le tour de leur pâté de maisons (marche et attente capturées),
+s'arrêtent quand on leur barre la route et pressent le pas quand une bagarre éclate ; des voitures
+qui tournent, freinent pour ce qui bouge devant elles, klaxonnent si tu restes planté au milieu.
+
+**Les courses** :
+
+1. le téléphone vibre (**NOUVELLE COURSE**) : **T**, l'appli Über Bagarre, la fiche (cible,
+   signalement, lieu, prix, étoiles) — **E** pour accepter ;
+2. le **GPS** s'allume : un point sur la mini-carte, un repère à l'écran avec la distance, une
+   colonne de lumière au-dessus des toits ;
+3. sur place, la cible traîne, mains dans les poches — reconnais-la au signalement. À quelques
+   mètres (ou au premier coup), elle se retourne : présentation, **bagarre** ;
+4. au sol : **photo** (l'appli s'ouvre sur l'appareil) ; l'appli paie, le client laisse son avis ;
+5. une autre commande tombe ailleurs quelques instants plus tard. Six cibles, d'une à trois
+   étoiles : les plus dures arrivent avec ton niveau.
+
+**K.O.** : tu te réveilles à la planque, la course est perdue, l'hôpital prend sa part. Entre deux
+bagarres, tu récupères — lentement, hors combat.
+
+**La carte** : mini-carte en haut à droite (nord en haut, toi en flèche), **M** pour la grande carte
+(les lieux, la cible). Menu **Échap** et menu de triche **Tab** comme dans le jeu.
 
 ## Comment se battre
 

@@ -268,6 +268,22 @@ namespace UberBagarre.View
             UpdateLocomotion(dt);
             UpdateBlock(dt);
             UpdateAction(dt);
+            UpdateHands();
+        }
+
+        /// <summary>
+        /// Les mains suivent l'état du corps, comme dans les clips capturés : poings serrés en
+        /// combat, doigts à demi fermés quand il attend ou marche, mains qui se relâchent quand
+        /// il tombe ou meurt. (La forme du poing reste celle de HandRig : pouce en travers.)
+        /// </summary>
+        private void UpdateHands()
+        {
+            float grip;
+            if (_dead || _kind == Kind.Down || _kind == Kind.GetUp) grip = 0.3f;
+            else grip = Mathf.Lerp(0.28f, 1f, _engaged);
+
+            if (_rig.LeftHand != null) _rig.LeftHand.TargetGrip = grip;
+            if (_rig.RightHand != null) _rig.RightHand.TargetGrip = grip;
         }
 
         private void LateUpdate()

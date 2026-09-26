@@ -86,6 +86,7 @@ namespace UberBagarre.UI
         [Header("Scenes")]
         [SerializeField] private string _storyScene = "Prologue";
         [SerializeField] private string _sandboxScene = "CombatSandbox";
+        [SerializeField] private string _openWorldScene = "MondeOuvert";
 
         [Header("Son")]
         [SerializeField, Range(0f, 1f)] private float _musicVolume = 0.42f;
@@ -438,6 +439,15 @@ namespace UberBagarre.UI
             SceneManager.LoadScene(_sandboxScene);
         }
 
+        private void LoadOpenWorld()
+        {
+            if (!Application.CanStreamedLevelBeLoaded(_openWorldScene)) return;
+
+            Play(_confirm, 1f);
+            CloseAll();
+            SceneManager.LoadScene(_openWorldScene);
+        }
+
         private void BackToTitle()
         {
             Play(_confirm, 1f);
@@ -548,6 +558,12 @@ namespace UberBagarre.UI
                 case Page.Title:
                     Add("NOUVELLE PARTIE", "Le prologue : la planque, le courrier, l'appel de Sami.", delegate { StartStory(null); });
                     Add("CHAPITRES", "Reprendre à un chapitre précis.", delegate { Go(Page.Chapters); });
+                    if (Application.CanStreamedLevelBeLoaded(_openWorldScene))
+                    {
+                        Add("MONDE OUVERT", "La ville entière : le Vertigo, la planque, le parking, et les courses qui tombent sur le téléphone.",
+                            LoadOpenWorld);
+                    }
+
                     if (Application.CanStreamedLevelBeLoaded(_sandboxScene))
                     {
                         Add("BAC À SABLE", "L'arène d'entraînement : adversaires, réglages, triche.", LoadSandbox);

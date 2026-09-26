@@ -2264,3 +2264,88 @@ l'Animator (désactivé, le pilote l'allume), le pilote et le relais sur chaque 
 - Le relevé capturé part du dos : après une chute sur le ventre, le fondu retourne le corps.
 - Le joueur reste en première personne calculée (ses bras, sa garde, ses coups) : c'est voulu.
 
+## 27. Les mains du joueur, la photo du K.O., le monde ouvert
+
+Demande : « prends les animations des mains du pack », « les photos quand le gars meurt ne marchent
+pas », « maintenant fais une map open world avec tout ça ».
+
+### 27.1 La photo du K.O.
+
+La mort animée (§26) ne construisait plus le ragdoll : le corps n'avait plus AUCUN collider (zones
+touchables coupées, capsule partie). Le viseur (`PhoneCamera`, un lancer de sphère) passait à travers
+et la preuve était impossible. `DeathRagdoll.AddCorpseShapes` pose, à la mort animée, des
+déclencheurs cinématiques sur les os (bassin, torse, tête, membres) : ils suivent la chute, ne poussent
+rien, et le lancer (qui voit les déclencheurs) les trouve.
+
+### 27.2 Les bras du joueur, en gestes capturés
+
+Pas d'Animator sur un corps vu de l'intérieur : la caméra suivrait la tête du boxeur capturé, qui
+tourne de 90° et avance de 40 cm à chaque jab. Les clips sont lus hors ligne dans Blender
+(`Tools/mocap/extrait_fs.py`) et réduits (`Tools/mocap/cuisson_bras.py`) à ce que verraient SES
+YEUX, regard tenu sur la cible : position du poignet par rapport aux yeux, orientation de la main
+reconstruite comme nos os (`rig.py` : doigts → +Z, dos de la main → +Y), en coordonnées Unity. Mesuré :
+le crochet capturé arrive à 14–25° de l'orientation qu'on avait réglée à la main.
+
+- Les armés des clips FS sont faits pour être LUS de loin (le poing du cross passe 20 cm derrière la
+  tête, celui du crochet 54 cm) : la piste commence au poing armé, notre garde tient lieu d'armé.
+- `MocapArms` (IHandMotion) rejoue la piste : écart depuis NOTRE garde, amplitude calée sur l'impact
+  des poses écrites du coup, orientation fondue de la garde vers la capture ; l'avant de l'impact sur
+  la fenêtre de frappe, la suite du geste sur le reste ; la main libre bouge un peu (35 %) et reste en
+  garde ; miroir pour l'autre main (x → −x, quaternion (x, −y, −z, w)).
+- `AttackExecutor` : `_handMotionSource` ; s'il fournit un geste, il remplace la trajectoire écrite du
+  poing — ciblage, guidage (`_designImpact` = impact du geste), élan, gel de contact, caméra et buste
+  restent ceux de l'exécuteur.
+- Directs et crochets seulement : l'uppercut et les coups au corps capturés partent de la hanche,
+  tête plongée — rendus en vue subjective, ils ne ressemblaient à rien (vérifié en images).
+- Les adversaires : `MocapDriver` pilote la fermeture de leurs `HandRig` (poing en combat, 0,28 au
+  repos, 0,3 au sol) — la forme du poing reste la nôtre (pouce en travers).
+
+### 27.3 Le monde ouvert
+
+`OpenWorldSceneBuilder` (menu 3b) assemble `MondeOuvert.unity` en réutilisant tout : la rue du Vertigo
+(`NightStreetBuilder.Build(palette, openWorld: true)` : sans les pâtés qui la fermaient ni la ville
+peinte), la planque (`HouseBuilder`, murs invisibles « Limite » retirés), le parking (tourné de 180°
+derrière le club), la salle (à l'écart, derrière `DoorPortal`), le joueur, le téléphone, le menu, la
+triche.
+
+**`CityBuilder`** : quadrillage (boulevard = rue du Vertigo prolongée, rues Nord / Sud, 4 avenues),
+20 îlots (les 6 du centre sont des lieux ou des pâtés ; ceux du bord ferment la ville). Tout passe par
+**`CityMeshBuilder`** : volumes fusionnés en un maillage par matière et par îlot, **UV en mètres**
+projetées sur chaque face (une dalle, une brique, un étage ont la même taille partout), collisions en
+boîtes. Le sol est une grille qui évite les sols des lieux (rue, parking, planque). Immeubles le long
+des côtés de chaque îlot (largeur, profondeur, hauteur tirées avec une graine fixe), socle en béton,
+corniche, machines sur le toit, vitrines + enseigne néon + lampe sur les rues passantes ; pavillons à
+toit à deux pentes autour de la planque ; square (herbe, allées, arbres, bancs, lampes). Réservés
+(aucun immeuble) : les lieux, et des passages garantis (ruelle du club, sortie de la rue de la planque).
+Lampadaires tous les 26 m (projecteur sans ombre), barrières au bout des rues, mur de tours aux
+limites, tours lointaines, voitures garées (deux modèles fusionnés, recopiés).
+
+**Exécution** (`Scripts/World`) :
+- `OpenWorldDirector` : attente → commande (fiche réécrite via `MissionBriefing.Configure`, écran
+  Accueil, bandeau) → acceptée (cible tirée d'un modèle inactif, cerveau éteint, GPS) → engagement à
+  6,5 m ou au premier coup (présentation, badauds) → au sol : écran Photo (seul écran où l'appareil
+  envoie) → paiement (`PlayerProgress.CompleteContract`), nettoyage du corps quand on est loin. K.O. du
+  joueur : réveil à la planque, 15 % d'hôpital. Récupération hors combat. Filet sous la ville.
+- `CityMap` : mini-carte (nord en haut), grande carte (M, nouvelle entrée `openMap`), repère GPS à
+  l'écran (au bord s'il est hors champ), colonne de lumière sur la cible.
+- `MocapWalker` : passants sur le tour de leur îlot, marche/attente capturées (Playables),
+  s'arrêtent devant quelqu'un, pressent le pas près d'une bagarre (`Combatant.AnyDamaged`).
+- `TrafficCar` : boucles horaires sur la voie de droite (le boulevard encombré du Vertigo exclu),
+  ralentit dans les virages, freine pour ce qui bouge (balayage), passe après 4 s bloquée par une
+  voiture, klaxonne le joueur.
+- `DistanceCuller` : lampes éteintes au-delà de 75 m (têtes émissives toujours allumées, halos
+  volumétriques compris puisqu'ils testent `isActiveAndEnabled`).
+- `DoorPortal` : porte = fondu, déplacement par ISpawnReceiver, lieu allumé/éteint ; la coroutine
+  tourne sur le fondu (la porte de sortie s'éteint avec la salle pendant le passage).
+
+Caméra du jeu à 700 m (la ville fait 400 m), menu principal : entrée « MONDE OUVERT ».
+
+### 27.4 Limites connues
+
+- Toujours pas vu tourner dans Unity : compilé hors ligne, plan de la ville et gestes des bras
+  vérifiés en images (Python / Blender). Les réglages (densité, hauteurs, vitesses) sont des
+  premiers jets.
+- Pas de conduite : les voitures roulent, on ne les prend pas (encore).
+- Les passants traversent le petit mobilier de la rue du Vertigo (pas de collision entre eux et le
+  décor) ; ils suivent le tour de leur îlot, sans traverser les rues.
+

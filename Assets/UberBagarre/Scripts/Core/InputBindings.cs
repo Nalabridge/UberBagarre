@@ -85,6 +85,9 @@ namespace UberBagarre.Core
                  "deja prise par le deplacement en AZERTY.")]
         public InputBinding phone = InputBinding.FromKey(KeyCode.T);
 
+        [Tooltip("Monde ouvert : la carte de la ville en grand (la mini-carte reste affichee).")]
+        public InputBinding openMap = InputBinding.FromKey(KeyCode.M);
+
         [Header("Telephone (navigation, telephone sorti)")]
         [Tooltip("Les fleches choisissent une appli, Entree l'ouvre, Retour arriere revient. La souris " +
                  "marche aussi : molette, clic gauche, clic droit.")]

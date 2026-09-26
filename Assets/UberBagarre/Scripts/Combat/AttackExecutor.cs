@@ -67,6 +67,11 @@ namespace UberBagarre.Combat
         [Tooltip("Optionnel. Fournit la riposte : le coup qui suit une parade reussie est renforce.")]
         private GuardSystem _guard;
 
+        [SerializeField]
+        [Tooltip("Optionnel (IHandMotion) : des gestes captures pour les coups de poing (MocapArms). " +
+                 "Ciblage, guidage, elan et gel de contact restent ceux de l'executeur.")]
+        private MonoBehaviour _handMotionSource;
+
         [Header("Frappe")]
         [SerializeField, Range(0f, 1f)]
         [Tooltip("Guidage du poing vers la vraie cible. 0 = la pose ecrite, telle quelle.")]
@@ -123,6 +128,7 @@ namespace UberBagarre.Combat
         private bool _hasTargetPose;
         private Vector3 _targetPose;
         private Vector3 _designImpact;
+        private bool _motionActive;
         private float _hitLag;
         private bool _contacted;
         private int _chain;
@@ -459,6 +465,7 @@ namespace UberBagarre.Combat
             if (_combatant != null) _combatant.State.Enter(CombatantState.Attacking, TotalDuration);
 
             AcquireTarget();
+            BeginHandMotion();
             Lunge();
 
             if (_cinematic && _riposteMultiplier > 1.01f)
@@ -513,6 +520,25 @@ namespace UberBagarre.Combat
         }
 
         /// <summary>
+        /// Un geste capturé pour ce coup de poing ? Il remplace alors la trajectoire écrite du
+        /// poing — et l'impact qu'il vise devient celui que le guidage corrige.
+        /// </summary>
+        private void BeginHandMotion()
+        {
+            _motionActive = false;
+
+            IHandMotion motion = _handMotionSource as IHandMotion;
+            if (motion == null || _hands == null || _attack.limb != AttackLimb.Hand || _variantIndex < 0) return;
+
+            HandPose guard = _hands.GetGuardPose(_side);
+            AttackPoseKey impact = _attack.Sample(_variantIndex, _attack.ImpactTime);
+            Vector3 design = AttackData.Mirror(impact.handPosition, impact.handEuler, _side == HandSide.Left).position;
+
+            _motionActive = motion.Begin(_attack, _side, CurrentIsBodyShot, guard, design, _attack.ImpactTime);
+            if (_motionActive) _designImpact = motion.ImpactPosition(guard);
+        }
+
+        /// <summary>
         /// Le pas glissé : la cible est un peu trop loin, le corps se jette dans le coup. La
         /// vitesse est calculée pour couvrir l'écart juste à l'instant de l'impact.
         /// </summary>
@@ -552,6 +578,7 @@ namespace UberBagarre.Combat
 
             CloseHitWindow();
             ClearLimbPose();
+            _motionActive = false;
 
             if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
             if (_cameraPunch != null)
@@ -677,6 +704,16 @@ namespace UberBagarre.Combat
                 }
             }
 
+            // Geste capturé : la trajectoire et l'orientation du poing viennent de la capture,
+            // à partir de la garde du moment ; tout le reste (corps, caméra, fermeture) reste écrit.
+            HandPose capturedOff = new HandPose();
+            if (_motionActive)
+            {
+                HandSide free = _side == HandSide.Left ? HandSide.Right : HandSide.Left;
+                ((IHandMotion)_handMotionSource).Sample(normalized, _hands.GetGuardPose(_side),
+                    _hands.GetGuardPose(free), out pose, out capturedOff);
+            }
+
             if (_attack.limb == AttackLimb.Hand) pose = Retarget(pose, normalized, dt);
 
             // Gel du contact : le poing tremble à peine contre la cible.
@@ -687,9 +724,11 @@ namespace UberBagarre.Combat
             }
 
             if (_attack.limb == AttackLimb.Foot) ApplyFootPose(pose, weight);
-            else if (_hands != null) _hands.SetAttackPose(_side, pose, weight, key.grip);
+            else if (_hands != null) _hands.SetAttackPose(_side, pose, _motionActive ? 1f : weight, key.grip);
 
-            ApplyOffHandPose(key, mirrored, weight);
+            // Le geste capturé part de la garde et y revient : il se joue à plein poids.
+            if (_motionActive) _hands.SetAttackPose(_side == HandSide.Left ? HandSide.Right : HandSide.Left, capturedOff, 1f, -1f);
+            else ApplyOffHandPose(key, mirrored, weight);
 
             float intensity = 1f + Mathf.Min(_chain, 4) * 0.07f + _charge * 0.35f;
 

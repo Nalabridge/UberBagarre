@@ -50,3 +50,7 @@ Assets/UberBagarre/Art/Models/Corps/Generes.meta
 # Bibliotheque d animations capturees generee par MocapLibraryBuilder (reference le paquet FS)
 Assets/UberBagarre/Art/Animations/Generes/
 Assets/UberBagarre/Art/Animations/Generes.meta
+
+# Ville du monde ouvert (maillages fusionnes regeneres par CityBuilder)
+Assets/UberBagarre/Art/Ville/Generes/
+Assets/UberBagarre/Art/Ville/Generes.meta

@@ -43,6 +43,12 @@ namespace UberBagarre.Combat
 
         public Faction Faction { get { return _faction; } }
         public string DisplayName { get { return _displayName; } }
+
+        /// <summary>Renomme le combattant (monde ouvert : chaque course a sa cible).</summary>
+        public void SetDisplayName(string displayName)
+        {
+            if (!string.IsNullOrEmpty(displayName)) _displayName = displayName;
+        }
         public HealthSystem Health { get { return _health; } }
         public StaminaSystem Stamina { get { return _stamina; } }
         public CombatantStats Stats { get { return _stats; } }

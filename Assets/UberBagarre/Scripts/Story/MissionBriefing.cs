@@ -53,6 +53,28 @@ namespace UberBagarre.Story
         [Header("Contact")]
         [SerializeField] private string _friendName = "SAMI";
 
+        /// <summary>
+        /// Réécrit la fiche en jeu : le monde ouvert tire une nouvelle commande à chaque course,
+        /// et le téléphone relit la fiche à chaque image.
+        /// </summary>
+        public void Configure(string targetName, string targetAge, string clothing, string location,
+            string meetingTime, string record, string client, int stars, int reward, int experience,
+            string review, int reviewStars)
+        {
+            _targetName = targetName;
+            _targetAge = targetAge;
+            _targetClothing = clothing;
+            _targetLocation = location;
+            _meetingTime = meetingTime;
+            _targetRecord = record;
+            _clientName = client;
+            _stars = Mathf.Clamp(stars, 1, 5);
+            _reward = reward;
+            _experience = experience;
+            _review = review;
+            _reviewStars = Mathf.Clamp(reviewStars, 1, 5);
+        }
+
         public string TargetName { get { return _targetName; } }
         public string TargetAge { get { return _targetAge; } }
         public string TargetClothing { get { return _targetClothing; } }

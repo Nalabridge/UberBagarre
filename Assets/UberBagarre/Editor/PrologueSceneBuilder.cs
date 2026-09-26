@@ -613,7 +613,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.Verify(member, "_lookTarget");
         }
 
-        private static Material Jacket(NightMaterialFactory.Palette night, string name, Color color)
+        internal static Material Jacket(NightMaterialFactory.Palette night, string name, Color color)
         {
             // Graine derivee des caracteres du nom, pas de GetHashCode : le hachage de chaine
             // n'est pas garanti stable d'une execution a l'autre, ce qui regenererait la

@@ -137,6 +137,7 @@ namespace UberBagarre.View
 
             if (_mocap != null && _mocap.PlayDeath(info))
             {
+                AddCorpseShapes();
                 if (_logBuild) Debug.Log("[UberBagarre] Mort animee sur " + name + ".", this);
                 return;
             }
@@ -162,6 +163,66 @@ namespace UberBagarre.View
             {
                 Debug.Log("[UberBagarre] Ragdoll construit sur " + name + " : " + _bodies.Count + " segments.", this);
             }
+        }
+
+        /// <summary>
+        /// Le corps d'une mort ANIMÉE garde une forme qu'on peut viser. Sans elle, il n'avait plus
+        /// un seul collider (zones touchables coupées, capsule partie, pas de ragdoll) : le
+        /// viseur de l'appareil photo passait à travers, et la preuve du K.O. était impossible.
+        /// Des déclencheurs cinématiques, collés aux os : ils suivent la chute animée, ne
+        /// poussent rien, et le lancer de rayon de la photo (qui voit les déclencheurs) les trouve.
+        /// </summary>
+        private void AddCorpseShapes()
+        {
+            AddShape(_rig.Pelvis, _rig.Spine, _pelvisRadius, true);
+            AddShape(_rig.Spine, _rig.Neck, _torsoRadius, true);
+
+            Transform neck = _rig.Neck;
+            if (neck != null)
+            {
+                SphereCollider head = neck.gameObject.AddComponent<SphereCollider>();
+                head.center = new Vector3(0f, _headRadius + 0.06f, 0f);
+                head.radius = _headRadius;
+                head.isTrigger = true;
+                Kinematic(neck);
+            }
+
+            AddLimbShapes(_rig.LeftArm, _upperArmRadius, _forearmRadius);
+            AddLimbShapes(_rig.RightArm, _upperArmRadius, _forearmRadius);
+            AddLimbShapes(_rig.LeftLeg, _thighRadius, _shinRadius);
+            AddLimbShapes(_rig.RightLeg, _thighRadius, _shinRadius);
+        }
+
+        private void AddLimbShapes(IkLimb limb, float upperRadius, float lowerRadius)
+        {
+            if (limb == null) return;
+
+            AddShape(limb.Upper, limb.Lower, upperRadius, false);
+            AddShape(limb.Lower, limb.End, lowerRadius, false);
+        }
+
+        private static void AddShape(Transform bone, Transform child, float radius, bool vertical)
+        {
+            if (bone == null) return;
+
+            float length = child != null ? Vector3.Distance(bone.position, child.position) : radius * 2.4f;
+            length = Mathf.Max(length, radius * 2.1f);
+
+            CapsuleCollider collider = bone.gameObject.AddComponent<CapsuleCollider>();
+            collider.radius = radius;
+            collider.height = length + radius;
+            collider.direction = vertical ? 1 : 2;
+            collider.center = (vertical ? Vector3.up : Vector3.forward) * (length * 0.5f);
+            collider.isTrigger = true;
+            Kinematic(bone);
+        }
+
+        private static void Kinematic(Transform bone)
+        {
+            Rigidbody body = bone.GetComponent<Rigidbody>();
+            if (body == null) body = bone.gameObject.AddComponent<Rigidbody>();
+            body.isKinematic = true;
+            body.useGravity = false;
         }
 
         /// <summary>

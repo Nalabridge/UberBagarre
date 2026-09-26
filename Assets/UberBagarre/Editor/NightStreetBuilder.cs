@@ -91,6 +91,16 @@ namespace UberBagarre.EditorTools
         /// </summary>
         public static Result Build(NightMaterialFactory.Palette palette)
         {
+            return Build(palette, false);
+        }
+
+        /// <summary>
+        /// <paramref name="openWorld"/> : la rue fait partie de la ville. Les pâtés de maisons qui
+        /// la fermaient aux deux bouts et la ville peinte au loin disparaissent — les vraies rues
+        /// et les vrais immeubles du monde ouvert prennent leur place.
+        /// </summary>
+        public static Result Build(NightMaterialFactory.Palette palette, bool openWorld)
+        {
             NightMeshFactory.EnsureLibrary();
 
             GameObject root = new GameObject("=== Rue de nuit ===");
@@ -110,8 +120,11 @@ namespace UberBagarre.EditorTools
             BuildSidewalks(root.transform, palette);
             BuildClub(root.transform, palette);
             BuildOppositeBlock(root.transform, palette);
-            BuildCrossStreets(root.transform, palette);
-            BuildSkyline(root.transform, palette);
+            if (!openWorld)
+            {
+                BuildCrossStreets(root.transform, palette);
+                BuildSkyline(root.transform, palette);
+            }
             BuildStreetLamps(city.transform, palette);
             BuildVehicles(root.transform, palette);
             BuildProps(root.transform, palette);

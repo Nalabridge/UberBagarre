@@ -563,6 +563,16 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetBool(executor, "_cinematic", true);
             SerializedWiring.SetObject(executor, "_guard", guard);
 
+            // Les directs et les crochets du joueur : gestes captures (FS Melee Combat System),
+            // cuits pour la vue subjective. Ciblage, elan et contact restent ceux de l'executeur.
+            TextAsset armTracks = AssetDatabase.LoadAssetAtPath<TextAsset>(ArmTracksPath);
+            if (armTracks != null)
+            {
+                MocapArms capturedArms = playerGo.AddComponent<MocapArms>();
+                SerializedWiring.SetObject(capturedArms, "_tracks", armTracks);
+                SerializedWiring.SetObject(executor, "_handMotionSource", capturedArms);
+            }
+
             AddStunMeter(playerGo, combatant, executor);
 
             DodgeSystem dodge = playerGo.AddComponent<DodgeSystem>();
@@ -708,6 +718,9 @@ namespace UberBagarre.EditorTools
         /// interessante : s'ils ne bougeaient pas comme la cible, on la reconnaitrait a sa
         /// respiration plutot qu'a sa veste.
         /// </summary>
+        /// <summary>Pistes des gestes captures du joueur (Tools/mocap/cuisson_bras.py).</summary>
+        public const string ArmTracksPath = "Assets/UberBagarre/Art/Animations/BrasCaptures.json";
+
         internal static FighterParts BuildFighter(BuildMaterials materials, AttackLibraryBuilder.Library attacks,
             string displayName, Vector3 position, float yaw, FighterBuilder.Skin skin, float health,
             bool withHealthBar)
@@ -1416,6 +1429,31 @@ namespace UberBagarre.EditorTools
 
             SerializedWiring.Verify(physics, "_rig");
             return physics;
+        }
+
+        /// <summary>Tableau de références quelconques (GameObject, assets...).</summary>
+        internal static void SetObjectArray(Object target, string fieldName, params Object[] values)
+        {
+            SerializedObject so = SerializedWiring.Open(target);
+            SerializedProperty array = so.FindProperty(fieldName);
+
+            if (array == null)
+            {
+                Debug.LogWarning("[UberBagarre] Champ tableau '" + fieldName + "' introuvable sur " +
+                                 target.GetType().Name + ".", target);
+                return;
+            }
+
+            List<Object> kept = new List<Object>();
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (values[i] != null) kept.Add(values[i]);
+            }
+
+            array.arraySize = kept.Count;
+            for (int i = 0; i < kept.Count; i++) array.GetArrayElementAtIndex(i).objectReferenceValue = kept[i];
+
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         internal static void SetComponentArray(Object target, string fieldName, params Component[] values)
