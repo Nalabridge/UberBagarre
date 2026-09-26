@@ -367,6 +367,14 @@ namespace UberBagarre.World
 
             Vector3 d = _target.transform.position - _player.transform.position;
             d.y = 0f;
+
+            // On ne se bat pas au volant : la cible attend qu'on descende.
+            if (PlayerDriving.IsDriving)
+            {
+                if (d.magnitude <= _engageDistance * 3f) Banner("Gare-toi et descends : il t'attend.", 0.2f);
+                return;
+            }
+
             if (d.magnitude <= _engageDistance) Engage();
         }
 
@@ -567,17 +575,41 @@ namespace UberBagarre.World
             if (_subtitles != null) _subtitles.Play(DialogueLine.Say(speaker, text));
         }
 
+        private string _notice;
+        private float _noticeUntil;
+
+        /// <summary>Une consigne passagère en haut de l'écran.</summary>
+        private void Banner(string text, float duration)
+        {
+            _notice = text;
+            _noticeUntil = Time.time + duration;
+        }
+
         private void OnGUI()
         {
-            if (_stage != Stage.Offered || GameMenu.IsOpen || FightIntro.AnyPlaying) return;
-            if (_phone != null && _phone.IsRaised && _phone.Current == PhoneDevice.Screen.Accueil) return;
+            if (GameMenu.IsOpen || FightIntro.AnyPlaying) return;
+
+            string text = null;
+            if (Time.time < _noticeUntil && !string.IsNullOrEmpty(_notice))
+            {
+                text = _notice;
+            }
+            else if (_stage == Stage.Offered)
+            {
+                if (_phone != null && _phone.IsRaised && _phone.Current == PhoneDevice.Screen.Accueil) return;
+                text = PlayerDriving.IsDriving
+                    ? "NOUVELLE COURSE — gare-toi et descends pour lire le téléphone"
+                    : "NOUVELLE COURSE — T pour sortir le téléphone, E pour accepter";
+            }
+
+            if (text == null) return;
 
             if (_banner == null) _banner = GuiKit.Style(18, FontStyle.Bold, TextAnchor.MiddleCenter);
 
             float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 5f);
-            Rect band = new Rect(Screen.width * 0.5f - 280f, 24f, 560f, 34f);
+            Rect band = new Rect(Screen.width * 0.5f - 300f, 24f, 600f, 34f);
             GuiKit.Fill(band, new Color(0f, 0f, 0f, 0.6f));
-            GuiKit.OutlinedLabel(band, "NOUVELLE COURSE — T pour sortir le téléphone, E pour accepter", _banner,
+            GuiKit.OutlinedLabel(band, text, _banner,
                 new Color(1f, 0.85f, 0.4f, pulse), new Color(0f, 0f, 0f, 0.8f), 1f);
         }
     }

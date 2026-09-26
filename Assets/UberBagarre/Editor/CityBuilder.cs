@@ -19,7 +19,7 @@ namespace UberBagarre.EditorTools
     ///
     /// Tout est généré avec une graine fixe : deux constructions donnent la même ville.
     /// </summary>
-    public static class CityBuilder
+    public static partial class CityBuilder
     {
         public const float SidewalkHeight = NightStreetBuilder.SidewalkHeight;
 
@@ -58,6 +58,12 @@ namespace UberBagarre.EditorTools
             public readonly List<Rect> MapBlocks = new List<Rect>();
             public readonly List<Rect> MapParks = new List<Rect>();
             public readonly List<CityMap.Landmark> Landmarks = new List<CityMap.Landmark>();
+
+            /// <summary>Fabrique des voitures conduisibles (à libérer avec Dispose une fois la scène finie).</summary>
+            internal CarFactory Cars;
+
+            /// <summary>Enseignes au néon demandées par les façades, écrites à la fin.</summary>
+            internal readonly List<SignRequest> Signs = new List<SignRequest>();
         }
 
         private sealed class Mats
@@ -66,6 +72,7 @@ namespace UberBagarre.EditorTools
             public Material FacadeWarm, FacadeCool, Metal, DarkMetal, Glass, Grass, Leaves, Wood, Tiles, Render;
             public Material Lamp;
             public Material[] Neons;
+            public Material[] Awnings;
             public Color[] NeonColors;
         }
 
@@ -93,6 +100,7 @@ namespace UberBagarre.EditorTools
         public static Result Build(NightMaterialFactory.Palette night)
         {
             Mats m = CreateMaterials(night);
+            HouseMats houses = CreateHouseMaterials(m);
             System.Random rng = new System.Random(20260926);
 
             Result result = new Result();
@@ -106,12 +114,22 @@ namespace UberBagarre.EditorTools
 
             List<Rect> reserved = Reserved();
             List<Rect> placed = new List<Rect>();
+            List<CarSpot> driveways = new List<CarSpot>();
 
             for (int xi = 0; xi < 5; xi++)
             {
                 for (int zi = 0; zi < 4; zi++)
                 {
                     Rect lot = Lot(xi, zi);
+
+                    if (IsSuburb(xi, zi))
+                    {
+                        BuildSuburb(root.transform, m, houses, rng, lot, xi == 1 ? "Lotissement des Glycines" : "Lotissement du Moulin",
+                            result, driveways);
+                        result.WalkLoops.Add(WalkLoop(lot, xi, zi));
+                        continue;
+                    }
+
                     Style style = StyleOf(xi, zi);
                     CityMeshBuilder builder = new CityMeshBuilder("Ilot " + (char)('A' + xi) + (zi + 1));
                     FillLot(builder, m, rng, lot, style, xi, zi, reserved, placed, result);
@@ -123,9 +141,17 @@ namespace UberBagarre.EditorTools
 
             BuildPark(root.transform, m, rng, result);
             BuildLamps(root.transform, m, result);
+            BuildTrafficLights(root.transform, m, result);
+            BuildStreetFurniture(root.transform, m, rng, result);
+            BuildSteam(root.transform, m, rng);
             BuildBoundary(root.transform, m, rng);
             BuildSkyline(root.transform, m, rng);
-            BuildParkedCars(root.transform, night, rng);
+
+            result.Cars = new CarFactory(night, root.transform);
+            BuildParkedCars(root.transform, night, rng, result.Cars);
+            PlaceDriveways(root.transform, night, result.Cars, rng, driveways);
+
+            BuildSigns(root.transform, result);
 
             AddDriveLoops(result);
             AddSpots(result);
@@ -475,17 +501,64 @@ namespace UberBagarre.EditorTools
             b.Block(face + n * 0.14f + Vector3.up * 1.6f, new Vector3(faceWidth + 0.1f, 3.2f, 0.28f), m.Concrete, ConcreteTile, false, yaw);
 
             // Une vitrine sur les rues passantes : verre sombre, enseigne au néon, et sa lueur.
-            if (street && style != Style.Bord && rng.NextDouble() < 0.5)
+            if (street && style != Style.Bord && rng.NextDouble() < 0.55)
             {
                 float glass = Mathf.Min(faceWidth * 0.7f, 9f);
                 b.Box(face + n * 0.3f + Vector3.up * 1.45f, new Vector3(glass, 2.3f, 0.08f), m.Glass, None, false, yaw);
 
                 int neon = rng.Next(m.Neons.Length);
-                b.Box(face + n * 0.42f + Vector3.up * 3.55f, new Vector3(glass * 0.8f, 0.42f, 0.16f), m.Neons[neon], None, false, yaw);
+                if (rng.NextDouble() < 0.7)
+                {
+                    // Le nom du commerce en lettres de néon, sur un caisson sombre.
+                    b.Box(face + n * 0.33f + Vector3.up * 3.55f, new Vector3(glass * 0.92f, 0.85f, 0.12f), m.DarkMetal, None, false, yaw);
+                    RequestSign(result, rng, face + n * 0.44f + Vector3.up * 3.55f, n, glass * 0.85f, m.Neons[neon], null);
+                }
+                else
+                {
+                    b.Box(face + n * 0.42f + Vector3.up * 3.55f, new Vector3(glass * 0.8f, 0.42f, 0.16f), m.Neons[neon], None, false, yaw);
+                }
+
+                // Un store au-dessus de la vitrine, une fois sur trois.
+                if (rng.NextDouble() < 0.35)
+                {
+                    b.Box(face + n * 0.9f + Vector3.up * 2.9f, new Vector3(glass + 0.4f, 0.07f, 1.5f),
+                        m.Awnings[rng.Next(m.Awnings.Length)], None, false, yaw);
+                    b.Box(face + n * 1.62f + Vector3.up * 2.72f, new Vector3(glass + 0.4f, 0.36f, 0.05f),
+                        m.Awnings[rng.Next(m.Awnings.Length)], None, false, yaw);
+                }
 
                 Light light = NightStreetBuilder.AddLight(result.LightsRoot, "Vitrine",
                     face + n * 1.4f + Vector3.up * 2.6f, m.NeonColors[neon], 1.5f, 7.5f, false, false);
                 light.transform.position = face + n * 1.4f + Vector3.up * 2.6f;
+            }
+
+            // Des balcons vitrés sur une façade de logements sur trois, côté rue.
+            if (street && style != Style.Bord && rng.NextDouble() < 0.33 && faceWidth > 8f)
+            {
+                int floors = Mathf.Min(8, Mathf.FloorToInt(height / 3.2f) - 1);
+                float span = faceWidth * Range(rng, 0.35f, 0.6f);
+                for (int k = 1; k <= floors; k++)
+                {
+                    float y = k * 3.2f + 0.1f;
+                    b.Box(face + n * 0.6f + Vector3.up * y, new Vector3(span, 0.12f, 1.2f), m.Concrete, None, false, yaw);
+                    b.Box(face + n * 1.18f + Vector3.up * (y + 0.5f), new Vector3(span, 0.9f, 0.04f), m.Glass, None, false, yaw);
+                    b.Box(face + n * 1.18f + Vector3.up * (y + 0.96f), new Vector3(span, 0.05f, 0.07f), m.DarkMetal, None, false, yaw);
+                }
+            }
+
+            // Un panneau publicitaire sur les toits bas, face à la rue.
+            if (street && style == Style.Ville && height < 20f && rng.NextDouble() < 0.16)
+            {
+                float bw = Mathf.Min(faceWidth * 0.75f, 12f);
+                Vector3 across = Quaternion.Euler(0f, yaw, 0f) * Vector3.right;
+                Vector3 foot = face - n * 1.2f + Vector3.up * height;
+                b.Box(foot + across * (bw * 0.35f) + Vector3.up * 1.3f, new Vector3(0.22f, 2.6f, 0.22f), m.DarkMetal, None, false, yaw);
+                b.Box(foot - across * (bw * 0.35f) + Vector3.up * 1.3f, new Vector3(0.22f, 2.6f, 0.22f), m.DarkMetal, None, false, yaw);
+                b.Box(foot + Vector3.up * 3.6f, new Vector3(bw, 2.8f, 0.25f), m.DarkMetal, None, false, yaw);
+
+                string[] ads = { "UBER BAGARRE", "LE VERTIGO", "HOTEL DE NUIT", "BOXE CLUB", "24H/24", "TAXI" };
+                RequestSign(result, rng, foot + n * 0.16f + Vector3.up * 3.75f, n, bw * 0.9f, m.Neons[rng.Next(m.Neons.Length)],
+                    ads[rng.Next(ads.Length)]);
             }
 
             // Sur le toit : une ou deux machines. Rien ne se voit d'en bas, sauf leur silhouette.
@@ -715,7 +788,8 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ voitures garées
 
-        private static void BuildParkedCars(Transform parent, NightMaterialFactory.Palette night, System.Random rng)
+        private static void BuildParkedCars(Transform parent, NightMaterialFactory.Palette night, System.Random rng,
+            CarFactory drivable)
         {
             GameObject root = EditorBuildUtility.CreateEmpty("Voitures garees", parent, Vector3.zero);
 
@@ -748,6 +822,15 @@ namespace UberBagarre.EditorTools
 
                         // Dans l'axe de la rue, nez dans le sens de la voie (on roule à droite).
                         float yaw = eastWest ? (side > 0 ? -90f : 90f) : (side > 0 ? 0f : 180f);
+
+                        // Une sur quatre n'est pas fermée à clé.
+                        if (drivable != null && placed % 4 == 1)
+                        {
+                            drivable.Spawn(root.transform, rng.Next(drivable.PaintCount), new Vector3(c.x, 0.02f, c.y), yaw, "Voiture");
+                            placed++;
+                            continue;
+                        }
+
                         GameObject car = Object.Instantiate(rng.NextDouble() < 0.3 ? rusty : clean, root.transform);
                         car.name = "Voiture garee";
                         car.transform.SetPositionAndRotation(new Vector3(c.x, 0f, c.y), Quaternion.Euler(0f, yaw, 0f));
@@ -885,6 +968,8 @@ namespace UberBagarre.EditorTools
             Spot(result, "Boulevard, côté ouest", new Vector3(-120f, 0.2f, 11f), 180f);
             Spot(result, "Boulevard, côté est", new Vector3(120f, 0.2f, -15f), 0f);
             Spot(result, "Lotissement des pavillons", new Vector3(-10f, 0.05f, -81.6f), 90f);
+            Spot(result, "Rue des Glycines", new Vector3(-142f, 0.2f, -60f), 90f);
+            Spot(result, "Allée du Moulin", new Vector3(142f, 0.2f, -80f), -90f);
         }
 
         private static void Spot(Result result, string name, Vector3 position, float yaw)
@@ -899,6 +984,8 @@ namespace UberBagarre.EditorTools
             Landmark(result, "La planque", new Vector2(HouseOrigin.x, HouseOrigin.z), new Color(0.5f, 1f, 0.55f));
             Landmark(result, "Square des Tilleuls", new Vector2(Park.center.x, Park.center.y), new Color(0.45f, 0.85f, 0.4f));
             Landmark(result, "Tabac · Snack · Nuit 24h", new Vector2(0f, -17f), new Color(1f, 0.7f, 0.3f));
+            Landmark(result, "Les Glycines", new Vector2(-106f, -65f), new Color(0.75f, 0.6f, 1f));
+            Landmark(result, "Le Moulin", new Vector2(106f, -65f), new Color(0.75f, 0.6f, 1f));
         }
 
         private static void Landmark(Result result, string label, Vector2 position, Color color)
@@ -949,6 +1036,13 @@ namespace UberBagarre.EditorTools
             m.Render = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Ville_Crepi", new Color(0.46f, 0.43f, 0.39f), 0.08f, 0f);
 
             m.Neons = new[] { night.NeonMagenta, night.NeonCyan, night.NeonRed, night.NeonGreen, night.NeonBlue, night.NeonWarm };
+            m.Awnings = new[]
+            {
+                EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Ville_StoreRouge", new Color(0.40f, 0.05f, 0.05f), 0.1f, 0f),
+                EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Ville_StoreVert", new Color(0.05f, 0.22f, 0.12f), 0.1f, 0f),
+                EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Ville_StoreBleu", new Color(0.06f, 0.10f, 0.26f), 0.1f, 0f),
+                EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Ville_StoreCreme", new Color(0.55f, 0.50f, 0.40f), 0.1f, 0f)
+            };
             m.NeonColors = new[]
             {
                 new Color(1f, 0.2f, 0.62f), new Color(0.2f, 0.9f, 1f), new Color(1f, 0.16f, 0.14f),

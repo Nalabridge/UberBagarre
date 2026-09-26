@@ -2349,3 +2349,90 @@ Caméra du jeu à 700 m (la ville fait 400 m), menu principal : entrée « MONDE
 - Les passants traversent le petit mobilier de la rue du Vertigo (pas de collision entre eux et le
   décor) ; ils suivent le tour de leur îlot, sans traverser les rues.
 
+
+## 28. Tout le jeu de bras du pack, les voitures, une ville habitée, un nouvel écran
+
+Demande : « prends les animations des mains du pack », « fais des voitures qu'on peut conduire »,
+« des maisons individuelles, pas des bâtiments vides », « une ville stylée avec des trucs qui la
+rendent vivante », « refais complètement le menu de stamina et de vie ».
+
+### 28.1 Les bras : coups à grand armement et boucles de garde
+
+`Tools/mocap/cuisson_bras.py` (version 2 de `BrasCaptures.json`) cuit trois familles :
+
+- **Coups à geste court** (directs, crochets) : inchangés (§27.2).
+- **Coups à grand armement** (uppercut, coups au corps, coup par-dessus) : le poing part de sous la
+  hanche, buste tourné de 90°. Mesuré depuis les yeux, l'uppercut monte de 0,96 m, le coup au corps
+  avance de 1,07 m depuis 58 cm DERRIÈRE les yeux. On ne garde que la **poussée** — du point le plus
+  bas (uppercut) ou le plus en arrière (corps) jusqu'à l'impact — suivie d'un rappel synthétique vers
+  la garde (le suivi capturé repart derrière la tête). Pistes marquées `fit` : à l'exécution,
+  `MocapArms` tourne la courbe (`Quaternion.FromToRotation(impact capturé, impact écrit − garde)`) et
+  la met à l'échelle (0,12 à 1,3) : la forme et le rythme du geste capturé, entre notre garde et
+  notre impact. L'orientation capturée à l'impact est bornée à 35° de celle du coup écrit (correction
+  appliquée à toute la piste). Validé en rendu (uppercut, direct au corps, crochet au corps).
+- **Boucles de garde** (`loops`) : `marche` (Combat Walk Fwd : 2 à 4 cm de balancement, ±10–14°),
+  calée sur NOTRE pas — la pose du pied droit capturée (image 11/30, détectée à la vitesse du pied)
+  est alignée sur la phase 0 de `ProceduralLocomotion` (nouvelle propriété `Phase`) ; `garde` (Block :
+  la garde fermée qui se cale, 2 à 3 cm) ; `encaisse` (Block Hit, 55 %, joué 1,6× plus vite,
+  déclenché par `GuardSystem.Blocked`, plus fort sur un coup lourd). `FirstPersonHands._captured`
+  ajoute ces écarts (position + petite rotation composée à gauche) à la garde, en combat seulement ; le
+  balancement calculé tombe alors à 35 %.
+- Les deux squelettes du paquet ont le même bras (52,5 cm) : la mesure au repos d'un des deux tombe à
+  37 cm (os de torsion), l'échelle est donc fixe.
+- Les doigts : mesurés quasi fixes par clip (poing 140–157°, garde 152°) — rien à en tirer de plus que
+  la fermeture par état déjà en place.
+
+### 28.2 Les voitures conduisibles
+
+- `DrivableCar` : corps rigide (1 250 kg, centre de gravité bas), quatre rayons de suspension
+  (ressort tendu pour que, chargée de son poids, la roue soit là où le modèle la dessine), adhérence
+  latérale par impulsion bornée par la charge (au-delà : glissement, crissement), propulsion arrière,
+  frein puis marche arrière, frein à main qui divise l'adhérence arrière, direction qui se ferme avec
+  la vitesse, traînée et appui. Cinq rapports (le régime monte, retombe au passage), sons fabriqués
+  (moteur : harmoniques d'un quatre cylindres sur une seconde qui boucle ; pneus ; klaxon deux tons ;
+  choc). Retournée : remise sur ses roues ; tombée : ramenée au dernier point sûr.
+- Garée, immobile, loin de la voiture conduite : cinématique, plus aucun calcul ; réveillée quand la
+  voiture du joueur approche (45 m), pour pouvoir être poussée.
+- `PlayerDriving` : E sur la portière (événement statique `DrivableCar.EnterRequested`) ; déplacement,
+  visée, coups, esquive, pousseur, objets, caméra d'observation, balancement de tête coupés, corps
+  caché, rangé sur le siège ; téléphone et interactions indisponibles ; caméra de poursuite (la caméra
+  d'observation, post-traitement compris) qui rattrape le cap, revient derrière toute seule, passe
+  devant les murs. Descente à moins de 7 m/s, côté conducteur si libre (sinon l'autre côté, derrière,
+  devant, le toit), par les `ISpawnReceiver` comme toute téléportation.
+- Le modèle : `CityBuilder.CarFactory` — la voiture de la rue, roues sorties de la carrosserie
+  (pivot de braquage + enfant qui tourne), carrosserie fusionnée, un modèle par peinture recopié.
+  Ta caisse rouillée remplace le modèle figé de l'allée de la planque.
+- `TrafficCar` freine pour une voiture conduisible ; `OpenWorldDirector` n'engage pas une cible tant
+  qu'on conduit (« Gare-toi et descends »).
+- Les passants (`MocapWalker`) : trajectoire de la voiture prédite, bond de côté ; percutés (ou balayés
+  juste avant le contact — leur capsule cinématique arrêterait la voiture net), ils tombent (chute
+  capturée), restent au sol, se relèvent.
+
+### 28.3 Une ville habitée
+
+- **Lotissements** (`CityBuilder.Quartiers`) : les îlots sud-ouest et sud-est deviennent 20 maisons,
+  construites dans le repère de leur parcelle (x le long de la rue, z vers le fond) — pelouse, allée,
+  chemin, terrasse ; haie, muret ou palissade ouverts devant l'allée et le chemin ; palissades entre
+  jardins ; maison d'un ou deux niveaux (six crépis, trois toitures, cheminée), fenêtres sur trois
+  faces (allumées, télé, éteintes ; volets une fois sur deux ; certaines maisons dorment), porte de
+  couleur, perron et sa lampe (vraie lumière), garage, poubelles, boîte aux lettres, arbre, abri de
+  jardin ; une voiture dans l'allée une fois sur deux (dont la moitié conduisibles).
+- **Feux tricolores** (`TrafficLight`) : douze carrefours, quatre feux chacun (à droite avant le
+  carrefour, tournés vers la voie), vert / orange / tout rouge, décalés d'un carrefour à l'autre ; les
+  lampes sont de vrais objets dont on change la matière. `TrafficCar` s'arrête à la ligne (à l'orange
+  s'il a la place), et une voiture dans une file au feu (`Queued`, propagé de proche en proche) n'est
+  jamais doublée par la règle de patience des carrefours.
+- **Façades** : enseignes écrites en tubes de néon (`NeonTextBuilder`, fusionnées, une sur six qui
+  grésille), stores, balcons vitrés, panneaux publicitaires sur les toits bas.
+- **Rues** : abribus éclairés (sur les trottoirs larges), bancs, poubelles, bornes à incendie,
+  potelets ; vapeur des plaques d'égout (particules). Un peu plus de passants et de voitures.
+
+### 28.4 Le nouvel écran de vie et d'endurance
+
+`CombatHud` réécrit (mêmes références câblées, plus `_progress`) : un losange avec le chiffre de vie ;
+la vie en dix segments cisaillés (une matrice de cisaillement sur `GUI.matrix`) avec traînée blanche,
+lueur de soin, flash et tremblement proportionnés au coup ; sous 25 % un battement de cœur double dont
+la cadence monte de 70 à 150 par minute ; l'endurance en dessous (reflet qui court quand elle remonte,
+repères aux quarts, « À BOUT DE SOUFFLE ») ; l'étourdissement (« SONNÉ » près du seuil). Grand en
+combat, réduit hors combat (sans disparaître). Monde ouvert : argent qui défile et gain qui monte,
+niveau et progression ; au volant : compteur (km/h), régime en arc de graduations, rapport, aide.

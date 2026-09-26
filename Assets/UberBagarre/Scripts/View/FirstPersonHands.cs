@@ -36,6 +36,14 @@ namespace UberBagarre.View
         [Tooltip("Optionnel : fournit le balancement des bras synchronise avec les jambes.")]
         private ProceduralLocomotion _locomotion;
 
+        [SerializeField]
+        [Tooltip("Optionnel : les boucles de garde capturees (marche, blocage, encaisse) ajoutees a la garde.")]
+        private MocapArms _captured;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part du balancement calcule gardee quand la marche capturee est la.")]
+        private float _proceduralSwingWithCapture = 0.35f;
+
         [Header("Epaules")]
         [SerializeField]
         [Tooltip("Clavicules. Quand la cible du poing est hors de portee du bras, l'epaule " +
@@ -330,7 +338,40 @@ namespace UberBagarre.View
             float relaxed = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(RelaxedWeight));
             basePose = HandPose.Lerp(basePose, isLeft ? _leftRelaxedPose : _rightRelaxedPose, relaxed);
 
-            return basePose + Breathing(isLeft) + IdleNoise(isLeft) + Sway() + ArmSwing(side);
+            bool captured = _captured != null && _captured.AmbientActive;
+            HandPose swing = ArmSwing(side);
+            if (captured)
+            {
+                swing = new HandPose(swing.position * _proceduralSwingWithCapture, swing.euler * _proceduralSwingWithCapture);
+            }
+
+            HandPose pose = basePose + Breathing(isLeft) + IdleNoise(isLeft) + Sway() + swing;
+            return captured ? Captured(side, pose, relaxed) : pose;
+        }
+
+        /// <summary>
+        /// Les boucles capturées : en garde seulement (ni bras ballants, ni course). La marche
+        /// suit la phase des jambes ; le blocage, le poids de la garde serrée.
+        /// </summary>
+        private HandPose Captured(HandSide side, HandPose pose, float relaxed)
+        {
+            float combat = (1f - relaxed) * (1f - Mathf.Clamp01(SprintWeight));
+            if (combat <= 0.001f) return pose;
+
+            float walk = 0f;
+            float phase = 0f;
+            if (_locomotion != null)
+            {
+                // MoveWeight vaut ~0,6 a la marche : la boucle capturee est une marche de combat.
+                walk = Mathf.Clamp01(_locomotion.MoveWeight / 0.6f) * combat;
+                phase = _locomotion.Phase;
+            }
+
+            Vector3 offset;
+            Quaternion turn;
+            if (!_captured.Ambient(side, phase, walk, Mathf.Clamp01(GuardWeight) * combat, out offset, out turn)) return pose;
+
+            return new HandPose(pose.position + offset * combat, (turn * pose.Rotation).eulerAngles);
         }
 
         private HandPose Breathing(bool isLeft)

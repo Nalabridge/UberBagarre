@@ -145,6 +145,7 @@ Dans l'ordre :
 | **Alt gauche** | **Esquive** (direction donnée par WASD, arrière par défaut) |
 | **Espace** | Saut |
 | **E** | **Interagir** : répondre au téléphone, lire le courrier, monter en voiture, valider un écran |
+| **E** (sur une portière, monde ouvert) | **Conduire** — puis **Z/S** gaz, frein, marche arrière · **Q/D** volant · **Espace** frein à main · **clic gauche** klaxon · **souris** tourne la caméra · **E** à l'arrêt pour descendre |
 | **T** | **Sortir / ranger le téléphone** — quand tu veux (on peut marcher en le regardant, pas frapper) |
 | **Flèches** / **molette** | Téléphone sorti : choisir une appli, faire défiler |
 | **Entrée** / **clic gauche** / **E** | Téléphone sorti : ouvrir, valider |
@@ -328,12 +329,16 @@ Menu de triche → **« ANIMATIONS CAPTUREES (MOCAP) »** : couper / remettre, p
 (`Art/Animations/Generes/Mocap_FS.asset`) et fabrique l'avatar humanoïde de chaque corps
 (`Art/Models/Corps/Generes/Avatar_*.asset`). Sans le paquet, tout retombe sur les poses calculées.
 
-**Tes bras aussi** : tes directs et tes crochets sont les gestes capturés du paquet, vus de tes
+**Tes bras aussi** : tous tes coups de poing sont les gestes capturés du paquet, vus de tes
 propres yeux. Les clips ont été lus hors ligne (`Tools/mocap`) et réduits à ce que verrait le
 boxeur capturé — la trajectoire de chaque poing et son orientation — puis rejoués à partir de TA
 garde, à l'amplitude de tes coups, et guidés sur la cible comme avant (visée, élan, gel de contact
-inchangés). Une main sans geste capturé prend celui de l'autre main, en miroir. L'uppercut et les
-coups au corps capturés (qui partent de la hanche, tête plongée) gardent leurs poses écrites.
+inchangés). Directs et crochets tels quels ; l'**uppercut**, les **coups au corps** et le **coup
+par-dessus**, qui partent de sous la hanche, gardent leur **poussée** (du point le plus bas jusqu'à
+l'impact), tournée pour aller de ta garde au point d'impact. Une main sans geste capturé prend celui
+de l'autre main, en miroir. Et **ta garde vit comme la leur** : le balancement des poings à la
+marche (calé sur tes pas), la garde fermée qui se cale quand tu bloques, les avant-bras qui
+encaissent quand un coup tombe sur ta garde.
 
 **Les mains des adversaires** suivent leur état : poings serrés en combat, doigts à demi fermés
 quand ils attendent ou marchent, mains qui se relâchent quand ils tombent.
@@ -360,9 +365,34 @@ derrière. Et tous les lieux du jeu, **à leur place**, reliés par de vraies ru
 - **le square des Tilleuls** : arbres, bancs, allées ;
 - l'îlot d'en face (tabac, snack, nuit 24h, pressing).
 
+**Les lotissements** : les Glycines (à l'ouest) et le Moulin (à l'est), des rues de **maisons
+individuelles** — chacune son jardin devant et derrière, sa haie, son muret ou sa palissade, son
+allée, son garage, sa boîte aux lettres, ses poubelles, un arbre, parfois un abri de jardin ; des
+volets, une lampe de perron, des fenêtres éclairées (et le bleu d'une télé), une voiture dans
+l'allée une fois sur deux.
+
 **La vie** : des passants qui font le tour de leur pâté de maisons (marche et attente capturées),
-s'arrêtent quand on leur barre la route et pressent le pas quand une bagarre éclate ; des voitures
-qui tournent, freinent pour ce qui bouge devant elles, klaxonnent si tu restes planté au milieu.
+s'arrêtent quand on leur barre la route, pressent le pas quand une bagarre éclate, **se jettent sur
+le côté** quand tu fonces sur eux en voiture (et tombent, puis se relèvent, si tu les touches) ;
+des voitures qui tournent, **s'arrêtent aux feux rouges** et font la queue, freinent pour ce qui
+bouge devant elles, klaxonnent si tu restes planté au milieu. Des **feux tricolores** aux
+carrefours, des **enseignes en néon** (PIZZA, KEBAB, BOXE, LAVERIE, NIGHT SHOP… et quelques-unes
+qui grésillent), des stores, des balcons vitrés, des **panneaux publicitaires** sur les toits, des
+**abribus éclairés**, des bancs, des bornes à incendie, de la **vapeur** qui sort des plaques d'égout.
+
+**Les voitures** : ta vieille caisse rouillée t'attend dans l'allée de la planque, et une voiture
+sur deux dans les allées, une sur quatre garée le long des rues, n'est pas fermée. **E** sur la
+portière : caméra derrière la voiture, compteur de vitesse et régime à l'écran. Physique d'arcade
+mais avec du poids : suspensions, pneus qui accrochent puis glissent, frein à main qui fait
+décrocher l'arrière, cinq rapports, le moteur (fabriqué, pas enregistré) qui monte dans les tours,
+les pneus qui crissent, les chocs. Une voiture retournée se remet sur ses roues. On ne se bat pas
+au volant : la cible attend que tu te gares.
+
+**L'écran** : la vie en dix segments inclinés (la traînée blanche montre ce que tu viens de
+perdre ; sous un quart, un battement de cœur qui s'accélère), l'endurance juste dessous (elle
+brille quand elle remonte, vire au rouge « À BOUT DE SOUFFLE »), l'étourdissement (« SONNÉ ») ; en
+combat le bloc est grand, hors combat il se fait petit. En bas à droite, l'argent (les gains
+s'affichent en montant) et le niveau — ou, au volant, le compteur.
 
 **Les courses** :
 

@@ -563,14 +563,17 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetBool(executor, "_cinematic", true);
             SerializedWiring.SetObject(executor, "_guard", guard);
 
-            // Les directs et les crochets du joueur : gestes captures (FS Melee Combat System),
-            // cuits pour la vue subjective. Ciblage, elan et contact restent ceux de l'executeur.
+            // Les coups de poing du joueur : gestes captures (FS Melee Combat System), cuits pour la
+            // vue subjective. Ciblage, elan et contact restent ceux de l'executeur. Les memes pistes
+            // portent les boucles de garde (marche, blocage, encaisse) que les mains ajoutent.
             TextAsset armTracks = AssetDatabase.LoadAssetAtPath<TextAsset>(ArmTracksPath);
             if (armTracks != null)
             {
                 MocapArms capturedArms = playerGo.AddComponent<MocapArms>();
                 SerializedWiring.SetObject(capturedArms, "_tracks", armTracks);
+                SerializedWiring.SetObject(capturedArms, "_guard", guard);
                 SerializedWiring.SetObject(executor, "_handMotionSource", capturedArms);
+                SerializedWiring.SetObject(hands, "_captured", capturedArms);
             }
 
             AddStunMeter(playerGo, combatant, executor);

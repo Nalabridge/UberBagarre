@@ -2,20 +2,26 @@ using UberBagarre.Combat;
 using UberBagarre.Feedback;
 using UberBagarre.Player;
 using UberBagarre.Story;
+using UberBagarre.World;
 using UnityEngine;
 
 namespace UberBagarre.UI
 {
     /// <summary>
-    /// HUD de combat stylisé, inspiré des jeux de combat : plaque inclinée, gros chiffre à
-    /// contour épais, jauges biseautées.
+    /// L'interface du joueur : la vie, l'endurance, l'étourdissement, et autour du réticule tout
+    /// ce qui se joue en un dixième de seconde (garde, parade, charge, riposte).
     ///
-    /// Le gros chiffre existe pour une raison précise : en pleine action, on ne lit pas une
-    /// barre, on la perçoit. Un chiffre qui change de couleur et qui tressaute donne l'état de
-    /// santé d'un coup d'œil périphérique, sans quitter l'adversaire des yeux.
+    /// La vie est une barre inclinée en dix segments — dix pour cent chacun, on compte les coups
+    /// qu'il reste sans lire de chiffre — avec la traînée blanche de ce qu'on vient de perdre, et
+    /// sous un quart un battement de cœur qui s'accélère. L'endurance, fine, juste dessous : elle
+    /// brille quand elle remonte, vire au rouge et le dit quand on est à bout de souffle. En
+    /// combat le bloc est grand et net ; hors combat il se fait petit, sans disparaître.
     ///
-    /// Dessiné en IMGUI : aucune police importée, aucun sprite, aucun Canvas — donc rendu
-    /// identique dans les trois render pipelines d'un projet neuf.
+    /// Dans le monde ouvert, en bas à droite : l'argent (qui compte quand il bouge) et le niveau ;
+    /// au volant, le compteur de vitesse et le régime à la place.
+    ///
+    /// Dessiné en IMGUI : aucune police importée, aucun sprite, aucun Canvas. L'inclinaison est
+    /// une matrice de cisaillement appliquée à GUI.matrix.
     /// </summary>
     public class CombatHud : MonoBehaviour
     {
@@ -44,30 +50,34 @@ namespace UberBagarre.UI
         [Tooltip("Optionnel. Affiche la charge en cours et la fenetre de riposte.")]
         private AttackExecutor _executor;
 
+        [SerializeField]
+        [Tooltip("Optionnel (monde ouvert) : l'argent et le niveau, en bas a droite.")]
+        private PlayerProgress _progress;
+
         [Header("Affichage")]
         [SerializeField]
-        [Tooltip("Optionnel : hors combat, pas de barre de vie ni de reticule de combat.")]
+        [Tooltip("Optionnel : hors combat, pas de reticule de combat et un bloc de vie reduit.")]
         private CombatPresence _presence;
 
         [SerializeField] private bool _visible = true;
-        [SerializeField, Min(0f)] private float _margin = 30f;
-        [SerializeField, Min(80f)] private float _panelWidth = 330f;
-        [SerializeField, Min(50f)] private float _panelHeight = 116f;
+        [SerializeField, Min(0f)] private float _margin = 34f;
+        [SerializeField, Min(120f)] private float _barWidth = 360f;
 
-        [SerializeField, Range(-12f, 12f)]
-        [Tooltip("Inclinaison de la plaque. C'est ce qui donne le cachet 'jeu de combat'.")]
-        private float _tiltAngle = -3.5f;
+        [SerializeField, Range(-0.8f, 0.8f)]
+        [Tooltip("Cisaillement des barres : c'est ce qui donne l'elan de l'ensemble.")]
+        private float _slant = -0.42f;
+
+        [SerializeField, Range(4, 20)] private int _segments = 10;
 
         [Header("Couleurs")]
-        [SerializeField] private Color _panelColor = new Color(0.07f, 0.08f, 0.11f, 0.88f);
-        [SerializeField] private Color _panelBorder = new Color(0.95f, 0.85f, 0.45f, 0.95f);
-        [SerializeField] private Color _healthColor = new Color(0.36f, 0.82f, 0.38f);
-        [SerializeField] private Color _healthMidColor = new Color(0.95f, 0.78f, 0.2f);
-        [SerializeField] private Color _healthLowColor = new Color(0.92f, 0.25f, 0.2f);
-        [SerializeField] private Color _staminaColor = new Color(0.35f, 0.7f, 0.95f);
-        [SerializeField] private Color _trailColor = new Color(1f, 0.95f, 0.85f, 0.9f);
-        [SerializeField] private Color _barBackground = new Color(0.03f, 0.03f, 0.05f, 0.92f);
-        [SerializeField] private Color _barBorder = new Color(0f, 0f, 0f, 0.95f);
+        [SerializeField] private Color _healthColor = new Color(0.30f, 0.95f, 0.62f);
+        [SerializeField] private Color _healthMidColor = new Color(1f, 0.76f, 0.24f);
+        [SerializeField] private Color _healthLowColor = new Color(1f, 0.22f, 0.22f);
+        [SerializeField] private Color _staminaColor = new Color(0.36f, 0.82f, 1f);
+        [SerializeField] private Color _trailColor = new Color(1f, 0.96f, 0.88f, 0.92f);
+        [SerializeField] private Color _slotColor = new Color(0.02f, 0.025f, 0.035f, 0.78f);
+        [SerializeField] private Color _edgeColor = new Color(0f, 0f, 0f, 0.9f);
+        [SerializeField] private Color _moneyColor = new Color(0.55f, 1f, 0.6f);
 
         [Header("Reticule")]
         [SerializeField] private bool _showCrosshair = true;
@@ -92,14 +102,25 @@ namespace UberBagarre.UI
         [SerializeField] private Color _blockColor = new Color(0.6f, 0.8f, 1f);
 
         [Header("Animation de degats")]
-        [SerializeField, Min(0f)] private float _trailDelay = 0.4f;
-        [SerializeField, Min(0.01f)] private float _trailSpeed = 0.45f;
-        [SerializeField, Min(0f)] private float _shakeAmplitude = 9f;
+        [SerializeField, Min(0f)] private float _trailDelay = 0.45f;
+        [SerializeField, Min(0.01f)] private float _trailSpeed = 0.5f;
+        [SerializeField, Min(0f)] private float _shakeAmplitude = 7f;
 
         private float _trail = 1f;
         private float _trailHold;
         private float _flash;
         private float _shake;
+        private float _heal;
+        private float _staminaShown = 1f;
+        private float _staminaGain;
+        private float _heartPhase;
+        private float _money;
+        private int _lastMoney = int.MinValue;
+        private int _moneyDelta;
+        private float _moneyDeltaAge = 99f;
+        private float _levelFlash;
+        private int _lastLevel = -1;
+        private float _compact = 1f;
 
         public bool Visible
         {
@@ -109,30 +130,85 @@ namespace UberBagarre.UI
 
         private void OnEnable()
         {
-            if (_playerHealth != null) _playerHealth.Damaged += OnDamaged;
+            if (_playerHealth != null)
+            {
+                _playerHealth.Damaged += OnDamaged;
+                _playerHealth.Healed += OnHealed;
+            }
         }
 
         private void OnDisable()
         {
-            if (_playerHealth != null) _playerHealth.Damaged -= OnDamaged;
+            if (_playerHealth != null)
+            {
+                _playerHealth.Damaged -= OnDamaged;
+                _playerHealth.Healed -= OnHealed;
+            }
         }
 
         private void OnDamaged(DamageInfo info)
         {
             _flash = 1f;
-            _shake = 1f;
+            _shake = Mathf.Clamp01(0.45f + info.Amount * 0.05f);
             _trailHold = _trailDelay;
+        }
+
+        private void OnHealed(float amount)
+        {
+            if (amount > 0.5f) _heal = 1f;
         }
 
         private void Update()
         {
             float dt = Time.unscaledDeltaTime;
 
-            _flash = Mathf.MoveTowards(_flash, 0f, dt * 6f);
+            _flash = Mathf.MoveTowards(_flash, 0f, dt * 5f);
             _shake = Mathf.MoveTowards(_shake, 0f, dt * 3.2f);
+            _heal = Mathf.MoveTowards(_heal, 0f, dt * 1.5f);
 
-            if (_trailHold > 0f) _trailHold -= dt;
-            else if (_playerHealth != null) _trail = Mathf.MoveTowards(_trail, _playerHealth.Normalized, _trailSpeed * dt);
+            if (_playerHealth != null)
+            {
+                if (_trailHold > 0f) _trailHold -= dt;
+                else _trail = Mathf.MoveTowards(_trail, _playerHealth.Normalized, _trailSpeed * dt);
+                if (_trail < _playerHealth.Normalized) _trail = _playerHealth.Normalized;
+
+                // Le cœur bat plus vite à mesure que la vie baisse : 70 puis jusqu'à 150 par minute.
+                float bpm = Mathf.Lerp(150f, 70f, Mathf.Clamp01(_playerHealth.Normalized / 0.25f));
+                _heartPhase = Mathf.Repeat(_heartPhase + dt * bpm / 60f, 1f);
+            }
+
+            if (_playerStamina != null)
+            {
+                float value = _playerStamina.Normalized;
+                _staminaGain = Mathf.MoveTowards(_staminaGain, value > _staminaShown + 0.0005f ? 1f : 0f, dt * 4f);
+                _staminaShown = value;
+            }
+
+            float presence = _presence != null ? _presence.Weight : 1f;
+            _compact = Mathf.MoveTowards(_compact, presence > 0.5f ? 1f : 0f, dt * 3f);
+
+            if (_progress != null)
+            {
+                if (_lastMoney == int.MinValue)
+                {
+                    _lastMoney = _progress.Money;
+                    _money = _progress.Money;
+                }
+
+                if (_progress.Money != _lastMoney)
+                {
+                    _moneyDelta = _progress.Money - _lastMoney;
+                    _moneyDeltaAge = 0f;
+                    _lastMoney = _progress.Money;
+                }
+
+                _money = Mathf.MoveTowards(_money, _progress.Money, Mathf.Max(30f, Mathf.Abs(_progress.Money - _money) * 3f) * dt);
+                _moneyDeltaAge += dt;
+
+                if (_lastLevel >= 0 && _progress.Level > _lastLevel) _levelFlash = 1f;
+                _lastLevel = _progress.Level;
+                _levelFlash = Mathf.MoveTowards(_levelFlash, 0f, dt * 0.5f);
+            }
         }
 
         private void OnGUI()
@@ -143,39 +219,345 @@ namespace UberBagarre.UI
 
             if (!_visible) return;
 
-            // Hors combat, l'interface de combat s'efface : il ne reste qu'un point au centre, et
-            // la jauge d'endurance quand on court. Elle revient en fondu des qu'on s'engage.
+            bool driving = PlayerDriving.IsDriving;
+
+            // Hors combat, le reticule se fait discret ; ce qui sert a se battre n'apparait
+            // qu'en combat.
             float combat = _presence != null ? _presence.Weight : 1f;
 
-            GuiKit.Alpha = Mathf.Lerp(0.45f, 1f, combat);
-            DrawCrosshair();
-
-            GuiKit.Alpha = combat;
-            if (combat > 0.01f)
+            if (!driving)
             {
-                DrawAimedZone();
-                DrawGuard();
-                DrawCharge();
-                DrawRiposte();
-                DrawPlayerPanel();
+                GuiKit.Alpha = Mathf.Lerp(0.45f, 1f, combat);
+                DrawCrosshair();
+
+                GuiKit.Alpha = combat;
+                if (combat > 0.01f)
+                {
+                    DrawAimedZone();
+                    DrawGuard();
+                    DrawCharge();
+                    DrawRiposte();
+                }
             }
 
             GuiKit.Alpha = 1f;
-            if (combat < 0.99f) DrawRestStamina(1f - combat);
+            DrawVitals(combat);
 
+            if (driving) DrawSpeedometer();
+            else DrawWallet();
+
+            GuiKit.Alpha = 1f;
             DrawOutdatedWarning();
         }
 
-        /// <summary>Hors combat : une fine jauge d'endurance au bas de l'écran, seulement quand elle n'est pas pleine.</summary>
-        private void DrawRestStamina(float visibility)
-        {
-            if (_playerStamina == null || _playerStamina.Normalized > 0.985f) return;
+        // ------------------------------------------------------------------ vie et endurance
 
-            GuiKit.Alpha = visibility;
-            Rect bar = new Rect(Screen.width * 0.5f - 90f, Screen.height - 38f, 180f, 6f);
-            GuiKit.Bar(bar, _playerStamina.Normalized, _playerStamina.Normalized, _staminaColor, _trailColor,
-                _barBackground, _barBorder, 1.5f, 0f);
+        /// <summary>
+        /// Le bloc de vie, en bas à gauche : un losange avec le chiffre, la barre de vie en
+        /// segments, l'endurance et l'étourdissement dessous. Grand en combat, réduit hors combat.
+        /// </summary>
+        private void DrawVitals(float combat)
+        {
+            if (_playerHealth == null) return;
+
+            float scale = Mathf.Lerp(0.78f, 1f, _compact);
+            float alpha = Mathf.Lerp(0.82f, 1f, combat);
+            float health = _playerHealth.Normalized;
+            bool low = health <= 0.25f && _playerHealth.IsAlive;
+
+            float shakeX = Mathf.Sin(Time.unscaledTime * 55f) * _shakeAmplitude * _shake;
+            float shakeY = Mathf.Cos(Time.unscaledTime * 47f) * _shakeAmplitude * 0.5f * _shake;
+
+            Vector2 origin = new Vector2(_margin + shakeX, Screen.height - _margin + shakeY);
+            Matrix4x4 previous = GUI.matrix;
+            GUIUtility.ScaleAroundPivot(new Vector2(scale, scale), origin);
+            GuiKit.Alpha = alpha;
+
+            Color healthColor = HealthColor(health);
+            float heart = low ? Heartbeat(_heartPhase) : 0f;
+
+            // --- le losange : le chiffre de vie, lisible du coin de l'oeil
+            Rect badge = new Rect(origin.x + 8f, origin.y - 74f, 70f, 70f);
+            Matrix4x4 beforeBadge = GUI.matrix;
+            GUIUtility.RotateAroundPivot(45f, badge.center);
+            Rect diamond = new Rect(badge.center.x - 25f, badge.center.y - 25f, 50f, 50f);
+            if (low)
+            {
+                float glow = 8f + heart * 10f;
+                GuiKit.Fill(new Rect(diamond.x - glow, diamond.y - glow, diamond.width + glow * 2f, diamond.height + glow * 2f),
+                    new Color(_healthLowColor.r, _healthLowColor.g, _healthLowColor.b, 0.18f + heart * 0.3f));
+            }
+
+            GuiKit.Fill(new Rect(diamond.x + 3f, diamond.y + 3f, diamond.width, diamond.height), new Color(0f, 0f, 0f, 0.45f));
+            GuiKit.Outline(diamond, 3f, Color.Lerp(healthColor, Color.white, _flash * 0.7f));
+            GuiKit.Fill(diamond, new Color(0.03f, 0.035f, 0.05f, 0.9f));
+            GuiKit.Fill(new Rect(diamond.x, diamond.yMax - diamond.height * health, diamond.width, diamond.height * health),
+                new Color(healthColor.r, healthColor.g, healthColor.b, 0.22f));
+            GUI.matrix = beforeBadge;
+
+            int fontSize = Mathf.RoundToInt(27f + _flash * 6f + heart * 4f);
+            GuiKit.OutlinedLabel(new Rect(badge.x - 10f, badge.y + 14f, badge.width + 20f, 40f),
+                Mathf.CeilToInt(_playerHealth.Current).ToString(), GuiKit.Style(fontSize, FontStyle.Bold, TextAnchor.MiddleCenter),
+                Color.Lerp(healthColor, Color.white, 0.35f + _flash * 0.5f), new Color(0f, 0f, 0f, 0.95f), 2f);
+
+            // --- les barres, cisaillées
+            float x0 = origin.x + 90f;
+            float width = _barWidth;
+            Matrix4x4 beforeShear = GUI.matrix;
+            Shear(new Vector2(x0, origin.y - 40f));
+
+            // Titre et chiffres fins au-dessus de la barre.
+            GUIStyle tag = GuiKit.Style(11, FontStyle.Bold, TextAnchor.LowerLeft);
+            GuiKit.OutlinedLabel(new Rect(x0 + 2f, origin.y - 76f, 200f, 14f), low ? "BLESSE" : "VIE", tag,
+                low ? new Color(1f, 0.45f, 0.4f, 0.6f + heart * 0.4f) : new Color(1f, 1f, 1f, 0.6f),
+                new Color(0f, 0f, 0f, 0.8f), 1f);
+            GuiKit.OutlinedLabel(new Rect(x0 + width - 120f, origin.y - 76f, 120f, 14f),
+                Mathf.CeilToInt(_playerHealth.Current) + " / " + Mathf.RoundToInt(_playerHealth.MaxHealth),
+                GuiKit.Style(11, FontStyle.Bold, TextAnchor.LowerRight), new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+
+            Rect healthRect = new Rect(x0, origin.y - 60f, width, 20f);
+            SegmentedBar(healthRect, health, _trail, healthColor);
+
+            if (_heal > 0.01f)
+            {
+                GuiKit.Fill(new Rect(healthRect.x, healthRect.y, healthRect.width * health, healthRect.height),
+                    new Color(0.7f, 1f, 0.75f, _heal * 0.35f));
+            }
+
+            if (_flash > 0.01f) GuiKit.Fill(healthRect, new Color(1f, 1f, 1f, _flash * 0.35f));
+            if (low) GuiKit.Outline(healthRect, 2f, new Color(1f, 0.2f, 0.2f, 0.25f + heart * 0.6f));
+
+            DrawStamina(new Rect(x0, origin.y - 33f, width * 0.84f, 9f));
+            DrawStun(new Rect(x0, origin.y - 19f, width * 0.6f, 5f));
+
+            GUI.matrix = beforeShear;
+            GUI.matrix = previous;
             GuiKit.Alpha = 1f;
+        }
+
+        private void DrawStamina(Rect rect)
+        {
+            if (_playerStamina == null) return;
+
+            bool empty = _playerStamina.IsEmpty || _playerStamina.IsExhausted;
+            float value = _playerStamina.Normalized;
+            float blink = empty ? 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 9f) : 1f;
+            Color color = empty ? new Color(1f, 0.3f, 0.24f, blink) : Color.Lerp(_staminaColor, new Color(1f, 0.85f, 0.3f), value < 0.3f ? 0.6f : 0f);
+
+            GuiKit.Fill(new Rect(rect.x + 2f, rect.y + 3f, rect.width, rect.height), new Color(0f, 0f, 0f, 0.35f));
+            GuiKit.Outline(rect, 1.5f, _edgeColor);
+            GuiKit.Fill(rect, _slotColor);
+            Rect fill = new Rect(rect.x, rect.y, rect.width * value, rect.height);
+            GuiKit.Fill(fill, color);
+            GuiKit.Fill(new Rect(fill.x, fill.y, fill.width, fill.height * 0.4f), new Color(1f, 1f, 1f, 0.25f));
+
+            // Elle remonte : un reflet court le long de la barre.
+            if (_staminaGain > 0.01f && fill.width > 12f)
+            {
+                float t = Mathf.Repeat(Time.unscaledTime * 0.9f, 1f);
+                float gx = fill.x + fill.width * t;
+                GuiKit.Fill(new Rect(gx - 6f, fill.y, 12f, fill.height), new Color(1f, 1f, 1f, 0.45f * _staminaGain));
+            }
+
+            // Des repères tous les quarts : un coup lourd coûte environ un quart.
+            for (int i = 1; i < 4; i++)
+            {
+                GuiKit.Fill(new Rect(rect.x + rect.width * i / 4f - 1f, rect.y, 2f, rect.height), new Color(0f, 0f, 0f, 0.55f));
+            }
+
+            GUIStyle small = GuiKit.Style(10, FontStyle.Bold, TextAnchor.MiddleLeft);
+            GuiKit.OutlinedLabel(new Rect(rect.xMax + 8f, rect.y - 3f, 220f, 14f),
+                empty ? "A BOUT DE SOUFFLE" : "ENDURANCE", small,
+                empty ? new Color(1f, 0.45f, 0.38f, blink) : new Color(1f, 1f, 1f, 0.5f), new Color(0f, 0f, 0f, 0.8f), 1f);
+        }
+
+        private void DrawStun(Rect rect)
+        {
+            if (_stun == null || _stun.Normalized <= 0.005f) return;
+
+            float value = _stun.Normalized;
+            bool near = value > 0.75f;
+            float blink = near ? 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 12f) : 1f;
+
+            GuiKit.Fill(rect, new Color(0f, 0f, 0f, 0.7f));
+            GuiKit.Fill(new Rect(rect.x, rect.y, rect.width * value, rect.height),
+                Color.Lerp(new Color(1f, 0.82f, 0.3f), Color.white, value * value) * new Color(1f, 1f, 1f, blink));
+
+            if (near)
+            {
+                GuiKit.OutlinedLabel(new Rect(rect.xMax + 8f, rect.y - 5f, 160f, 14f), "SONNE", GuiKit.Style(10, FontStyle.Bold, TextAnchor.MiddleLeft),
+                    new Color(1f, 0.9f, 0.5f, blink), new Color(0f, 0f, 0f, 0.8f), 1f);
+            }
+        }
+
+        /// <summary>Une barre en segments : chaque case vaut une part égale, la traînée claire derrière.</summary>
+        private void SegmentedBar(Rect rect, float value, float trail, Color color)
+        {
+            int count = Mathf.Max(1, _segments);
+            const float gap = 3f;
+            float cell = (rect.width - gap * (count - 1)) / count;
+
+            GuiKit.Fill(new Rect(rect.x + 3f, rect.y + 4f, rect.width, rect.height), new Color(0f, 0f, 0f, 0.35f));
+
+            for (int i = 0; i < count; i++)
+            {
+                Rect slot = new Rect(rect.x + i * (cell + gap), rect.y, cell, rect.height);
+                GuiKit.Outline(slot, 1.5f, _edgeColor);
+                GuiKit.Fill(slot, _slotColor);
+
+                float fill = Mathf.Clamp01(value * count - i);
+                float ghost = Mathf.Clamp01(trail * count - i);
+
+                if (ghost > fill) GuiKit.Fill(new Rect(slot.x, slot.y, slot.width * ghost, slot.height), _trailColor);
+
+                if (fill > 0f)
+                {
+                    Rect f = new Rect(slot.x, slot.y, slot.width * fill, slot.height);
+                    GuiKit.Fill(f, color);
+                    GuiKit.Fill(new Rect(f.x, f.y, f.width, f.height * 0.36f), new Color(1f, 1f, 1f, 0.24f));
+                    GuiKit.Fill(new Rect(f.x, f.yMax - f.height * 0.22f, f.width, f.height * 0.22f), new Color(0f, 0f, 0f, 0.22f));
+                }
+            }
+        }
+
+        private Color HealthColor(float health)
+        {
+            if (health > 0.55f) return _healthColor;
+            if (health > 0.28f) return Color.Lerp(_healthMidColor, _healthColor, (health - 0.28f) / 0.27f * 0.3f);
+            return Color.Lerp(_healthLowColor, _healthMidColor, health / 0.28f * 0.25f);
+        }
+
+        /// <summary>Le double battement « poum-poum » d'un cœur, de 0 à 1.</summary>
+        private static float Heartbeat(float phase)
+        {
+            float a = Mathf.Exp(-Mathf.Pow((phase - 0.08f) * 18f, 2f));
+            float b = Mathf.Exp(-Mathf.Pow((phase - 0.26f) * 18f, 2f)) * 0.7f;
+            return Mathf.Clamp01(a + b);
+        }
+
+        /// <summary>Cisaille le GUI autour d'une ligne horizontale : x += pente × (y − pivot).</summary>
+        private void Shear(Vector2 pivot)
+        {
+            Matrix4x4 shear = Matrix4x4.identity;
+            shear.m01 = _slant;
+            shear.m03 = -_slant * pivot.y;
+            GUI.matrix = GUI.matrix * shear;
+        }
+
+        // ------------------------------------------------------------------ monde ouvert
+
+        /// <summary>L'argent (qui défile quand il change) et le niveau, en bas à droite.</summary>
+        private void DrawWallet()
+        {
+            if (_progress == null) return;
+
+            float right = Screen.width - _margin;
+            float bottom = Screen.height - _margin;
+
+            Matrix4x4 previous = GUI.matrix;
+            Shear(new Vector2(right, bottom - 30f));
+
+            Rect plate = new Rect(right - 210f, bottom - 72f, 210f, 34f);
+            GuiKit.Fill(new Rect(plate.x + 3f, plate.y + 4f, plate.width, plate.height), new Color(0f, 0f, 0f, 0.35f));
+            GuiKit.Fill(plate, new Color(0.03f, 0.035f, 0.05f, 0.82f));
+            GuiKit.Fill(new Rect(plate.x, plate.y, 4f, plate.height), _moneyColor);
+
+            GuiKit.OutlinedLabel(new Rect(plate.x + 12f, plate.y, plate.width - 22f, plate.height),
+                FormatMoney(Mathf.RoundToInt(_money)) + " €", GuiKit.Style(22, FontStyle.Bold, TextAnchor.MiddleRight),
+                _moneyColor, new Color(0f, 0f, 0f, 0.9f), 1.5f);
+
+            // Le gain (ou la perte) qui monte et s'efface au-dessus.
+            if (_moneyDeltaAge < 2.2f && _moneyDelta != 0)
+            {
+                float a = 1f - Mathf.Clamp01((_moneyDeltaAge - 1.4f) / 0.8f);
+                float rise = _moneyDeltaAge * 14f;
+                Color c = _moneyDelta > 0 ? _moneyColor : new Color(1f, 0.4f, 0.35f);
+                GuiKit.OutlinedLabel(new Rect(plate.x, plate.y - 26f - rise, plate.width - 10f, 22f),
+                    (_moneyDelta > 0 ? "+" : "−") + FormatMoney(Mathf.Abs(_moneyDelta)) + " €",
+                    GuiKit.Style(16, FontStyle.Bold, TextAnchor.MiddleRight), new Color(c.r, c.g, c.b, a), new Color(0f, 0f, 0f, 0.9f * a), 1.5f);
+            }
+
+            // Niveau et progression.
+            Rect level = new Rect(right - 210f, bottom - 20f, 210f, 8f);
+            GuiKit.Fill(level, _slotColor);
+            GuiKit.Fill(new Rect(level.x, level.y, level.width * Mathf.Clamp01(_progress.LevelProgress), level.height),
+                Color.Lerp(new Color(1f, 0.82f, 0.35f), Color.white, _levelFlash));
+            GuiKit.Outline(level, 1.5f, _edgeColor);
+
+            float pulse = _levelFlash > 0f ? 0.7f + 0.3f * Mathf.Sin(Time.unscaledTime * 10f) : 1f;
+            GuiKit.OutlinedLabel(new Rect(level.x, level.y - 16f, 120f, 14f),
+                (_levelFlash > 0.01f ? "NIVEAU SUPERIEUR !  " : "NIV. ") + _progress.Level,
+                GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft),
+                new Color(1f, 0.85f, 0.45f, pulse), new Color(0f, 0f, 0f, 0.85f), 1f);
+
+            GUI.matrix = previous;
+        }
+
+        private static string FormatMoney(int value)
+        {
+            string digits = Mathf.Abs(value).ToString();
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(digits.Length + 4);
+            for (int i = 0; i < digits.Length; i++)
+            {
+                if (i > 0 && (digits.Length - i) % 3 == 0) sb.Append(' ');
+                sb.Append(digits[i]);
+            }
+
+            return (value < 0 ? "−" : "") + sb;
+        }
+
+        /// <summary>Au volant : la vitesse en gros, le régime en arc de graduations, le rapport.</summary>
+        private void DrawSpeedometer()
+        {
+            PlayerDriving driving = PlayerDriving.Instance;
+            DrivableCar car = driving != null ? driving.Vehicle : null;
+            if (car == null) return;
+
+            float radius = 74f;
+            Vector2 center = new Vector2(Screen.width - _margin - radius - 10f, Screen.height - _margin - radius - 6f);
+
+            GuiKit.Disc(new Rect(center.x - radius * 1.5f, center.y - radius * 1.5f, radius * 3f, radius * 3f), new Color(0f, 0f, 0f, 0.55f));
+
+            // L'arc : 30 graduations sur 240 degrés, allumées selon le régime, rouges en haut.
+            const int ticks = 30;
+            float rpm = Mathf.Clamp01(car.Rpm);
+            Matrix4x4 previous = GUI.matrix;
+            for (int i = 0; i < ticks; i++)
+            {
+                float t = i / (float)(ticks - 1);
+                float angle = -120f + t * 240f;
+                bool lit = t <= rpm;
+                Color color = t > 0.82f ? new Color(1f, 0.25f, 0.2f) : new Color(1f, 1f, 1f);
+                color.a = lit ? 0.95f : 0.18f;
+
+                GUI.matrix = previous;
+                GUIUtility.RotateAroundPivot(angle, center);
+                float length = i % 5 == 0 ? 14f : 9f;
+                GuiKit.Fill(new Rect(center.x - 1.5f, center.y - radius, 3f, length), color);
+            }
+
+            GUI.matrix = previous;
+
+            int kmh = Mathf.RoundToInt(car.SpeedKmh);
+            GuiKit.OutlinedLabel(new Rect(center.x - 70f, center.y - 30f, 140f, 50f), kmh.ToString(),
+                GuiKit.Style(42, FontStyle.Bold, TextAnchor.MiddleCenter), Color.white, new Color(0f, 0f, 0f, 0.9f), 2f);
+            GuiKit.OutlinedLabel(new Rect(center.x - 70f, center.y + 14f, 140f, 18f), "KM/H",
+                GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter), new Color(1f, 1f, 1f, 0.6f), new Color(0f, 0f, 0f, 0.9f), 1f);
+
+            string gear = car.Gear == 0 ? "R" : Mathf.Abs(car.ForwardSpeed) < 0.3f ? "N" : car.Gear.ToString();
+            Rect gearBox = new Rect(center.x - 16f, center.y + 36f, 32f, 26f);
+            GuiKit.Fill(gearBox, new Color(0.03f, 0.035f, 0.05f, 0.9f));
+            GuiKit.Outline(gearBox, 1.5f, new Color(1f, 0.82f, 0.35f, 0.9f));
+            GuiKit.OutlinedLabel(gearBox, gear, GuiKit.Style(16, FontStyle.Bold, TextAnchor.MiddleCenter),
+                new Color(1f, 0.85f, 0.45f), new Color(0f, 0f, 0f, 0.9f), 1f);
+
+            GuiKit.OutlinedLabel(new Rect(center.x - 120f, center.y - radius - 34f, 240f, 16f), car.DisplayName.ToUpperInvariant(),
+                GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter), new Color(1f, 1f, 1f, 0.7f), new Color(0f, 0f, 0f, 0.9f), 1f);
+
+            string hint = driving.Hint;
+            GuiKit.OutlinedLabel(new Rect(Screen.width * 0.5f - 300f, Screen.height - 34f, 600f, 18f),
+                (string.IsNullOrEmpty(hint) ? "" : hint + "     ") + "ESPACE  frein a main     CLIC  klaxon",
+                GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter), new Color(1f, 1f, 1f, 0.65f), new Color(0f, 0f, 0f, 0.9f), 1f);
         }
 
         /// <summary>
@@ -357,100 +739,6 @@ namespace UberBagarre.UI
                     new Color(1f, 0.97f, 0.8f, Mathf.Clamp01(_relay.ParryFlash * 1.4f)),
                     new Color(0f, 0f, 0f, 0.9f), 2.5f);
             }
-        }
-
-        private void DrawPlayerPanel()
-        {
-            if (_playerHealth == null) return;
-
-            float shakeX = Mathf.Sin(Time.unscaledTime * 55f) * _shakeAmplitude * _shake;
-            float shakeY = Mathf.Cos(Time.unscaledTime * 47f) * _shakeAmplitude * 0.5f * _shake;
-
-            Rect panel = new Rect(
-                _margin + shakeX,
-                Screen.height - _margin - _panelHeight + shakeY,
-                _panelWidth, _panelHeight);
-
-            Matrix4x4 previousMatrix = GUI.matrix;
-            GUIUtility.RotateAroundPivot(_tiltAngle, panel.center);
-
-            GuiKit.Fill(new Rect(panel.x + 4f, panel.y + 5f, panel.width, panel.height), new Color(0f, 0f, 0f, 0.4f));
-            GuiKit.Outline(panel, 3f, _panelBorder);
-            GuiKit.Fill(panel, _panelColor);
-
-            // Bandeau superieur : rappelle la plaque de nom des jeux de combat.
-            GuiKit.Fill(new Rect(panel.x, panel.y, panel.width, 22f), new Color(1f, 1f, 1f, 0.07f));
-
-            GUIStyle nameStyle = GuiKit.Style(15, FontStyle.Bold, TextAnchor.MiddleLeft);
-            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 2f, 200f, 20f), "JOUEUR", nameStyle,
-                new Color(0.95f, 0.9f, 0.75f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
-
-            float normalized = _playerHealth.Normalized;
-            Color healthColor = normalized > 0.55f
-                ? _healthColor
-                : normalized > 0.28f ? _healthMidColor : _healthLowColor;
-
-            // Gros chiffre : on le percoit en vision peripherique, contrairement a une barre.
-            int fontSize = Mathf.RoundToInt(46f + _flash * 8f);
-            GUIStyle bigStyle = GuiKit.Style(fontSize, FontStyle.Bold, TextAnchor.MiddleLeft);
-
-            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 26f, 160f, 52f),
-                Mathf.CeilToInt(_playerHealth.Current).ToString(), bigStyle,
-                Color.Lerp(healthColor, Color.white, _flash * 0.8f), new Color(0f, 0f, 0f, 0.95f), 3f);
-
-            GUIStyle maxStyle = GuiKit.Style(16, FontStyle.Bold, TextAnchor.MiddleLeft);
-            GuiKit.OutlinedLabel(new Rect(panel.x + 14f, panel.y + 62f, 160f, 20f),
-                "/ " + Mathf.RoundToInt(_playerHealth.MaxHealth), maxStyle,
-                new Color(1f, 1f, 1f, 0.55f), new Color(0f, 0f, 0f, 0.8f), 1.5f);
-
-            float barX = panel.x + 118f;
-            float barWidth = panel.width - 132f;
-
-            GuiKit.Bar(new Rect(barX, panel.y + 34f, barWidth, 20f), normalized, _trail,
-                healthColor, _trailColor, _barBackground, _barBorder, 2.5f, _flash);
-
-            if (_playerStamina != null)
-            {
-                // Epuise = a bout de souffle, meme quand la barre remonte : tant que l'etat dure,
-                // rien ne part, et la barre doit le dire jusqu'au bout.
-                bool empty = _playerStamina.IsEmpty || _playerStamina.IsExhausted;
-
-                // Endurance vide = coups refuses, sprint coupe, glissade interdite. C'est la
-                // premiere cause de "je ne peux plus rien faire", et elle etait signalee par une
-                // barre grise de 11 pixels. Elle clignote maintenant et se nomme, parce qu'une
-                // regle qui bloque le joueur doit lui dire qu'elle le bloque.
-                float blink = empty ? 0.55f + 0.45f * Mathf.Sin(Time.unscaledTime * 9f) : 1f;
-
-                Color staminaColor = empty
-                    ? new Color(0.95f, 0.32f, 0.25f, blink)
-                    : _staminaColor;
-
-                GuiKit.Bar(new Rect(barX, panel.y + 62f, barWidth * 0.86f, 11f),
-                    _playerStamina.Normalized, _playerStamina.Normalized,
-                    staminaColor, _trailColor, _barBackground, _barBorder, 2f, 0f);
-
-                GUIStyle small = GuiKit.Style(11, FontStyle.Bold, TextAnchor.MiddleLeft);
-
-                GuiKit.OutlinedLabel(new Rect(barX, panel.y + 78f, 200f, 16f),
-                    empty ? "EPUISE — REPRENDS TON SOUFFLE" : "ENDURANCE  " + Mathf.CeilToInt(_playerStamina.Current),
-                    small,
-                    empty ? new Color(1f, 0.45f, 0.38f, blink) : new Color(1f, 1f, 1f, 0.5f),
-                    new Color(0f, 0f, 0f, 0.8f), 1f);
-            }
-
-            // Jauge d'etourdissement du joueur : fine, sous les autres. Savoir qu'on est sur le
-            // point d'etre sonne est ce qui permet de decider de rompre le combat.
-            if (_stun != null && _stun.Normalized > 0.005f)
-            {
-                Rect stunRect = new Rect(barX, panel.y + 96f, barWidth * 0.86f, 5f);
-                GuiKit.Fill(stunRect, new Color(0f, 0f, 0f, 0.7f));
-
-                float value = _stun.Normalized;
-                GuiKit.Fill(new Rect(stunRect.x, stunRect.y, stunRect.width * value, stunRect.height),
-                    Color.Lerp(new Color(1f, 0.82f, 0.3f), Color.white, value * value));
-            }
-
-            GUI.matrix = previousMatrix;
         }
 
         /// <summary>Réticule en quatre traits : il marque le centre sans masquer la cible.</summary>

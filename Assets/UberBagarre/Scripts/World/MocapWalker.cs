@@ -15,6 +15,9 @@ namespace UberBagarre.World
     /// peu à certains coins (on s'arrête pour regarder son téléphone, pour attendre quelqu'un),
     /// et presse le pas quand une bagarre éclate près de lui.
     ///
+    /// Une voiture qui fonce sur lui : il se jette sur le côté. Trop tard : il est renversé
+    /// (la chute capturée), reste un moment au sol et se relève.
+    ///
     /// Sans le paquet, il marche avec la locomotion calculée des combattants.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
@@ -55,6 +58,17 @@ namespace UberBagarre.World
         private AnimationClipPlayable _idle;
         private AnimationClipPlayable _walk;
         private bool _animated;
+        private AnimationClipPlayable _react;
+
+        private Collider _collider;
+        private float _dodgeUntil;
+        private Vector3 _dodge;
+        private int _downStage;          // 0 debout, 1 chute, 2 au sol, 3 relevage
+        private float _downTimer;
+        private Vector3 _slide;
+
+        /// <summary>Vrai tant qu'il est au sol (renversé) ou en train de se relever.</summary>
+        public bool IsDown { get { return _downStage != 0; } }
 
         /// <summary>Pose le trajet (constructeur de la ville).</summary>
         public void SetPath(Vector3[] path, int start, float speed)
@@ -67,6 +81,7 @@ namespace UberBagarre.World
         private void Awake()
         {
             _body = GetComponent<Rigidbody>();
+            _collider = GetComponent<Collider>();
             _body.isKinematic = true;
             _body.interpolation = RigidbodyInterpolation.Interpolate;
         }
@@ -113,7 +128,7 @@ namespace UberBagarre.World
             _graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
 
             AnimationPlayableOutput output = AnimationPlayableOutput.Create(_graph, "Corps", _animator);
-            _mixer = AnimationMixerPlayable.Create(_graph, 2);
+            _mixer = AnimationMixerPlayable.Create(_graph, 3);
             output.SetSourcePlayable(_mixer);
 
             _idle = AnimationClipPlayable.Create(_graph, idle);
@@ -140,6 +155,24 @@ namespace UberBagarre.World
 
             float dt = Time.fixedDeltaTime;
             Vector3 position = _body.position;
+
+            if (_downStage != 0)
+            {
+                // Renversé : il glisse sur l'élan du choc, puis ne bouge plus.
+                _slide = Vector3.MoveTowards(_slide, Vector3.zero, dt * 9f);
+                _currentSpeed = 0f;
+                if (_slide.sqrMagnitude > 1e-4f) _body.MovePosition(position + _slide * dt);
+                return;
+            }
+
+            if (Time.time < _dodgeUntil)
+            {
+                _currentSpeed = Mathf.MoveTowards(_currentSpeed, 3.4f, dt * 14f);
+                _body.MovePosition(position + _dodge * (_currentSpeed * dt));
+                Face(_dodge, 1f - Mathf.Exp(-10f * dt));
+                return;
+            }
+
             Vector3 target = _path[_next];
             Vector3 to = target - position;
             to.y = 0f;
@@ -179,6 +212,8 @@ namespace UberBagarre.World
             _blocked = false;
             _hurry = Time.time < _hurryUntil ? 1.55f : 1f;
 
+            WatchTraffic(position);
+
             var all = Combatant.All;
             for (int i = 0; i < all.Count; i++)
             {
@@ -196,6 +231,126 @@ namespace UberBagarre.World
         }
 
         private float _hurryUntil;
+
+        /// <summary>La voiture du joueur arrive droit dessus ? Un bond de côté.</summary>
+        private void WatchTraffic(Vector3 position)
+        {
+            DrivableCar car = DrivableCar.Driven;
+            if (car == null || car.Body == null || Time.time < _dodgeUntil) return;
+
+            Vector3 velocity = car.Body.linearVelocity;
+            velocity.y = 0f;
+            float speed = velocity.magnitude;
+            if (speed < 2.5f) return;
+
+            Vector3 relative = position - car.transform.position;
+            relative.y = 0f;
+            if (relative.sqrMagnitude > 40f * 40f) return;
+
+            float t = Mathf.Clamp(Vector3.Dot(relative, velocity) / (speed * speed), 0f, 1.6f);
+            if (t <= 0f) return;
+
+            Vector3 closest = relative - velocity * t;
+            if (closest.magnitude > 2.3f) return;
+
+            Vector3 away = closest.sqrMagnitude > 0.04f
+                ? closest.normalized
+                : Vector3.Cross(Vector3.up, velocity / speed) * (Random.value < 0.5f ? 1f : -1f);
+
+            _dodge = away;
+            _dodgeUntil = Time.time + Mathf.Lerp(0.5f, 0.85f, Random.value);
+            _hurryUntil = Time.time + 10f;
+            _pause = 0f;
+        }
+
+        /// <summary>
+        /// Renversé par une voiture : il tombe du côté où on l'a poussé, reste au sol un moment
+        /// et se relève. Il ne bloque plus rien pendant ce temps.
+        /// </summary>
+        public void KnockOver(Vector3 push)
+        {
+            if (_downStage != 0 || !isActiveAndEnabled) return;
+
+            push.y = 0f;
+            _slide = push.normalized * Mathf.Clamp(push.magnitude * 0.3f, 1.5f, 6f);
+            _hurryUntil = Time.time + 15f;
+            _pause = 0f;
+            _dodgeUntil = 0f;
+
+            if (!_animated || _library == null)
+            {
+                // Sans les chutes capturées : bousculé, il laisse passer la voiture et repart.
+                if (_collider != null) _collider.enabled = false;
+                _downStage = 2;
+                _downTimer = 1.2f;
+                return;
+            }
+
+            // Poussé par derrière : il tombe en avant ; de face : sur le dos.
+            bool fromBehind = Vector3.Dot(transform.forward, push) > 0f;
+            AnimationClip fall = fromBehind && _library.knockDownFront != null ? _library.knockDownFront : _library.knockDownBack;
+            if (fall == null) return;
+
+            if (_collider != null) _collider.enabled = false;
+            _downStage = 1;
+            _downTimer = fall.length;
+            PlayReaction(fall);
+        }
+
+        private void PlayReaction(AnimationClip clip)
+        {
+            if (!_graph.IsValid()) return;
+
+            if (_react.IsValid())
+            {
+                _graph.Disconnect(_mixer, 2);
+                _react.Destroy();
+            }
+
+            _react = AnimationClipPlayable.Create(_graph, clip);
+            _react.SetApplyFootIK(false);
+            _graph.Connect(_react, 0, _mixer, 2);
+            _react.SetTime(0);
+        }
+
+        private void UpdateDown(float dt)
+        {
+            if (_downStage == 0) return;
+
+            _downTimer -= dt;
+
+            if (_downStage == 1 && _downTimer <= 0f)
+            {
+                // Au sol : la dernière image de la chute, figée.
+                if (_react.IsValid()) _react.Pause();
+                _downStage = 2;
+                _downTimer = Random.Range(2.2f, 4f);
+            }
+            else if (_downStage == 2 && _downTimer <= 0f)
+            {
+                AnimationClip up = _library != null ? _library.gettingUp : null;
+                if (up == null)
+                {
+                    StandUp();
+                    return;
+                }
+
+                _downStage = 3;
+                _downTimer = up.length;
+                PlayReaction(up);
+            }
+            else if (_downStage == 3 && _downTimer <= 0f)
+            {
+                StandUp();
+            }
+        }
+
+        private void StandUp()
+        {
+            _downStage = 0;
+            if (_collider != null) _collider.enabled = true;
+            _pause = Random.Range(0.5f, 1.5f);
+        }
 
         private void OnEnable()
         {
@@ -229,11 +384,14 @@ namespace UberBagarre.World
         private void Update()
         {
             float walk = Mathf.Clamp01(_currentSpeed / 0.35f);
+            UpdateDown(Time.deltaTime);
 
             if (_animated && _mixer.IsValid())
             {
-                _mixer.SetInputWeight(0, 1f - walk);
-                _mixer.SetInputWeight(1, walk);
+                float down = _downStage != 0 ? 1f : 0f;
+                _mixer.SetInputWeight(0, (1f - walk) * (1f - down));
+                _mixer.SetInputWeight(1, walk * (1f - down));
+                _mixer.SetInputWeight(2, down);
 
                 float clipSpeed = _library != null ? Mathf.Max(0.3f, _library.relaxedWalkSpeed) : 1.3f;
                 _walk.SetSpeed(Mathf.Clamp(_currentSpeed / clipSpeed, 0.5f, 1.8f));

@@ -9,7 +9,8 @@ namespace UberBagarre.World
     /// autre voiture. Le décor fixe, elle le connaît : sa route ne passe pas dedans.
     ///
     /// Deux voitures qui s'attendent à un carrefour ne s'attendront pas pour toujours : au bout
-    /// de quelques secondes arrêtée, la plus patiente passe.
+    /// de quelques secondes arrêtée, la plus patiente passe. Sauf dans une file au feu rouge :
+    /// là, on attend son tour (<see cref="TrafficLight"/>).
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class TrafficCar : MonoBehaviour
@@ -40,6 +41,11 @@ namespace UberBagarre.World
         private float _patientUntil;
         private float _honkAt;
         private readonly RaycastHit[] _hits = new RaycastHit[12];
+        private bool _atLight;
+        private TrafficCar _blockedBy;
+
+        /// <summary>Arrêtée au feu, ou dans la file qui l'attend : on ne la double pas.</summary>
+        public bool Queued { get; private set; }
 
         public void SetPath(Vector3[] path, int start, float cruise)
         {
@@ -104,6 +110,16 @@ namespace UberBagarre.World
                 wanted = Mathf.Min(wanted, Mathf.Sqrt(2f * _braking * room));
             }
 
+            float stopLine = TrafficLight.StopDistance(position, transform.forward, _halfLength, _speed, _braking);
+            _atLight = stopLine < float.MaxValue && stopLine < 12f;
+            if (stopLine < float.MaxValue)
+            {
+                float room = Mathf.Max(0f, stopLine - 0.6f);
+                wanted = Mathf.Min(wanted, Mathf.Sqrt(2f * _braking * room));
+            }
+
+            Queued = _atLight || (_blockedBy != null && _blockedBy.Queued && _speed < 1f);
+
             float rate = wanted < _speed ? _braking : _acceleration;
             _speed = Mathf.MoveTowards(_speed, wanted, rate * dt);
 
@@ -130,6 +146,7 @@ namespace UberBagarre.World
 
             float nearest = float.MaxValue;
             bool player = false;
+            TrafficCar nearestCar = null;
 
             for (int i = 0; i < count; i++)
             {
@@ -138,21 +155,29 @@ namespace UberBagarre.World
 
                 bool person = c is CharacterController || c.GetComponentInParent<MocapWalker>() != null ||
                               c.GetComponentInParent<Combatant>() != null;
-                bool car = c.GetComponentInParent<TrafficCar>() != null;
-                if (!person && !car) continue;
+                TrafficCar other = c.GetComponentInParent<TrafficCar>();
+                bool car = other != null;
+                DrivableCar drivable = c.GetComponentInParent<DrivableCar>();
+                if (!person && !car && drivable == null) continue;
 
-                // Une autre voiture, et on attend depuis trop longtemps : on passe.
-                if (car && Time.time < _patientUntil) continue;
+                // Une autre voiture, et on attend depuis trop longtemps : on passe. Pas dans une
+                // file au feu (on rentrerait dans la voiture de devant), et jamais à travers la
+                // voiture du joueur (garée en travers : on klaxonne).
+                if (car && !other.Queued && Time.time < _patientUntil) continue;
 
                 if (_hits[i].distance < nearest)
                 {
                     nearest = _hits[i].distance;
-                    player = c is CharacterController && c.GetComponent<Combatant>() != null &&
-                             c.GetComponent<Combatant>().Faction == Faction.Player;
+                    nearestCar = other;
+                    player = (c is CharacterController && c.GetComponent<Combatant>() != null &&
+                              c.GetComponent<Combatant>().Faction == Faction.Player) ||
+                             (drivable != null && drivable == DrivableCar.Driven);
                 }
             }
 
-            if (nearest < float.MaxValue && _stoppedFor > 4f && !player) _patientUntil = Time.time + 2.5f;
+            _blockedBy = nearestCar;
+            bool queue = nearestCar != null && nearestCar.Queued;
+            if (nearest < float.MaxValue && _stoppedFor > 4f && !player && !queue) _patientUntil = Time.time + 2.5f;
 
             if (player && _stoppedFor > 2.5f && Time.time >= _honkAt && _horn != null)
             {

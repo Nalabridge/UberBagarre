@@ -123,6 +123,9 @@ namespace UberBagarre.EditorTools
             CityBuilder.Result city = CityBuilder.Build(night);
             city.Root.SetParent(world.transform, true);
 
+            // La vieille caisse de l'allée : ici, on la conduit.
+            BuildPlayerCar(house, city, world.transform);
+
             ClubInteriorBuilder.Result club = ClubInteriorBuilder.Build(night, materials, ClubInteriorOrigin);
 
             // Le cycle jour / nuit éteint TOUTES les enseignes de la ville, pas seulement celles
@@ -175,7 +178,8 @@ namespace UberBagarre.EditorTools
                 SerializedWiring.SetObject(props, "_phone", phone);
             }
 
-            WireHud(player);
+            WireHud(player, progress);
+            WireDriving(player, interaction, phone, gameCamera, observerCamera);
 
             // --- la salle du Vertigo, derrière sa porte
             BuildClubDoors(player, street, club, fader);
@@ -219,6 +223,7 @@ namespace UberBagarre.EditorTools
             SandboxSceneBuilder.BuildGameMenu(player, graphics, gameCamera, observerCamera);
 
             club.Root.gameObject.SetActive(false);
+            if (city.Cars != null) city.Cars.Dispose();
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -254,6 +259,62 @@ namespace UberBagarre.EditorTools
             {
                 if (all[i] != null && all[i].name.StartsWith("Limite")) Object.DestroyImmediate(all[i].gameObject);
             }
+        }
+
+        /// <summary>
+        /// La voiture de la planque devient conduisible : le modèle figé de l'allée est remplacé,
+        /// à la même place, par la même caisse rouillée — avec des roues qui tournent.
+        /// </summary>
+        private static void BuildPlayerCar(HouseBuilder.Result house, CityBuilder.Result city, Transform parent)
+        {
+            if (house.Car == null || city.Cars == null) return;
+
+            Transform yard = house.Car.transform.parent;
+            Transform still = yard != null ? yard.Find("Voiture rouillee") : null;
+            if (still == null) return;
+
+            // Le modèle de l'allée est construit le long de +X ; la voiture conduisible, le long de +Z.
+            Vector3 position = still.position;
+            float yaw = still.eulerAngles.y + 90f;
+            still.gameObject.SetActive(false);
+            house.Car.gameObject.SetActive(false);
+
+            city.Cars.Spawn(parent, CityBuilder.CarFactory.Rusty, position, yaw, "Ta caisse");
+        }
+
+        /// <summary>Au volant : ce qui s'arrête (marcher, viser, frapper) et les deux caméras.</summary>
+        private static void WireDriving(GameObject player, InteractionSystem interaction, PhoneDevice phone, Camera gameCamera,
+            Camera chaseCamera)
+        {
+            PlayerDriving driving = player.AddComponent<PlayerDriving>();
+            Combatant combatant = player.GetComponent<Combatant>();
+
+            SerializedWiring.SetObject(driving, "_input", player.GetComponent<PlayerInputReader>());
+            SerializedWiring.SetObject(driving, "_controller", player.GetComponent<CharacterController>());
+            SerializedWiring.SetObject(driving, "_combatant", combatant);
+            SerializedWiring.SetObject(driving, "_knockdown", player.GetComponentInChildren<KnockdownSystem>(true));
+            SerializedWiring.SetObject(driving, "_visuals", player.transform);
+            SerializedWiring.SetObject(driving, "_interaction", interaction);
+            SerializedWiring.SetObject(driving, "_phone", phone);
+            SerializedWiring.SetObject(driving, "_gameCamera", gameCamera);
+            SerializedWiring.SetObject(driving, "_chaseCamera", chaseCamera);
+
+            List<Component> paused = new List<Component>();
+            AddIfAny(paused, player.GetComponent<PlayerMotor>());
+            AddIfAny(paused, player.GetComponent<PlayerLook>());
+            AddIfAny(paused, player.GetComponent<PlayerCombat>());
+            AddIfAny(paused, player.GetComponent<DodgeSystem>());
+            AddIfAny(paused, player.GetComponent<CharacterPusher>());
+            AddIfAny(paused, player.GetComponent<PropHandler>());
+            AddIfAny(paused, player.GetComponent<ObserverCamera>());
+            AddIfAny(paused, player.GetComponentInChildren<HeadBob>(true));
+            SandboxSceneBuilder.SetComponentArray(driving, "_pauseWhileDriving", paused.ToArray());
+            EditorUtility.SetDirty(driving);
+        }
+
+        private static void AddIfAny(List<Component> list, Component component)
+        {
+            if (component != null) list.Add(component);
         }
 
         private static void DisableInteraction(Interactable interactable)
@@ -299,7 +360,7 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ HUD, triche
 
-        private static void WireHud(GameObject player)
+        private static void WireHud(GameObject player, PlayerProgress progress)
         {
             Combatant combatant = player.GetComponent<Combatant>();
 
@@ -313,6 +374,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(hud, "_combat", player.GetComponent<PlayerCombat>());
             SerializedWiring.SetObject(hud, "_stun", player.GetComponent<StunMeter>());
             SerializedWiring.SetObject(hud, "_executor", player.GetComponent<AttackExecutor>());
+            SerializedWiring.SetObject(hud, "_progress", progress);
         }
 
         private static void BuildTestTools(GameObject player, GraphicsDirector graphics, PlayerProgress progress,
@@ -432,7 +494,7 @@ namespace UberBagarre.EditorTools
             for (int l = 0; l < city.WalkLoops.Count; l++)
             {
                 Vector3[] loop = city.WalkLoops[l];
-                int count = l == city.WalkLoops.Count - 1 ? 3 : 2;
+                int count = l == city.WalkLoops.Count - 1 ? 4 : 3;
 
                 for (int k = 0; k < count; k++, n++)
                 {
@@ -486,7 +548,8 @@ namespace UberBagarre.EditorTools
             GameObject root = new GameObject("=== Circulation ===");
             GameObject template = CityBuilder.CarTemplate(root.transform, night, false, "VoitureCirculation");
 
-            int[] perLoop = { 2, 2, 3 };
+            // Avec les feux, des files se forment aux carrefours : un peu plus de monde sur les boucles.
+            int[] perLoop = { 3, 3, 4 };
             int n = 0;
 
             for (int l = 0; l < city.DriveLoops.Count; l++)

@@ -149,6 +149,9 @@ namespace UberBagarre.View
         /// <summary>Intensité du déplacement, 0 à l'arrêt, 1 en course. Utile aux autres systèmes.</summary>
         public float MoveWeight { get { return _moveWeight; } }
 
+        /// <summary>Phase du cycle de pas, de 0 à 1 : 0 = pose du pied droit, 0,5 = du gauche.</summary>
+        public float Phase { get { return _phase; } }
+
         /// <summary>
         /// Rotation du buste demandée par le combat, en degrés. Additive par-dessus la marche.
         ///
