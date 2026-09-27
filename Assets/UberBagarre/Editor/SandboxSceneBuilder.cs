@@ -141,26 +141,20 @@ namespace UberBagarre.EditorTools
         /// C'est demandé et pas imposé : le changement déclenche un réimport complet du
         /// projet, ce qui prend du temps et ne doit jamais être une surprise.
         /// </summary>
+        /// <summary>
+        /// Le jeu est pensé en espace colorimétrique LINÉAIRE : en gamma, l'addition de plusieurs
+        /// lampes est fausse (zones éclairées laiteuses, dégradés en bandes autour des lampadaires).
+        /// La réponse étant toujours la même, on ne la demande plus : on passe en linéaire, une
+        /// fois (le réglage vit dans ProjectSettings, hors du dépôt, d'où l'oubli à chaque
+        /// nouveau dossier de projet).
+        /// </summary>
         internal static void OfferLinearColorSpace()
         {
             if (PlayerSettings.colorSpace == ColorSpace.Linear) return;
 
-            bool accept = EditorUtility.DisplayDialog(
-                "Passer en espace colorimetrique lineaire ?",
-                "Le projet est actuellement en GAMMA.\n\n" +
-                "En gamma, l'addition de plusieurs lampes est fausse : les zones eclairees " +
-                "virent au blanc laiteux et les degrades autour des lampadaires cassent en " +
-                "bandes. Avec une trentaine de sources dans la rue, ca se voit tout de suite.\n\n" +
-                "Le passage en LINEAIRE declenche un reimport complet du projet (quelques " +
-                "minutes selon la machine). Le post-traitement fonctionne dans les deux cas, " +
-                "mais il ne peut pas rattraper un eclairage calcule faux en amont.",
-                "Passer en lineaire", "Laisser en gamma");
-
-            if (!accept) return;
-
             PlayerSettings.colorSpace = ColorSpace.Linear;
-            Debug.Log("[UberBagarre] Espace colorimetrique passe en LINEAIRE. " +
-                      "Laisse Unity terminer le reimport avant de relancer la scene.");
+            Debug.Log("[UberBagarre] Espace colorimetrique passe en LINEAIRE (le jeu est regle pour). " +
+                      "Laisse Unity terminer le reimport avant de lancer la scene.");
         }
 
         // ------------------------------------------------------------------ commande
