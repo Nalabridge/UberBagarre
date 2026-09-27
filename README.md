@@ -857,7 +857,7 @@ tourne, au lieu de glisser sur la peau.
 
 ### Espace colorimétrique
 
-À la fin de la génération, l'outil propose de passer le projet en **linéaire** s'il est en gamma.
+À la fin de la génération, l'outil passe le projet en **linéaire** s'il est en gamma (sans le demander : le jeu est réglé pour).
 Ce n'est pas cosmétique : en gamma, Unity additionne les contributions des lampes sur des valeurs
 déjà encodées pour l'écran. Deux lampes d'intensité 1 donnent beaucoup plus que 2, les zones
 éclairées virent au blanc laiteux et les dégradés autour des lampadaires cassent en bandes. Avec une
