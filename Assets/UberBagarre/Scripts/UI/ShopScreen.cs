@@ -124,7 +124,7 @@ namespace UberBagarre.UI
 
             if (!Button(row, item.name + "  —  " + price + state, item.detail, enabled, u)) return;
 
-            if (item.price > 0 && !_progress.Spend(item.price))
+            if (item.price > 0 && !_progress.Spend(item.price, _shop.DisplayName + " — " + item.name))
             {
                 Toast("Pas assez d'argent.", true);
                 return;
@@ -132,7 +132,7 @@ namespace UberBagarre.UI
 
             if (!Apply(item))
             {
-                if (item.price > 0) _progress.AddMoney(item.price);
+                if (item.price > 0) _progress.AddMoney(item.price, "Remboursement " + _shop.DisplayName);
                 return;
             }
 
@@ -185,13 +185,13 @@ namespace UberBagarre.UI
 
                 case ShopEffect.Parcel:
                     int gift = Mathf.RoundToInt(Random.Range(item.amount * 0.3f, item.amount));
-                    _progress.AddMoney(gift);
+                    _progress.AddMoney(gift, "Colis — La Poste");
                     PlayCash();
                     Toast("Une enveloppe : " + gift + " € et un mot d'un fan.", false);
                     return true;
 
                 case ShopEffect.Sell:
-                    _progress.AddMoney(Mathf.RoundToInt(item.amount));
+                    _progress.AddMoney(Mathf.RoundToInt(item.amount), _shop.DisplayName + " — " + item.name);
                     Toast("Vendu : +" + Mathf.RoundToInt(item.amount) + " €.", false);
                     return true;
 
@@ -240,7 +240,7 @@ namespace UberBagarre.UI
                         {
                             Toast("Il faut être niveau " + item.Level + ".", true);
                         }
-                        else if (_progress.Spend(item.Price))
+                        else if (_progress.Spend(item.Price, _shop.DisplayName + " — " + item.Name))
                         {
                             _progress.Unlock(key);
                             PlayCash();
@@ -335,7 +335,7 @@ namespace UberBagarre.UI
                 {
                     if (!owned)
                     {
-                        if (!_progress.Spend(p.price))
+                        if (!_progress.Spend(p.price, "Hyland Immobilier — " + p.name))
                         {
                             Toast("Pas assez d'argent.", true);
                             y += 78f * u;
@@ -433,7 +433,7 @@ namespace UberBagarre.UI
 
         private void Spin(int stake)
         {
-            if (!_progress.Spend(stake))
+            if (!_progress.Spend(stake, "Casino Royal — mise"))
             {
                 Toast("Pas assez d'argent.", true);
                 return;
@@ -461,7 +461,7 @@ namespace UberBagarre.UI
 
             if (win > 0)
             {
-                _progress.AddMoney(win);
+                _progress.AddMoney(win, "Casino Royal — gain");
                 PlayCash();
                 Toast("Gagné : " + win + " € !", false);
             }
@@ -475,7 +475,7 @@ namespace UberBagarre.UI
 
         private void Roulette(int bet, int stake)
         {
-            if (!_progress.Spend(stake))
+            if (!_progress.Spend(stake, "Casino Royal — mise"))
             {
                 Toast("Pas assez d'argent.", true);
                 return;
@@ -490,7 +490,7 @@ namespace UberBagarre.UI
 
             if (win > 0)
             {
-                _progress.AddMoney(win);
+                _progress.AddMoney(win, "Casino Royal — gain");
                 PlayCash();
                 Toast("Le " + _rouletteNumber + " ! Gagné : " + win + " €.", false);
             }

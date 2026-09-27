@@ -853,36 +853,63 @@ namespace UberBagarre.Phone
         {
             Rect area = Header(body, "Banque", PhoneOS.AppColor(PhoneOS.App.Banque));
             PlayerProgress progress = _os.Progress;
-            int wallet = progress != null ? progress.Money : 10;
+            int balance = progress != null ? progress.Money : 0;
+            int debt = progress != null ? progress.Debt : 0;
 
-            Rect account = new Rect(area.x, area.y, area.width, U(0.11f));
+            // Le solde, en grand.
+            Rect account = new Rect(area.x, area.y, area.width, U(0.1f));
             GuiKit.Fill(account, new Color(1f, 1f, 1f, 0.06f));
-            Label(new Rect(account.x + U(0.02f), account.y + U(0.01f), account.width, U(0.03f)), "COMPTE COURANT",
+            Label(new Rect(account.x + U(0.02f), account.y + U(0.008f), account.width, U(0.03f)), "COMPTE COURANT",
                 Font(0.017f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
-            Label(new Rect(account.x + U(0.02f), account.y + U(0.045f), account.width - U(0.04f), U(0.05f)), "-1 240,18 €",
-                Font(0.034f), FontStyle.Bold, TextAnchor.MiddleLeft, _bad);
+            Label(new Rect(account.x + U(0.02f), account.y + U(0.04f), account.width - U(0.04f), U(0.05f)), balance.ToString("N0") + " €",
+                Font(0.036f), FontStyle.Bold, TextAnchor.MiddleLeft, balance > 0 ? _good : _bad);
 
-            Rect cash = new Rect(area.x, account.yMax + U(0.015f), area.width, U(0.11f));
-            GuiKit.Fill(cash, new Color(1f, 1f, 1f, 0.06f));
-            Label(new Rect(cash.x + U(0.02f), cash.y + U(0.01f), cash.width, U(0.03f)), "PORTEFEUILLE UB SERVICES",
-                Font(0.017f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
-            Label(new Rect(cash.x + U(0.02f), cash.y + U(0.045f), cash.width - U(0.04f), U(0.05f)), wallet + ",00 €",
-                Font(0.034f), FontStyle.Bold, TextAnchor.MiddleLeft, _good);
+            // Les dettes : Nestor, le loyer.
+            float y = account.yMax + U(0.012f);
+            Row(new Rect(area.x, y, area.width, U(0.034f)), "Dette Nestor", debt > 0 ? "-" + debt.ToString("N0") + " €" : "réglée", debt > 0 ? _bad : _good);
+            y += U(0.036f);
+            if (progress != null)
+            {
+                int paid = progress.RentPaidUntil;
+                string rent = paid >= progress.Day ? "payé → jour " + paid : "à payer";
+                Row(new Rect(area.x, y, area.width, U(0.034f)), "Loyer motel", rent, paid >= progress.Day ? _good : _warn);
+                y += U(0.036f);
+            }
 
-            float y = cash.yMax + U(0.03f);
-            Label(new Rect(area.x, y, area.width, U(0.03f)), "DERNIERES OPERATIONS", Font(0.017f), FontStyle.Bold,
-                TextAnchor.MiddleLeft, _dim);
-            y += U(0.04f);
+            // Les actions : flèches pour choisir, Entrée pour valider.
+            y += U(0.008f);
+            for (int i = 0; i < PhoneOS.BankActions; i++)
+            {
+                Rect row = new Rect(area.x, y, area.width, U(0.036f));
+                bool on = i == _os.BankSelection;
+                GuiKit.Fill(row, on ? new Color(0.18f, 0.36f, 0.78f, 0.55f) : new Color(1f, 1f, 1f, 0.05f));
+                Label(new Rect(row.x + U(0.012f), row.y, row.width - U(0.02f), row.height), _os.BankAction(i),
+                    Font(0.019f), on ? FontStyle.Bold : FontStyle.Normal, TextAnchor.MiddleLeft, on ? Color.white : _dim);
+                y += U(0.04f);
+            }
 
-            int contracts = progress != null ? progress.Contracts : 0;
-            if (contracts > 0) Row(new Rect(area.x, y, area.width, U(0.04f)), "VIR. UB SERVICES x" + contracts, "reçu", _good);
-            if (contracts > 0) y += U(0.045f);
+            // Le relevé : les dernières opérations, la plus récente en haut.
+            y += U(0.01f);
+            Label(new Rect(area.x, y, area.width, U(0.03f)), "DERNIÈRES OPÉRATIONS", Font(0.016f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
+            y += U(0.032f);
 
-            Row(new Rect(area.x, y, area.width, U(0.04f)), "PRLV LOYER", "rejeté", _bad);
-            y += U(0.045f);
-            Row(new Rect(area.x, y, area.width, U(0.04f)), "FRAIS DE REJET", "-20,00", _bad);
-            y += U(0.045f);
-            Row(new Rect(area.x, y, area.width, U(0.04f)), "VIR. MAMAN", "+20,00", _good);
+            if (progress == null) return;
+            IList<PlayerProgress.Transaction> ledger = progress.Ledger;
+            for (int i = ledger.Count - 1; i >= 0 && y + U(0.03f) < area.yMax; i--)
+            {
+                PlayerProgress.Transaction t = ledger[i];
+                string amount = (t.amount > 0 ? "+" : "") + t.amount.ToString("N0");
+                Label(new Rect(area.x, y, area.width * 0.72f, U(0.03f)), "J" + t.day + "  " + t.label, Font(0.016f), FontStyle.Normal,
+                    TextAnchor.MiddleLeft, _dim);
+                Label(new Rect(area.x + area.width * 0.6f, y, area.width * 0.4f, U(0.03f)), amount, Font(0.019f), FontStyle.Bold,
+                    TextAnchor.MiddleRight, t.amount > 0 ? _good : _bad);
+                y += U(0.031f);
+            }
+
+            if (ledger.Count == 0)
+            {
+                Label(new Rect(area.x, y, area.width, U(0.03f)), "Aucune opération.", Font(0.016f), FontStyle.Italic, TextAnchor.MiddleLeft, _dim);
+            }
         }
 
         private void DrawMap(Rect body)

@@ -80,7 +80,7 @@ namespace UberBagarre.World
         {
             Entry entry = Find(key);
             if (entry == null || key == _personalKey || _progress == null) return false;
-            if (!_progress.Spend(entry.price)) return false;
+            if (!_progress.Spend(entry.price, "Hyland Auto — " + entry.label)) return false;
 
             _progress.SetCar(key);
             if (_personalKey != key) Swap(key);

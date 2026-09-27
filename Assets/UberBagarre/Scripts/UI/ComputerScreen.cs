@@ -676,7 +676,7 @@ namespace UberBagarre.UI
 
         private bool Take(int amount)
         {
-            if (_progress == null || !_progress.Spend(amount))
+            if (_progress == null || !_progress.Spend(amount, "Mise casinoroyal.bet"))
             {
                 Toast("Pas assez d'argent pour miser " + amount + " €.", true);
                 return false;
@@ -691,7 +691,7 @@ namespace UberBagarre.UI
 
             if (payout > 0)
             {
-                _progress.AddMoney(payout);
+                _progress.AddMoney(payout, "Gain casinoroyal.bet");
                 PlayCash();
             }
 
@@ -1313,7 +1313,7 @@ namespace UberBagarre.UI
                 {
                     if (!owned)
                     {
-                        if (_progress.Spend(p.price))
+                        if (_progress.Spend(p.price, "Achat " + p.name))
                         {
                             _progress.Acquire(p.name);
                             PlayCash();

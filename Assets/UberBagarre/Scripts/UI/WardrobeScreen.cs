@@ -191,7 +191,7 @@ namespace UberBagarre.UI
                         {
                             Toast("Il faut être niveau " + item.Level + ".", true);
                         }
-                        else if (_progress.Spend(item.Price))
+                        else if (_progress.Spend(item.Price, "Vêtements — " + item.Name))
                         {
                             _progress.Unlock(key);
                             PlayCash();

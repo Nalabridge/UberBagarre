@@ -68,6 +68,15 @@ namespace UberBagarre.Story
             public int shoes;
         }
 
+        /// <summary>Une ligne du relevé de compte (l'appli Banque).</summary>
+        [Serializable]
+        public class Transaction
+        {
+            public string label;
+            public int amount;
+            public int day;
+        }
+
         /// <summary>Tout ce qui s'écrit sur le disque.</summary>
         [Serializable]
         private class SaveData
@@ -90,6 +99,16 @@ namespace UberBagarre.Story
             public List<string> unlocked = new List<string>();
             public string home = "Motel";
             public string car = "Shitbox";
+            public List<Transaction> ledger = new List<Transaction>();
+
+            /// <summary>Ce qu'on doit à Nestor, l'usurier (l'histoire).</summary>
+            public int debt = 12000;
+
+            /// <summary>Loyer du motel payé jusqu'à ce jour (inclus).</summary>
+            public int rentPaidUntil;
+
+            /// <summary>Envoyé à maman, depuis le début.</summary>
+            public int sentHome;
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -263,6 +282,7 @@ namespace UberBagarre.Story
         public void CompleteContract(int reward, int experience, int stars, string review, string client)
         {
             _data.money += Mathf.Max(0, reward);
+            Record("Vir. UB Services — " + client, Mathf.Max(0, reward));
             _data.contracts++;
             _data.fightsWon++;
 
@@ -295,15 +315,92 @@ namespace UberBagarre.Story
         /// <summary>De l'argent sans course (la triche, le casino, les factures).</summary>
         public void AddMoney(int amount)
         {
+            AddMoney(amount, amount >= 0 ? "Versement" : "Prélèvement");
+        }
+
+        /// <summary>Un mouvement d'argent, inscrit au relevé de compte.</summary>
+        public void AddMoney(int amount, string label)
+        {
+            int before = _data.money;
             _data.money = Mathf.Max(0, _data.money + amount);
+            Record(label, _data.money - before);
             RaiseChanged();
         }
 
         /// <summary>Payer : faux (et rien ne bouge) si on n'a pas assez.</summary>
         public bool Spend(int amount)
         {
+            return Spend(amount, "Paiement");
+        }
+
+        public bool Spend(int amount, string label)
+        {
             if (amount < 0 || _data.money < amount) return false;
             _data.money -= amount;
+            Record(label, -amount);
+            RaiseChanged();
+            return true;
+        }
+
+        private void Record(string label, int amount)
+        {
+            if (amount == 0) return;
+            if (_data.ledger == null) _data.ledger = new List<Transaction>();
+            _data.ledger.Add(new Transaction { label = string.IsNullOrEmpty(label) ? "Opération" : label, amount = amount, day = _data.day });
+            if (_data.ledger.Count > 60) _data.ledger.RemoveAt(0);
+        }
+
+        /// <summary>Le relevé : les dernières opérations, la plus récente à la fin.</summary>
+        public IList<Transaction> Ledger
+        {
+            get
+            {
+                if (_data.ledger == null) _data.ledger = new List<Transaction>();
+                return _data.ledger;
+            }
+        }
+
+        /// <summary>Ce qu'il reste à rembourser à Nestor.</summary>
+        public int Debt { get { return Mathf.Max(0, _data.debt); } }
+
+        public event Action<int> DebtPaid;
+
+        /// <summary>Rembourse Nestor (virement). Rend ce qui a été versé.</summary>
+        public int PayDebt(int amount)
+        {
+            amount = Mathf.Min(amount, Mathf.Min(Debt, _data.money));
+            if (amount <= 0) return 0;
+            Spend(amount, "Virement Nestor");
+            _data.debt -= amount;
+            RaiseChanged();
+            if (DebtPaid != null) DebtPaid(amount);
+            return amount;
+        }
+
+        /// <summary>Change la dette (l'histoire : intérêts, pénalités, remise).</summary>
+        public void SetDebt(int value)
+        {
+            _data.debt = Mathf.Max(0, value);
+            RaiseChanged();
+        }
+
+        public int RentPaidUntil { get { return _data.rentPaidUntil; } }
+
+        /// <summary>Paie une semaine de loyer d'avance (jusqu'au jour indiqué).</summary>
+        public bool PayRent(int amount, int untilDay)
+        {
+            if (!Spend(amount, "Loyer motel Hyland")) return false;
+            _data.rentPaidUntil = Mathf.Max(_data.rentPaidUntil, untilDay);
+            RaiseChanged();
+            return true;
+        }
+
+        public int SentHome { get { return _data.sentHome; } }
+
+        public bool SendHome(int amount)
+        {
+            if (!Spend(amount, "Virement maman")) return false;
+            _data.sentHome += amount;
             RaiseChanged();
             return true;
         }
@@ -411,7 +508,7 @@ namespace UberBagarre.Story
 
         public bool BuyTraining()
         {
-            if (!Spend(TrainingPrice)) return false;
+            if (!Spend(TrainingPrice, "Coaching boxe")) return false;
             _data.trainingsBought++;
             _data.skillPoints++;
             RaiseChanged();

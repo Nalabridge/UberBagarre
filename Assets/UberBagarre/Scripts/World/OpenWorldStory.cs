@@ -216,7 +216,7 @@ namespace UberBagarre.World
             int[] experience = { 0, 150, 800, 1600, 2800 };
             int[] money = { 0, 150, 700, 1400, 2600 };
             if (experience[chapter] > 0) _progress.AddExperience(experience[chapter]);
-            if (money[chapter] > 0) _progress.AddMoney(money[chapter]);
+            if (money[chapter] > 0) _progress.AddMoney(money[chapter], "Économies");
 
             if (chapter > Prologue)
             {
@@ -902,14 +902,17 @@ namespace UberBagarre.World
             // Le loyer du motel, tous les sept jours.
             if (_rent <= 0 || _progress.Home != "Motel" || _progress.Day <= 1 || _progress.Day % _rentEvery != 0) return;
 
-            if (_progress.Spend(_rent))
+            // Payé d'avance depuis l'appli Banque : le motel ne prélève rien.
+            if (_progress.RentPaidUntil >= _progress.Day) return;
+
+            if (_progress.Spend(_rent, "Loyer motel Hyland"))
             {
                 _morning = "Le motel a prélevé le loyer. " + _rent + " euros de moins.";
                 return;
             }
 
             int all = _progress.Money;
-            if (all > 0) _progress.AddMoney(-all);
+            if (all > 0) _progress.AddMoney(-all, "Loyer motel (partiel)");
             Mail("Motel Hyland", "Dernier avertissement (jour " + _progress.Day + ")",
                 "Votre compte ne couvrait pas le loyer. Nous avons prélevé " + all + " €.\nLa prochaine fois, nous changeons la serrure.", true);
             _morning = "Le loyer a vidé le compte. Et il manquait encore.";

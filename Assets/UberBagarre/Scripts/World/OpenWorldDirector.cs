@@ -1040,7 +1040,7 @@ namespace UberBagarre.World
             if (!dead && _progress != null)
             {
                 bill = Mathf.RoundToInt(_progress.Money * _hospitalShare / 10f) * 10;
-                if (bill > 0) _progress.AddMoney(-bill);
+                if (bill > 0) _progress.AddMoney(-bill, "Frais d'hôpital");
             }
 
             RestorePlayer();

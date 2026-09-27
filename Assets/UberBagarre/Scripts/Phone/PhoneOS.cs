@@ -641,7 +641,68 @@ namespace UberBagarre.Phone
                 case App.Appels: NavigateCalls(up, down, select); break;
                 case App.Galerie: NavigateGallery(up, down, left, right, select); break;
                 case App.Reglages: NavigateSettings(up, down, left, right, select); break;
+                case App.Banque: NavigateBank(up, down, select); break;
             }
+        }
+
+        // ------------------------------------------------------------------ banque
+
+        private int _bankSelection;
+
+        /// <summary>L'action choisie dans l'appli Banque.</summary>
+        public int BankSelection { get { return _bankSelection; } }
+
+        public const int BankActions = 4;
+
+        /// <summary>Le libellé d'une action de la banque (avec son montant du moment).</summary>
+        public string BankAction(int index)
+        {
+            int debt = _progress != null ? _progress.Debt : 0;
+            switch (index)
+            {
+                case 0: return "Rembourser Nestor : 500 €";
+                case 1: return "Rembourser Nestor : tout (" + debt.ToString("N0") + " €)";
+                case 2: return "Payer une semaine de loyer : 450 €";
+                default: return "Envoyer 100 € à maman";
+            }
+        }
+
+        private void NavigateBank(bool up, bool down, bool select)
+        {
+            _bankSelection = Step(_bankSelection, up, down, BankActions);
+            if (!select || _progress == null) return;
+
+            switch (_bankSelection)
+            {
+                case 0:
+                case 1:
+                {
+                    if (_progress.Debt <= 0)
+                    {
+                        ShowToast("Plus rien à rembourser. Nestor n'a plus de prise sur toi.");
+                        break;
+                    }
+
+                    int paid = _progress.PayDebt(_bankSelection == 0 ? 500 : _progress.Debt);
+                    ShowToast(paid > 0 ? "Virement envoyé à Nestor : " + paid.ToString("N0") + " €." : "Solde insuffisant.");
+                    break;
+                }
+
+                case 2:
+                {
+                    int until = Mathf.Max(_progress.RentPaidUntil, _progress.Day) + 7;
+                    ShowToast(_progress.PayRent(450, until)
+                        ? "Loyer payé jusqu'au jour " + until + "."
+                        : "Solde insuffisant pour le loyer.");
+                    break;
+                }
+
+                default:
+                    ShowToast(_progress.SendHome(100) ? "100 € envoyés à maman. Elle va t'appeler." : "Solde insuffisant.");
+                    break;
+            }
+
+            Play(_open);
         }
 
         private void NavigateHome(bool up, bool down, bool left, bool right, bool select)
