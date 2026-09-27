@@ -210,6 +210,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(director, "_progress", progress);
             SerializedWiring.SetObject(director, "_briefing", briefing);
             SerializedWiring.SetObject(director, "_intro", player.GetComponent<FightIntro>());
+            SerializedWiring.SetObject(director, "_look", player.GetComponent<PlayerLook>());
             SerializedWiring.SetObject(director, "_crowd", crowd);
             SerializedWiring.SetObject(director, "_map", map);
             SerializedWiring.SetObject(director, "_fader", fader);

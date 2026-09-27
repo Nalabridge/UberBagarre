@@ -79,6 +79,20 @@ namespace UberBagarre.UI
         /// <summary>Le contenu, dans la zone donnée ; <paramref name="u"/> = 1 à 1080 pixels de haut.</summary>
         protected abstract void DrawContent(Rect area, float u);
 
+        /// <summary>
+        /// Un écran peut dessiner son propre cadre (l'ordinateur : un bureau et un navigateur) :
+        /// il renvoie alors la zone où son contenu se dessine.
+        /// </summary>
+        protected virtual bool CustomFrame
+        {
+            get { return false; }
+        }
+
+        protected virtual Rect DrawFrame(float sw, float sh, float u)
+        {
+            return new Rect(64f * u, 130f * u, sw - 128f * u, sh - 200f * u);
+        }
+
         /// <summary>Flèches gauche / droite : à l'écran d'en faire ce qu'il veut (onglets, valeurs).</summary>
         protected virtual void OnHorizontal(int direction)
         {
@@ -248,31 +262,38 @@ namespace UberBagarre.UI
 
             if (Event.current.type == EventType.Repaint) _registered = 0;
 
-            GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.015f, 0.015f, 0.03f, 0.9f));
-            GuiKit.Fill(new Rect(0f, 0f, sw, 4f * u), Accent);
-
-            float margin = 64f * u;
-            GuiKit.OutlinedLabel(new Rect(margin, 34f * u, sw - margin * 2f, 60f * u), Title,
-                GuiKit.Style(Mathf.RoundToInt(40 * u), FontStyle.Bold, TextAnchor.MiddleLeft), Ink, Color.black, 1f);
-
-            if (!string.IsNullOrEmpty(Subtitle))
+            if (CustomFrame)
             {
-                GuiKit.OutlinedLabel(new Rect(margin, 88f * u, sw - margin * 2f, 26f * u), Subtitle,
-                    GuiKit.Style(Mathf.RoundToInt(17 * u), FontStyle.Normal, TextAnchor.MiddleLeft), Dim, Color.black, 1f);
+                DrawContent(DrawFrame(sw, sh, u), u);
             }
-
-            if (_progress != null)
+            else
             {
-                GuiKit.OutlinedLabel(new Rect(sw * 0.5f, 34f * u, sw * 0.5f - margin, 60f * u), _progress.Money + " €",
-                    GuiKit.Style(Mathf.RoundToInt(34 * u), FontStyle.Bold, TextAnchor.MiddleRight), Good, Color.black, 1f);
+                GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.015f, 0.015f, 0.03f, 0.9f));
+                GuiKit.Fill(new Rect(0f, 0f, sw, 4f * u), Accent);
+
+                float margin = 64f * u;
+                GuiKit.OutlinedLabel(new Rect(margin, 34f * u, sw - margin * 2f, 60f * u), Title,
+                    GuiKit.Style(Mathf.RoundToInt(40 * u), FontStyle.Bold, TextAnchor.MiddleLeft), Ink, Color.black, 1f);
+
+                if (!string.IsNullOrEmpty(Subtitle))
+                {
+                    GuiKit.OutlinedLabel(new Rect(margin, 88f * u, sw - margin * 2f, 26f * u), Subtitle,
+                        GuiKit.Style(Mathf.RoundToInt(17 * u), FontStyle.Normal, TextAnchor.MiddleLeft), Dim, Color.black, 1f);
+                }
+
+                if (_progress != null)
+                {
+                    GuiKit.OutlinedLabel(new Rect(sw * 0.5f, 34f * u, sw * 0.5f - margin, 60f * u), _progress.Money + " €",
+                        GuiKit.Style(Mathf.RoundToInt(34 * u), FontStyle.Bold, TextAnchor.MiddleRight), Good, Color.black, 1f);
+                }
+
+                Rect area = new Rect(margin, 130f * u, sw - margin * 2f, sh - 130f * u - 70f * u);
+                DrawContent(area, u);
+
+                GuiKit.OutlinedLabel(new Rect(margin, sh - 52f * u, sw - margin * 2f, 30f * u),
+                    "Flèches / souris : choisir     Entrée / clic : valider     Échap : retour",
+                    GuiKit.Style(Mathf.RoundToInt(15 * u), FontStyle.Normal, TextAnchor.MiddleLeft), new Color(1f, 1f, 1f, 0.45f), Color.black, 1f);
             }
-
-            Rect area = new Rect(margin, 130f * u, sw - margin * 2f, sh - 130f * u - 70f * u);
-            DrawContent(area, u);
-
-            GuiKit.OutlinedLabel(new Rect(margin, sh - 52f * u, sw - margin * 2f, 30f * u),
-                "Flèches / souris : choisir     Entrée / clic : valider     Échap : retour",
-                GuiKit.Style(Mathf.RoundToInt(15 * u), FontStyle.Normal, TextAnchor.MiddleLeft), new Color(1f, 1f, 1f, 0.45f), Color.black, 1f);
 
             if (!string.IsNullOrEmpty(_toast) && Time.unscaledTime < _toastUntil)
             {

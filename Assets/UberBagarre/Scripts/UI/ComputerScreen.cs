@@ -44,7 +44,6 @@ namespace UberBagarre.UI
             Paris,
             Sport,
             Immobilier,
-            Banque,
             Mails
         }
 
@@ -80,9 +79,8 @@ namespace UberBagarre.UI
                     case AppId.Paris: return "PARIS DE COMBAT";
                     case AppId.Sport: return "SALLE DE SPORT";
                     case AppId.Immobilier: return "IMMOBILIER";
-                    case AppId.Banque: return "BANQUE";
                     case AppId.Mails: return "MAILS";
-                    default: return "BUREAU";
+                    default: return "NOUVEL ONGLET";
                 }
             }
         }
@@ -120,8 +118,12 @@ namespace UberBagarre.UI
 
         protected override void OnOpened()
         {
-            _app = AppId.Bureau;
             _openMail = -1;
+            _tabs.Clear();
+            _tabPage.Clear();
+            _history.Clear();
+            _historyIndex = -1;
+            Navigate(AppId.Bureau, true);
         }
 
         /// <summary>Un mail dans la boîte (l'histoire en envoie).</summary>
@@ -178,10 +180,7 @@ namespace UberBagarre.UI
 
         private void Go(AppId app)
         {
-            _app = app;
-            Focus = 0;
-            _openMail = -1;
-            if (app == AppId.Paris && _fights.Count == 0) NewFights();
+            Navigate(app, true);
         }
 
         private bool Busy()
@@ -220,7 +219,6 @@ namespace UberBagarre.UI
                 case AppId.Paris: DrawBets(area, u); break;
                 case AppId.Sport: DrawSport(area, u); break;
                 case AppId.Immobilier: DrawEstate(area, u); break;
-                case AppId.Banque: DrawBank(area, u); break;
                 case AppId.Mails: DrawMails(area, u); break;
                 default: DrawDesktop(area, u); break;
             }
@@ -258,35 +256,398 @@ namespace UberBagarre.UI
             return r;
         }
 
-        // ------------------------------------------------------------------ bureau
+        // ------------------------------------------------------------------ page d'accueil
 
+        /// <summary>Le nouvel onglet : la barre de recherche, et les sites du joueur en vignettes.</summary>
         private void DrawDesktop(Rect area, float u)
         {
             _registeredRows = 0;
-            string[] names = { "CASINO ROYAL", "PARIS DE COMBAT", "SALLE DE SPORT", "IMMOBILIER", "BANQUE", "MAILS" + (UnreadMails > 0 ? "  (" + UnreadMails + ")" : "") };
-            string[] details =
-            {
-                "Roulette, blackjack, machine à sous.", "Trois combats clandestins ce soir. Mise sur le bon.",
-                "Des séances de coach : des points d'entraînement.", "Bungalow, manoir : un logement à la hauteur.",
-                "Ton compte, tes gains, tes pertes.", "Le motel, l'appli, Sami..."
-            };
-            AppId[] apps = { AppId.Casino, AppId.Paris, AppId.Sport, AppId.Immobilier, AppId.Banque, AppId.Mails };
 
-            float w = (area.width - 40f * u) / 3f;
+            Rect logo = new Rect(area.x, area.y + 10f * u, area.width, 60f * u);
+            Text(logo, "Gogol", 46, FontStyle.Bold, TextAnchor.MiddleCenter, new Color(0.45f, 0.7f, 1f), u);
+
+            Rect search = new Rect(area.x + area.width * 0.2f, area.y + 84f * u, area.width * 0.6f, 44f * u);
+            GuiKit.Fill(search, new Color(0.16f, 0.17f, 0.2f));
+            GuiKit.Outline(search, 1f, new Color(1f, 1f, 1f, 0.18f));
+            Text(new Rect(search.x + 18f * u, search.y, search.width - 30f * u, search.height), "🔍  Rechercher ou saisir une adresse",
+                17, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+
+            Site[] sites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail };
+            float w = (area.width * 0.8f - 4f * 16f * u) / 5f;
             float h = 150f * u;
-            for (int i = 0; i < apps.Length; i++)
+            for (int i = 0; i < sites.Length; i++)
             {
-                Rect tile = new Rect(area.x + (i % 3) * (w + 20f * u), area.y + (i / 3) * (h + 20f * u), w, h);
-                if (Button(tile, names[i], details[i], true, u)) Go(apps[i]);
+                Rect tile = new Rect(area.x + area.width * 0.1f + i * (w + 16f * u), area.y + 170f * u, w, h);
+                string label = SiteName(sites[i]) + (sites[i] == Site.Mail && UnreadMails > 0 ? "  (" + UnreadMails + ")" : "");
+                if (Button(tile, label, SiteHost(sites[i]), true, u)) Go(SiteHome(sites[i]));
                 _registeredRows++;
             }
 
             if (_progress != null)
             {
-                Text(new Rect(area.x, area.y + 2f * (h + 20f * u) + 20f * u, area.width, 30f * u),
-                    "Jour " + _progress.Day + "  ·  réputation " + _progress.Reputation + " (" + _progress.ReputationTitle + ")  ·  niveau " + _progress.Level +
-                    "  ·  logement : " + _progress.Home, 17, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+                Text(new Rect(area.x, area.y + 350f * u, area.width, 30f * u),
+                    "Jour " + _progress.Day + "  ·  réputation " + _progress.Reputation + " (" + _progress.ReputationTitle + ")  ·  niveau " +
+                    _progress.Level + "  ·  logement : " + _progress.Home, 16, FontStyle.Normal, TextAnchor.MiddleCenter, Dim, u);
             }
+        }
+
+        // ------------------------------------------------------------------ le navigateur
+
+        private enum Site
+        {
+            Accueil,
+            Casino,
+            Paris,
+            Sport,
+            Immo,
+            Mail
+        }
+
+        private readonly List<Site> _tabs = new List<Site>();
+        private readonly Dictionary<Site, AppId> _tabPage = new Dictionary<Site, AppId>();
+        private readonly List<AppId> _history = new List<AppId>();
+        private int _historyIndex = -1;
+        private float _loading;
+
+        protected override bool CustomFrame
+        {
+            get { return true; }
+        }
+
+        private static Site SiteOf(AppId app)
+        {
+            switch (app)
+            {
+                case AppId.Casino:
+                case AppId.Roulette:
+                case AppId.Blackjack:
+                case AppId.Machine: return Site.Casino;
+                case AppId.Paris: return Site.Paris;
+                case AppId.Sport: return Site.Sport;
+                case AppId.Immobilier: return Site.Immo;
+                case AppId.Mails: return Site.Mail;
+                default: return Site.Accueil;
+            }
+        }
+
+        private static AppId SiteHome(Site site)
+        {
+            switch (site)
+            {
+                case Site.Casino: return AppId.Casino;
+                case Site.Paris: return AppId.Paris;
+                case Site.Sport: return AppId.Sport;
+                case Site.Immo: return AppId.Immobilier;
+                case Site.Mail: return AppId.Mails;
+                default: return AppId.Bureau;
+            }
+        }
+
+        private static string SiteName(Site site)
+        {
+            switch (site)
+            {
+                case Site.Casino: return "Casino Royal";
+                case Site.Paris: return "La Cave — paris";
+                case Site.Sport: return "Iron Gym";
+                case Site.Immo: return "Hyland Immo";
+                case Site.Mail: return "Webmail";
+                default: return "Nouvel onglet";
+            }
+        }
+
+        private static string SiteHost(Site site)
+        {
+            switch (site)
+            {
+                case Site.Casino: return "casinoroyal.bet";
+                case Site.Paris: return "lacave7xk2qf.onion";
+                case Site.Sport: return "irongym.fr";
+                case Site.Immo: return "hyland-immo.fr";
+                case Site.Mail: return "webmail.hylandnet.fr";
+                default: return "gogol.fr";
+            }
+        }
+
+        private static Color SiteColor(Site site)
+        {
+            switch (site)
+            {
+                case Site.Casino: return new Color(0.95f, 0.72f, 0.2f);
+                case Site.Paris: return new Color(0.35f, 0.9f, 0.45f);
+                case Site.Sport: return new Color(1f, 0.5f, 0.12f);
+                case Site.Immo: return new Color(0.3f, 0.6f, 1f);
+                case Site.Mail: return new Color(0.2f, 0.8f, 0.8f);
+                default: return new Color(0.45f, 0.7f, 1f);
+            }
+        }
+
+        private static Color SiteBackground(Site site)
+        {
+            switch (site)
+            {
+                case Site.Casino: return new Color(0.16f, 0.03f, 0.04f);
+                case Site.Paris: return new Color(0.02f, 0.05f, 0.03f);
+                case Site.Sport: return new Color(0.09f, 0.07f, 0.06f);
+                case Site.Immo: return new Color(0.05f, 0.08f, 0.14f);
+                case Site.Mail: return new Color(0.05f, 0.1f, 0.11f);
+                default: return new Color(0.11f, 0.12f, 0.14f);
+            }
+        }
+
+        private string Url(AppId app)
+        {
+            Site site = SiteOf(app);
+            string path;
+            switch (app)
+            {
+                case AppId.Roulette: path = "/roulette"; break;
+                case AppId.Blackjack: path = "/blackjack"; break;
+                case AppId.Machine: path = "/machine-a-sous"; break;
+                case AppId.Paris: path = "/ce-soir"; break;
+                case AppId.Sport: path = "/seances"; break;
+                case AppId.Immobilier: path = "/annonces"; break;
+                case AppId.Mails: path = _openMail >= 0 ? "/message/" + (_openMail + 1) : "/boite-de-reception"; break;
+                default: path = "/"; break;
+            }
+
+            return (site == Site.Paris ? "http://" : "https://") + SiteHost(site) + path;
+        }
+
+        private void RememberNavigation(AppId app)
+        {
+            Site site = SiteOf(app);
+            if (!_tabs.Contains(site)) _tabs.Add(site);
+            _tabPage[site] = app;
+            _loading = 0.35f;
+        }
+
+        private void PushHistory(AppId app)
+        {
+            if (_historyIndex >= 0 && _historyIndex < _history.Count && _history[_historyIndex] == app) return;
+            if (_historyIndex < _history.Count - 1) _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+            _history.Add(app);
+            if (_history.Count > 30) _history.RemoveAt(0);
+            _historyIndex = _history.Count - 1;
+        }
+
+        private void Navigate(AppId app, bool record)
+        {
+            _app = app;
+            Focus = 0;
+            _openMail = -1;
+            if (app == AppId.Paris && _fights.Count == 0) NewFights();
+            RememberNavigation(app);
+            if (record) PushHistory(app);
+        }
+
+        private void CloseTab(Site site)
+        {
+            int index = _tabs.IndexOf(site);
+            if (index < 0) return;
+            _tabs.RemoveAt(index);
+            _tabPage.Remove(site);
+
+            if (SiteOf(_app) != site) return;
+            if (_tabs.Count == 0)
+            {
+                Navigate(AppId.Bureau, true);
+                return;
+            }
+
+            Site next = _tabs[Mathf.Clamp(index - 1, 0, _tabs.Count - 1)];
+            AppId page;
+            Navigate(_tabPage.TryGetValue(next, out page) ? page : SiteHome(next), true);
+        }
+
+        /// <summary>Un bouton de la fenêtre (onglet, flèches, favoris) : clic seulement.</summary>
+        private bool ChromeButton(Rect rect, string label, Color text, Color fill, float u, int size = 15)
+        {
+            bool hover = rect.Contains(Event.current.mousePosition);
+            if (fill.a > 0f || hover) GuiKit.Fill(rect, hover ? Color.Lerp(fill, Color.white, 0.12f) : fill);
+            Text(rect, label, size, FontStyle.Normal, TextAnchor.MiddleCenter, text, u);
+
+            if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && hover)
+            {
+                Event.current.Use();
+                PlayTick();
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Le bureau et le navigateur : fond d'écran, barre des tâches, et la fenêtre avec ses
+        /// onglets, ses flèches, sa barre d'adresse, ses favoris et la page du site.
+        /// </summary>
+        protected override Rect DrawFrame(float sw, float sh, float u)
+        {
+            if (Event.current.type == EventType.Repaint && _loading > 0f) _loading = Mathf.Max(0f, _loading - Time.unscaledDeltaTime);
+
+            // --- le bureau
+            GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.05f, 0.06f, 0.12f));
+            GuiKit.Disc(new Rect(sw * 0.35f, sh * 0.1f, sw * 0.9f, sh * 1.1f), new Color(0.35f, 0.12f, 0.45f, 0.35f));
+            GuiKit.Disc(new Rect(-sw * 0.2f, sh * 0.4f, sw * 0.7f, sh * 0.9f), new Color(0.1f, 0.25f, 0.5f, 0.3f));
+
+            float bar = 44f * u;
+            Rect taskbar = new Rect(0f, sh - bar, sw, bar);
+            GuiKit.Fill(taskbar, new Color(0.04f, 0.04f, 0.06f, 0.96f));
+            GuiKit.Fill(new Rect(14f * u, sh - bar + 8f * u, 28f * u, 28f * u), new Color(0.45f, 0.7f, 1f));
+            GuiKit.Fill(new Rect(54f * u, sh - bar + 6f * u, 32f * u, 32f * u), new Color(1f, 1f, 1f, 0.12f));
+            GuiKit.Disc(new Rect(58f * u, sh - bar + 10f * u, 24f * u, 24f * u), new Color(0.95f, 0.45f, 0.15f));
+            GuiKit.Fill(new Rect(58f * u, sh - 5f * u, 24f * u, 3f * u), new Color(0.45f, 0.7f, 1f));
+            string clock = _progress != null ? "Jour " + _progress.Day + "   " + System.DateTime.Now.ToString("HH:mm") : System.DateTime.Now.ToString("HH:mm");
+            Text(new Rect(sw - 260f * u, sh - bar, 240f * u, bar), "wifi  ▮▮▮    " + clock, 15, FontStyle.Normal, TextAnchor.MiddleRight, Ink, u);
+
+            // --- la fenêtre
+            Rect window = new Rect(36f * u, 24f * u, sw - 72f * u, sh - bar - 44f * u);
+            GuiKit.Fill(new Rect(window.x + 6f * u, window.y + 8f * u, window.width, window.height), new Color(0f, 0f, 0f, 0.35f));
+            GuiKit.Fill(window, new Color(0.13f, 0.14f, 0.16f));
+
+            // onglets
+            float tabsH = 40f * u;
+            float x = window.x + 90f * u;
+            GuiKit.Disc(new Rect(window.x + 16f * u, window.y + 14f * u, 12f * u, 12f * u), new Color(1f, 0.37f, 0.34f));
+            GuiKit.Disc(new Rect(window.x + 36f * u, window.y + 14f * u, 12f * u, 12f * u), new Color(1f, 0.75f, 0.2f));
+            GuiKit.Disc(new Rect(window.x + 56f * u, window.y + 14f * u, 12f * u, 12f * u), new Color(0.3f, 0.8f, 0.3f));
+
+            if (_tabs.Count == 0) RememberNavigation(_app);
+            Site current = SiteOf(_app);
+            for (int i = 0; i < _tabs.Count; i++)
+            {
+                Site site = _tabs[i];
+                Rect tab = new Rect(x, window.y + 6f * u, 220f * u, tabsH - 6f * u);
+                bool active = site == current;
+                GuiKit.Fill(tab, active ? new Color(0.2f, 0.21f, 0.24f) : new Color(0.1f, 0.1f, 0.12f));
+                GuiKit.Fill(new Rect(tab.x + 10f * u, tab.y + 11f * u, 12f * u, 12f * u), SiteColor(site));
+
+                Rect label = new Rect(tab.x + 28f * u, tab.y, tab.width - 60f * u, tab.height);
+                if (ChromeButton(label, "", Ink, new Color(0f, 0f, 0f, 0f), u))
+                {
+                    AppId last;
+                    Navigate(_tabPage.TryGetValue(site, out last) ? last : SiteHome(site), true);
+                }
+
+                Text(label, SiteName(site), 14, active ? FontStyle.Bold : FontStyle.Normal, TextAnchor.MiddleLeft, active ? Ink : Dim, u);
+                if (ChromeButton(new Rect(tab.xMax - 28f * u, tab.y + 6f * u, 22f * u, tab.height - 12f * u), "×", Dim,
+                        new Color(0f, 0f, 0f, 0f), u, 16))
+                {
+                    CloseTab(site);
+                    break;
+                }
+
+                x += tab.width + 4f * u;
+            }
+
+            if (ChromeButton(new Rect(x + 4f * u, window.y + 10f * u, 26f * u, 26f * u), "+", Ink, new Color(0f, 0f, 0f, 0f), u, 18))
+            {
+                Navigate(AppId.Bureau, true);
+            }
+
+            // barre d'outils
+            float toolY = window.y + tabsH;
+            float toolH = 46f * u;
+            GuiKit.Fill(new Rect(window.x, toolY, window.width, toolH), new Color(0.2f, 0.21f, 0.24f));
+
+            bool canBack = _historyIndex > 0;
+            bool canForward = _historyIndex >= 0 && _historyIndex < _history.Count - 1;
+            if (ChromeButton(new Rect(window.x + 12f * u, toolY + 8f * u, 30f * u, 30f * u), "◄", canBack ? Ink : Dim,
+                    new Color(0f, 0f, 0f, 0f), u) && canBack && !Busy())
+            {
+                _historyIndex--;
+                Navigate(_history[_historyIndex], false);
+            }
+
+            if (ChromeButton(new Rect(window.x + 46f * u, toolY + 8f * u, 30f * u, 30f * u), "►", canForward ? Ink : Dim,
+                    new Color(0f, 0f, 0f, 0f), u) && canForward && !Busy())
+            {
+                _historyIndex++;
+                Navigate(_history[_historyIndex], false);
+            }
+
+            if (ChromeButton(new Rect(window.x + 80f * u, toolY + 8f * u, 30f * u, 30f * u), _loading > 0f ? "×" : "⟳", Ink,
+                    new Color(0f, 0f, 0f, 0f), u))
+            {
+                _loading = 0.35f;
+            }
+
+            Rect address = new Rect(window.x + 122f * u, toolY + 8f * u, window.width - 122f * u - 230f * u, 30f * u);
+            GuiKit.Fill(address, new Color(0.11f, 0.12f, 0.14f));
+            bool secure = current != Site.Paris;
+            Text(new Rect(address.x + 10f * u, address.y, 24f * u, address.height), secure ? "🔒" : "⚠", 14, FontStyle.Normal,
+                TextAnchor.MiddleCenter, secure ? Good : Warn, u);
+            string url = _app == AppId.Bureau ? "Rechercher avec Gogol ou saisir une adresse" : Url(_app);
+            Text(new Rect(address.x + 38f * u, address.y, address.width - 48f * u, address.height), url, 15, FontStyle.Normal,
+                TextAnchor.MiddleLeft, _app == AppId.Bureau ? Dim : Ink, u);
+            if (!secure)
+            {
+                Text(new Rect(address.xMax - 150f * u, address.y, 140f * u, address.height), "Non sécurisé", 13, FontStyle.Normal,
+                    TextAnchor.MiddleRight, Warn, u);
+            }
+
+            // Le porte-monnaie et le courrier, à droite.
+            if (_progress != null)
+            {
+                Text(new Rect(window.xMax - 220f * u, toolY, 150f * u, toolH), _progress.Money + " €", 18, FontStyle.Bold,
+                    TextAnchor.MiddleRight, Good, u);
+            }
+
+            int unread = UnreadMails;
+            if (ChromeButton(new Rect(window.xMax - 58f * u, toolY + 8f * u, 44f * u, 30f * u), unread > 0 ? "✉ " + unread : "✉",
+                    unread > 0 ? Warn : Dim, new Color(0f, 0f, 0f, 0f), u) && !Busy())
+            {
+                Navigate(AppId.Mails, true);
+            }
+
+            // favoris
+            float favY = toolY + toolH;
+            float favH = 30f * u;
+            GuiKit.Fill(new Rect(window.x, favY, window.width, favH), new Color(0.17f, 0.18f, 0.2f));
+            Site[] favorites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail };
+            float fx = window.x + 14f * u;
+            for (int i = 0; i < favorites.Length; i++)
+            {
+                Rect fav = new Rect(fx, favY + 3f * u, 150f * u, favH - 6f * u);
+                GuiKit.Fill(new Rect(fav.x + 6f * u, fav.y + 7f * u, 10f * u, 10f * u), SiteColor(favorites[i]));
+                if (ChromeButton(new Rect(fav.x + 20f * u, fav.y, fav.width - 20f * u, fav.height), SiteName(favorites[i]), Ink,
+                        new Color(0f, 0f, 0f, 0f), u, 13) && !Busy())
+                {
+                    Navigate(SiteHome(favorites[i]), true);
+                }
+
+                fx += fav.width + 6f * u;
+            }
+
+            // la page
+            Rect page = new Rect(window.x, favY + favH, window.width, window.yMax - favY - favH - 22f * u);
+            GuiKit.Fill(page, SiteBackground(current));
+
+            float content = page.y + 20f * u;
+            if (current != Site.Accueil)
+            {
+                Rect header = new Rect(page.x, page.y, page.width, 78f * u);
+                GuiKit.Fill(header, new Color(0f, 0f, 0f, 0.35f));
+                GuiKit.Fill(new Rect(page.x, header.yMax - 3f * u, page.width, 3f * u), SiteColor(current));
+                Text(new Rect(page.x + 40f * u, header.y + 8f * u, page.width * 0.6f, 40f * u), Title, 30, FontStyle.Bold,
+                    TextAnchor.MiddleLeft, SiteColor(current), u);
+                if (!string.IsNullOrEmpty(Subtitle))
+                {
+                    Text(new Rect(page.x + 40f * u, header.y + 46f * u, page.width - 80f * u, 24f * u), Subtitle, 15,
+                        FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+                }
+
+                content = header.yMax + 20f * u;
+            }
+
+            // barre d'état
+            Rect status = new Rect(window.x, window.yMax - 22f * u, window.width, 22f * u);
+            GuiKit.Fill(status, new Color(0.1f, 0.1f, 0.12f));
+            Text(new Rect(status.x + 12f * u, status.y, status.width - 24f * u, status.height),
+                _loading > 0f ? "Chargement de " + SiteHost(current) + "…" : "Flèches / souris : choisir     Entrée / clic : valider     Échap : retour",
+                12, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+
+            return new Rect(page.x + 40f * u, content, page.width - 80f * u, page.yMax - content - 16f * u);
         }
 
         private void DrawCasino(Rect area, float u)
@@ -977,33 +1338,6 @@ namespace UberBagarre.UI
             _progress.MoveTo(home);
             if (_homes != null) _homes.Apply();
             Toast("Tu habites maintenant : " + home + ". Tu t'y réveilleras.", false);
-        }
-
-        private void DrawBank(Rect area, float u)
-        {
-            _registeredRows = 0;
-            if (_progress == null) return;
-
-            float y = area.y;
-            Text(new Rect(area.x, y, area.width, 50f * u), "SOLDE : " + _progress.Money + " €", 36, FontStyle.Bold, TextAnchor.MiddleLeft, Good, u);
-            y += 70f * u;
-
-            string[] lines =
-            {
-                "Courses payées : " + _progress.Contracts + "   ·   ratées : " + _progress.Failures,
-                "Casino : +" + _progress.CasinoWon + " € gagnés   ·   -" + _progress.CasinoLost + " € perdus",
-                "Logement : " + _progress.Home + "   ·   jour " + _progress.Day,
-                "Réputation : " + _progress.Reputation + " / 100 (" + _progress.ReputationTitle + ")   ·   note " + _progress.Rating.ToString("0.0") + " / 5"
-            };
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                Text(new Rect(area.x, y, area.width, 32f * u), lines[i], 20, FontStyle.Normal, TextAnchor.MiddleLeft, Ink, u);
-                y += 38f * u;
-            }
-
-            if (Row(new Rect(area.x, y + 20f * u, area.width * 0.4f, 56f * u), "RETOUR", null, true, u)) Go(AppId.Bureau);
-            _registeredRows++;
         }
 
         private void DrawMails(Rect area, float u)

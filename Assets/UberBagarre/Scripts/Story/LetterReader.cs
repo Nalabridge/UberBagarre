@@ -61,6 +61,10 @@ namespace UberBagarre.Story
 
         [SerializeField] private string _date = "Le 12 mars";
 
+        [SerializeField]
+        [Tooltip("La planque est la chambre 3 du Motel Hyland (monde ouvert) : la première lettre est celle du motel.")]
+        private bool _motel;
+
         private Letter[] _letters;
         private int _index;
         private float _time;
@@ -97,6 +101,7 @@ namespace UberBagarre.Story
         private void Awake()
         {
             _letters = BuildLetters();
+            if (_motel && _letters.Length > 0) _letters[0] = MotelLetter();
 
             _audio = gameObject.AddComponent<AudioSource>();
             _audio.playOnAwake = false;
@@ -658,6 +663,36 @@ namespace UberBagarre.Story
         /// progression, le découvert de 1 240,18 € affiché par la banque sur le téléphone, et
         /// la fin de la trêve hivernale qui fait dire à Sami « t'es dehors en avril ».
         /// </summary>
+        /// <summary>La lettre du motel : la semaine en retard, et la menace de changer la serrure.</summary>
+        private static Letter MotelLetter()
+        {
+            return new Letter
+            {
+                Sender = "MOTEL HYLAND",
+                SenderLine = "Chambres à la semaine  ·  Accueil ouvert 24 h/24",
+                Brand = new Color(0.62f, 0.12f, 0.1f),
+                Reference = "Chambre n° 3  ·  Semaine du 5 au 11",
+                Subject = "Objet : LOYER DE LA SEMAINE EN RETARD",
+                Body = "Monsieur,\n\n" +
+                       "Le loyer de votre chambre pour la semaine écoulée n'a toujours pas été réglé à l'accueil.\n\n" +
+                       "Nous vous rappelons que la chambre se paie d'avance, chaque semaine. Sans règlement sous sept " +
+                       "jours, la serrure sera changée et vos affaires descendues à la réception.\n\n" +
+                       "Pas de crédit, pas d'exception. Merci de votre compréhension.\n\n" +
+                       "La direction",
+                AmountLabel = "À RÉGLER\nsemaine en retard + frais",
+                Amount = "450,00 €",
+                Stamp = "DERNIER AVIS",
+                Footer = "Motel Hyland — Route du Port — Paiement en espèces à l'accueil",
+            };
+        }
+
+        /// <summary>L'adresse en tête des lettres (le monde ouvert : le motel).</summary>
+        public void Configure(string address, bool motel)
+        {
+            if (!string.IsNullOrEmpty(address)) _address = address;
+            _motel = motel;
+        }
+
         private static Letter[] BuildLetters()
         {
             return new[]

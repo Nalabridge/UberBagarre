@@ -86,7 +86,8 @@ namespace UberBagarre.World
             EnRoute = 2,
             Fighting = 3,
             Proof = 4,
-            Paid = 5
+            Paid = 5,
+            FaceOff = 6
         }
 
         [Header("References")]
@@ -102,6 +103,10 @@ namespace UberBagarre.World
         [SerializeField] private ScreenFader _fader;
         [SerializeField] private SubtitleDisplay _subtitles;
         [SerializeField] private TargetActivityKit _kit;
+
+        [SerializeField]
+        [Tooltip("Le regard du joueur : pendant le face-à-face, il glisse vers la cible.")]
+        private PlayerLook _look;
 
         [SerializeField]
         [Tooltip("Ou l'on se reveille apres un K.O. : la planque.")]
@@ -192,6 +197,9 @@ namespace UberBagarre.World
         private float _repNoticeUntil;
         private bool _repGood;
 
+        /// <summary>L'histoire installe l'appli elle-même (le lien de Sami) : le directeur n'y touche pas.</summary>
+        public bool StoryControlsApp { get; set; }
+
         /// <summary>Plus de courses ordinaires tant que l'histoire le demande (une scène, un chapitre).</summary>
         public bool Paused { get; set; }
 
@@ -208,7 +216,10 @@ namespace UberBagarre.World
         public event Action Slept;
 
         /// <summary>Une course est en cours (acceptée, pas encore payée).</summary>
-        public bool Busy { get { return _stage == Stage.EnRoute || _stage == Stage.Fighting || _stage == Stage.Proof; } }
+        public bool Busy
+        {
+            get { return _stage == Stage.EnRoute || _stage == Stage.FaceOff || _stage == Stage.Fighting || _stage == Stage.Proof; }
+        }
 
         public Transform Home { get { return _home; } set { _home = value; } }
 
@@ -259,7 +270,7 @@ namespace UberBagarre.World
             if (_phone != null)
             {
                 _phone.Available = true;
-                _phone.AppInstalled = true;
+                if (!StoryControlsApp) _phone.AppInstalled = true;
                 _phone.SetScreen(PhoneDevice.Screen.Verrouille);
             }
 
@@ -330,6 +341,10 @@ namespace UberBagarre.World
 
                 case Stage.EnRoute:
                     UpdateEnRoute(dt);
+                    break;
+
+                case Stage.FaceOff:
+                    UpdateFaceOff(dt);
                     break;
 
                 case Stage.Fighting:
@@ -606,27 +621,133 @@ namespace UberBagarre.World
                 return;
             }
 
-            if (d.magnitude <= notice) Engage();
+            if (d.magnitude <= notice) Engage(false);
         }
 
-        /// <summary>Frappé avant de se retourner : il se retourne.</summary>
+        /// <summary>Frappé avant de se retourner : il se retourne, et c'est tout de suite la bagarre.</summary>
         private void OnTargetDamaged(Combatant self, DamageInfo info)
         {
-            if (_stage == Stage.EnRoute) Engage();
+            if (_stage == Stage.EnRoute) Engage(true);
+            else if (_stage == Stage.FaceOff) StartFight();
         }
 
-        private void Engage()
+        private static readonly string[] Openers =
+        {
+            "C'est toi, {0} ?", "On t'a commandé, mon grand.", "Rien de personnel.", "Quelqu'un a payé pour ça.",
+            "T'as énervé la mauvaise personne.", "Je viens de la part d'un client."
+        };
+
+        private static readonly string[] Threats =
+        {
+            "Viens, alors.", "Tu vas le regretter.", "T'es sérieux, là ?", "Allez. Montre-moi.", "Mauvaise soirée pour toi.",
+            "Je vais te renvoyer à ton client en morceaux."
+        };
+
+        /// <summary>
+        /// La cible se retourne. Si le joueur l'a frappée, c'est la bagarre tout de suite ; sinon
+        /// un face-à-face, comme dans le prologue : le jeu se fige, les bandes noires
+        /// descendent, elle vient se planter devant le joueur, et on se parle (E passe une
+        /// réplique). La présentation « BAGARRE ! » et le combat viennent APRÈS les paroles.
+        /// </summary>
+        private void Engage(bool provoked)
         {
             if (_stage != Stage.EnRoute || _target == null) return;
 
-            _stage = Stage.Fighting;
             if (_briefing != null) _briefing.Deadline = -1f;
 
             TargetActivity.Kind kind = _activity != null ? _activity.Activity : TargetActivity.Kind.Attend;
             if (_activity != null) _activity.Stop();
-            if (_targetBrain != null) _targetBrain.enabled = true;
 
             if (_map != null) _map.SetWaypoint(_target.transform.position, _profile.name, _target.transform);
+
+            if (provoked)
+            {
+                StartFight();
+                return;
+            }
+
+            _stage = Stage.FaceOff;
+            _faceOffTime = 0f;
+
+            if (_intro != null) _intro.Bars = true;
+            if (_input != null) _input.SetGameplayLock(this, true);
+            if (_phone != null) _phone.Lower();
+
+            DialogueLine[] lines = _running != null && _running.Lines != null && _running.Lines.Length > 0
+                ? _running.Lines
+                : new[]
+                {
+                    DialogueLine.Say(_profile.name, TargetActivity.Reaction(kind)),
+                    DialogueLine.Say("MOI", string.Format(Openers[UnityEngine.Random.Range(0, Openers.Length)], Capitalized(_profile.name))),
+                    DialogueLine.Say(_profile.name, Threats[UnityEngine.Random.Range(0, Threats.Length)])
+                };
+
+            if (_subtitles != null) _subtitles.Play(lines);
+        }
+
+        private float _faceOffTime;
+
+        /// <summary>Chaque image du face-à-face : elle approche au pas, le regard du joueur se pose sur elle.</summary>
+        private void UpdateFaceOff(float dt)
+        {
+            if (_target == null)
+            {
+                EndFaceOff();
+                Abandon();
+                return;
+            }
+
+            _faceOffTime += dt;
+
+            if (_player != null)
+            {
+                Vector3 player = _player.transform.position;
+                EnemyMotor motor = _target.GetComponent<EnemyMotor>();
+                if (motor != null)
+                {
+                    Vector3 offset = player - _target.transform.position;
+                    offset.y = 0f;
+                    motor.FaceTowards(player);
+                    if (offset.magnitude > 2.1f) motor.SetMoveIntent(offset, 0.45f);
+                }
+
+                if (_look != null && _look.Head != null)
+                {
+                    Vector3 direction = _target.AimPosition - Vector3.up * 0.05f - _look.Head.position;
+                    float flat = Mathf.Sqrt(direction.x * direction.x + direction.z * direction.z);
+                    if (flat > 0.05f)
+                    {
+                        float yaw = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+                        float pitch = -Mathf.Atan2(direction.y, flat) * Mathf.Rad2Deg;
+                        float t = 1f - Mathf.Exp(-Time.unscaledDeltaTime * 3f);
+                        _look.SetLookAngles(Mathf.LerpAngle(_look.Yaw, yaw, t), Mathf.LerpAngle(_look.Pitch, pitch, t));
+                    }
+                }
+            }
+
+            bool speaking = _subtitles != null && _subtitles.IsSpeaking;
+            if (speaking && _input != null && _input.InteractPressed && _faceOffTime > 0.3f) _subtitles.Skip();
+
+            // Les paroles d'abord ; au pire, on n'attend pas plus de 30 s.
+            if ((!speaking && _faceOffTime > 0.8f) || _faceOffTime > 30f) StartFight();
+        }
+
+        private void EndFaceOff()
+        {
+            if (_input != null) _input.SetGameplayLock(this, false);
+            if (_intro != null) _intro.Bars = false;
+        }
+
+        /// <summary>La présentation (bandes, gros plan, « BAGARRE ! »), puis le combat.</summary>
+        private void StartFight()
+        {
+            if (_target == null) return;
+
+            EndFaceOff();
+            if (_subtitles != null && _stage == Stage.FaceOff) _subtitles.Clear();
+
+            _stage = Stage.Fighting;
+            if (_targetBrain != null) _targetBrain.enabled = true;
 
             if (_crowd != null && _player != null)
             {
@@ -635,11 +756,24 @@ namespace UberBagarre.World
 
             if (_objective != null) _objective.Begin(_target, _player);
 
-            if (_running != null && _running.Lines != null && _running.Lines.Length > 0 && _subtitles != null) _subtitles.Play(_running.Lines);
-            else Say(_profile.name, TargetActivity.Reaction(kind));
-
+            // La cinématique tient les adversaires (EnemyBrain.HoldAll) jusqu'au « BAGARRE ! ».
             string stars = new string('★', Mathf.Clamp(_profile.stars, 1, 5));
             if (_intro != null) _intro.Play(_target, _profile.name, "COURSE " + stars + "  ·  " + _reward + " EUR", null);
+        }
+
+        private static string Capitalized(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            string lower = name.ToLowerInvariant();
+            char[] chars = lower.ToCharArray();
+            bool start = true;
+            for (int i = 0; i < chars.Length; i++)
+            {
+                if (start && char.IsLetter(chars[i])) chars[i] = char.ToUpperInvariant(chars[i]);
+                start = chars[i] == ' ' || chars[i] == '-' || chars[i] == '\'';
+            }
+
+            return new string(chars);
         }
 
         private void BeginProof()
@@ -736,6 +870,7 @@ namespace UberBagarre.World
         /// <summary>Course ratée (trop lent, K.O.) : historique, réputation, nettoyage.</summary>
         private void Fail(string reason, int penalty, bool knockedOut)
         {
+            EndFaceOff();
             if (_progress != null && _profile != null)
             {
                 _progress.ChangeReputation(-penalty, reason);
@@ -792,6 +927,7 @@ namespace UberBagarre.World
         /// <summary>La cible a disparu (détruite, tombée hors de la ville) : la course est annulée.</summary>
         private void Abandon()
         {
+            EndFaceOff();
             if (_map != null) _map.ClearWaypoint();
             if (_display != null) _display.PhotoCounter = string.Empty;
             if (_phone != null && _phone.Current == PhoneDevice.Screen.Mission) _phone.SetScreen(PhoneDevice.Screen.Verrouille);

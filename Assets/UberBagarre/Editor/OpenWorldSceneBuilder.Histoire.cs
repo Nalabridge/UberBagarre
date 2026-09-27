@@ -203,7 +203,13 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(story, "_computer", computer);
 
             Vector3 door = map.vertigo != null && map.vertigo.door != null ? MapPack.Position(map.vertigo.door) : Vector3.zero;
-            story.Configure(characters, door, club.Root.gameObject, club.RingGate, false);
+            // Le courrier, ouvert et lu à l'écran (la version du motel).
+            LetterReader letters = systems.AddComponent<LetterReader>();
+            SerializedWiring.SetObject(letters, "_input", Object.FindAnyObjectByType<Player.PlayerInputReader>());
+            letters.Configure("Monsieur\nMotel Hyland\nChambre 3", true);
+            EditorUtility.SetDirty(letters);
+
+            story.Configure(characters, door, club.Root.gameObject, club.RingGate, false, letters);
             EditorUtility.SetDirty(story);
             return story;
         }

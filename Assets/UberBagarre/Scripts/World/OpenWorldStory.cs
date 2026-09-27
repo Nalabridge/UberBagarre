@@ -78,6 +78,11 @@ namespace UberBagarre.World
         [SerializeField] private CityMap _map;
         [SerializeField] private HomeRegistry _homes;
         [SerializeField] private ComputerScreen _computer;
+        [SerializeField] private LetterReader _letterReader;
+
+        [SerializeField, Min(0.5f)]
+        [Tooltip("Durée du téléchargement de l'appli, en secondes.")]
+        private float _installDuration = 6f;
 
         [Header("Le Vertigo")]
         [SerializeField] private Vector3 _vertigoDoor;
@@ -100,6 +105,8 @@ namespace UberBagarre.World
         private float _chapterPatience = 420f;
 
         private bool _started;
+        private bool _linkConfirmed;
+        private bool _installing;
         private bool _scene;
         private float _freeTime;
         private Coroutine _retry;
@@ -120,7 +127,11 @@ namespace UberBagarre.World
         private void Awake()
         {
             // Tant que la partie n'a pas commencé (écran titre), pas de course.
-            if (_director != null) _director.Paused = true;
+            if (_director != null)
+            {
+                _director.Paused = true;
+                _director.StoryControlsApp = true;
+            }
         }
 
         private void OnEnable()
@@ -133,7 +144,12 @@ namespace UberBagarre.World
                 _director.Died += OnDied;
             }
 
-            if (_phone != null) _phone.Answered += OnAnswered;
+            if (_phone != null)
+            {
+                _phone.Answered += OnAnswered;
+                _phone.StoryConfirmed += OnPhoneConfirmed;
+            }
+
             if (_homes != null) _homes.LettersRead += OnLetters;
         }
 
@@ -147,8 +163,18 @@ namespace UberBagarre.World
                 _director.Died -= OnDied;
             }
 
-            if (_phone != null) _phone.Answered -= OnAnswered;
+            if (_phone != null)
+            {
+                _phone.Answered -= OnAnswered;
+                _phone.StoryConfirmed -= OnPhoneConfirmed;
+            }
+
             if (_homes != null) _homes.LettersRead -= OnLetters;
+        }
+
+        private void OnPhoneConfirmed()
+        {
+            if (_phone != null && _phone.Current == PhoneDevice.Screen.Lien) _linkConfirmed = true;
         }
 
         private void Start()
@@ -278,10 +304,11 @@ namespace UberBagarre.World
             switch (chapter)
             {
                 case Prologue:
-                    if (_phone != null) _phone.AppInstalled = _progress.HasFlag("p:appel");
+                    if (_phone != null) _phone.AppInstalled = _progress.HasFlag("p:appli");
                     if (!_progress.HasFlag("p:reveil")) StartCoroutine(Wake());
                     else if (!_progress.HasFlag("p:courrier")) Goal("Lis le courrier, sur le bureau.");
                     else if (!_progress.HasFlag("p:appel")) Ring("SAMI");
+                    else if (!_progress.HasFlag("p:appli")) StartCoroutine(InstallApp());
                     else Queue("moretti", "Bruno Moretti. Le videur du Vertigo : il sort fumer à la fin de son service.");
                     break;
 
@@ -317,6 +344,11 @@ namespace UberBagarre.World
 
         private void Update()
         {
+            if (_installing && _phone != null)
+            {
+                _phone.DownloadProgress += Time.deltaTime / Mathf.Max(0.5f, _installDuration);
+            }
+
             if (!_started || _scene || GameMenu.IsOpen || _progress == null || _director == null) return;
             if (_director.Busy) return;
 
@@ -385,6 +417,17 @@ namespace UberBagarre.World
         private IEnumerator ReadLetters()
         {
             _scene = true;
+
+            // Les lettres s'ouvrent à l'écran : l'enveloppe, la lettre qui se déplie, le montant,
+            // le tampon. On continue quand le joueur les repose.
+            if (_letterReader != null)
+            {
+                Goal(string.Empty);
+                bool closed = false;
+                _letterReader.Open(delegate { closed = true; });
+                while (!closed) yield return null;
+            }
+
             _progress.SetFlag("p:courrier");
             yield return Lines(
                 DialogueLine.Say("MOI", "Loyer. Électricité. Banque."),
@@ -424,22 +467,59 @@ namespace UberBagarre.World
                 DialogueLine.Say("SAMI", "T'es réveillé ? Tant pis. J'ai un truc pour toi."),
                 DialogueLine.Say("SAMI", "Une appli. Über Bagarre. Les gens commandent une bagarre, toi tu la livres."),
                 DialogueLine.Say("SAMI", "Tu tapes celui qu'on te dit, tu prends une photo, t'es payé le soir même."),
-                DialogueLine.Say("SAMI", "C'est illégal, évidemment. Elle est sur aucun magasin. Je te l'installe à distance."),
+                DialogueLine.Say("SAMI", "C'est illégal, évidemment. Elle est sur aucun magasin. Je t'envoie le lien."),
                 DialogueLine.Say("MOI", "..."),
                 DialogueLine.Say("SAMI", "Réfléchis pas trop. C'est ça, ou t'es dehors en avril."));
+
+            _progress.SetFlag("p:appel");
+            _scene = false;
+            StartCoroutine(InstallApp());
+        }
+
+        /// <summary>
+        /// Le lien de Sami, dans Messages : c'est le joueur qui l'ouvre et qui installe. La barre
+        /// de téléchargement se remplit, puis il lance l'appli lui-même depuis l'accueil.
+        /// </summary>
+        private IEnumerator InstallApp()
+        {
+            _scene = true;
+            _linkConfirmed = false;
 
             if (_phone != null)
             {
                 _phone.HangUp();
+                _phone.AppInstalled = false;
+                _phone.DownloadProgress = 0f;
+                _phone.SetScreen(PhoneDevice.Screen.Lien);
+                Goal("Téléphone (" + _phone.PhoneKeyName.ToUpperInvariant() + ") : ouvre Messages, le lien de Sami, et installe l'appli.");
+                while (!_linkConfirmed) yield return null;
+
+                _phone.SetScreen(PhoneDevice.Screen.Installation);
+                Goal("Installation…");
+                _installing = true;
+                Play(DialogueLine.Say("MOI", "Interdite de diffusion. Évidemment."));
+                while (_phone.DownloadProgress < 1f) yield return null;
+                _installing = false;
+
                 _phone.AppInstalled = true;
+                _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                Goal("Ouvre Über Bagarre depuis l'accueil du téléphone.");
             }
 
-            yield return new WaitForSeconds(1.2f);
+            _progress.SetFlag("p:appli");
+
+            // Personne n'ouvre l'appli à la place du joueur : elle se présente quand il la lance.
+            float waited = 0f;
+            while (_phone != null && !(_phone.IsRaised && _phone.ShowingStoryScreen) && waited < 90f)
+            {
+                waited += Time.deltaTime;
+                yield return null;
+            }
+
             yield return Lines(
                 DialogueLine.Say("APPLI", "Une course, un contrat. De une à cinq étoiles."),
                 DialogueLine.Say("APPLI", "Une étoile, c'est pour apprendre. Cinq, c'est pour finir à l'hôpital."));
 
-            _progress.SetFlag("p:appel");
             _scene = false;
             Queue("moretti", "Bruno Moretti. Le videur du Vertigo : il sort fumer à la fin de son service.");
         }
@@ -902,8 +982,10 @@ namespace UberBagarre.World
         }
 
         /// <summary>Le constructeur de la scène y déclare les personnages et le Vertigo.</summary>
-        public void Configure(Character[] characters, Vector3 vertigoDoor, GameObject club, GameObject ringGate, bool autoStart)
+        public void Configure(Character[] characters, Vector3 vertigoDoor, GameObject club, GameObject ringGate, bool autoStart,
+            LetterReader letters)
         {
+            _letterReader = letters;
             _characters = characters ?? new Character[0];
             _vertigoDoor = vertigoDoor;
             _club = club;
