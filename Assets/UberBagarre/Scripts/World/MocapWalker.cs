@@ -263,6 +263,13 @@ namespace UberBagarre.World
             _pause = 0f;
         }
 
+        /// <summary>Il presse le pas (provoqué, bousculé, témoin d'une bagarre) pendant <paramref name="seconds"/> s.</summary>
+        public void Hurry(float seconds)
+        {
+            _hurryUntil = Mathf.Max(_hurryUntil, Time.time + seconds);
+            _pause = 0f;
+        }
+
         /// <summary>
         /// Renversé par une voiture : il tombe du côté où on l'a poussé, reste au sol un moment
         /// et se relève. Il ne bloque plus rien pendant ce temps.

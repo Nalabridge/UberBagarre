@@ -488,11 +488,25 @@ namespace UberBagarre.EditorTools
         /// Les passants, répartis sur les boucles de trottoir : <paramref name="perLoop"/> par
         /// boucle, <paramref name="onLast"/> sur la dernière (la plus longue).
         /// </summary>
+        private static readonly string[] PasserbyNames =
+        {
+            "Kevin", "Mehdi", "Julien", "Nadia", "Bertrand", "Yanis", "Sébastien", "Karim", "Ludo", "Franck",
+            "Samir", "Thierry", "Dylan", "Mathis", "Rachid", "Jérôme", "Anthony", "Hakim", "Pascal", "Steve"
+        };
+
         private static GameObject BuildPedestrians(List<Vector3[]> loops, NightMaterialFactory.Palette night,
-            BuildMaterials materials, int perLoop, int onLast)
+            BuildMaterials materials, int perLoop, int onLast, AttackLibraryBuilder.Library attacks = null)
         {
             GameObject root = new GameObject("=== Passants ===");
             MocapLibrary library = MocapLibraryBuilder.Build();
+
+            // Les combattants qui prennent la place d'un passant qu'on a provoqué : un par
+            // silhouette et par coupe, vêtus de matériaux « marqueurs » que le passant remplace
+            // par les siens (voir Passerby).
+            Dictionary<string, GameObject> fighters = new Dictionary<string, GameObject>();
+            GameObject fighterRoot = null;
+            Material markerTop = attacks != null ? PrologueSceneBuilder.Jacket(night, Passerby.TopMarker, new Color(0.5f, 0.5f, 0.5f)) : null;
+            Material markerPants = attacks != null ? PrologueSceneBuilder.Jacket(night, Passerby.PantsMarker, new Color(0.2f, 0.2f, 0.25f)) : null;
 
             Color[] tops =
             {
@@ -548,6 +562,48 @@ namespace UberBagarre.EditorTools
                     SerializedWiring.SetObject(walker, "_rig", body.Rig);
                     SerializedWiring.SetObject(walker, "_locomotion", body.Locomotion);
                     EditorUtility.SetDirty(walker);
+
+                    if (attacks == null) continue;
+
+                    // --- on peut le provoquer, le frapper : il fuit, râle, ou se met en garde
+                    string key = skin.Silhouette + "|" + skin.Top;
+                    GameObject template;
+                    if (!fighters.TryGetValue(key, out template))
+                    {
+                        if (fighterRoot == null)
+                        {
+                            fighterRoot = new GameObject("=== Modeles de passants (bagarre) ===");
+                            fighterRoot.transform.position = new Vector3(0f, 0f, -460f);
+                        }
+
+                        FighterBuilder.Skin fighterSkin = FighterBuilder.Skin.Enemy(materials);
+                        fighterSkin.Silhouette = skin.Silhouette;
+                        fighterSkin.Top = skin.Top;
+                        fighterSkin.Shirt = markerTop;
+                        fighterSkin.Pants = markerPants;
+                        SandboxSceneBuilder.FighterParts parts = SandboxSceneBuilder.BuildFighter(materials, attacks, "Passant",
+                            fighterRoot.transform.position + new Vector3(fighters.Count * 3f, 0f, 0f), 0f, fighterSkin, 90f, true);
+                        parts.Go.transform.SetParent(fighterRoot.transform, true);
+                        if (parts.Brain != null) parts.Brain.enabled = false;
+                        parts.Go.SetActive(false);
+                        template = parts.Go;
+                        fighters[key] = template;
+                    }
+
+                    go.AddComponent<HealthSystem>();
+                    Interactable provoke = go.AddComponent<Interactable>();
+                    SerializedWiring.SetString(provoke, "_label", "Provoquer");
+                    SerializedWiring.SetFloat(provoke, "_range", 2.6f);
+                    Transform chest = EditorBuildUtility.CreateEmpty("Visee (torse)", go.transform, new Vector3(0f, 1.35f, 0f)).transform;
+                    SerializedWiring.SetObject(provoke, "_focus", chest);
+
+                    string name = PasserbyNames[(n * 7 + 3) % PasserbyNames.Length];
+                    SerializedWiring.SetString(provoke, "_hint", name);
+                    float temper = ((n * 37 + 11) % 100) / 100f;
+
+                    Passerby passerby = go.AddComponent<Passerby>();
+                    passerby.Configure(walker, template, skin.Shirt, skin.Pants, name, temper);
+                    EditorUtility.SetDirty(passerby);
                 }
             }
 

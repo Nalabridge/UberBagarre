@@ -131,7 +131,7 @@ namespace UberBagarre.EditorTools
 
             List<Vector3[]> walkLoops = MapPack.Loops(map.walk);
             List<Vector3[]> driveLoops = MapPack.Loops(map.drive);
-            GameObject walkers = BuildPedestrians(walkLoops, night, materials, 9, 11);
+            GameObject walkers = BuildPedestrians(walkLoops, night, materials, 9, 11, attacks);
             // --- les voitures : celles de la ville (compacte, berline, SUV, pick-up, coupé),
             // devenues conduisibles. La compacte devant le motel est à toi ; les véhicules garés
             // de la ville sont remplacés par des copies qu'on peut prendre ; la circulation roule

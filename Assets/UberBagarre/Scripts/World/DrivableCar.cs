@@ -629,7 +629,11 @@ namespace UberBagarre.World
             for (int i = 0; i < count; i++)
             {
                 MocapWalker walker = _sweep[i] != null ? _sweep[i].GetComponentInParent<MocapWalker>() : null;
-                if (walker != null && !walker.IsDown) walker.KnockOver(_body.linearVelocity);
+                if (walker != null && !walker.IsDown)
+                {
+                    walker.KnockOver(_body.linearVelocity);
+                    if (_occupied && Mathf.Abs(ForwardSpeed) > 6f) Crimes.Report(Crime.Delit, walker.transform.position, walker.gameObject);
+                }
             }
         }
 
@@ -818,7 +822,9 @@ namespace UberBagarre.World
             MocapWalker walker = collision.collider.GetComponentInParent<MocapWalker>();
             if (walker != null && impact > 3f)
             {
+                bool fresh = !walker.IsDown;
                 walker.KnockOver(_body.linearVelocity);
+                if (fresh && _occupied && impact > 6f) Crimes.Report(Crime.Delit, walker.transform.position, walker.gameObject);
             }
 
             if (_impacts == null || impact < 2.5f) return;
