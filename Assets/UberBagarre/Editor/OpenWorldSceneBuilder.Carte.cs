@@ -445,7 +445,12 @@ namespace UberBagarre.EditorTools
 
             if (club.Exit != null)
             {
+                // Dans le monde ouvert, on sort quand on veut (le prologue, lui, la garde fermée
+                // tant que la soirée n'est pas finie).
                 club.Exit.Label = "Sortir dans la rue";
+                club.Exit.Hint = null;
+                SerializedWiring.SetBool(club.Exit, "_enabledForPlayer", true);
+                SerializedWiring.SetBool(club.Exit, "_once", false);
                 DoorPortal outPortal = club.Exit.gameObject.AddComponent<DoorPortal>();
                 SerializedWiring.SetObject(outPortal, "_player", player);
                 SerializedWiring.SetObject(outPortal, "_destination", back.transform);

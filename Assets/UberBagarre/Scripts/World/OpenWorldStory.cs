@@ -88,6 +88,7 @@ namespace UberBagarre.World
         [SerializeField] private Vector3 _vertigoDoor;
         [SerializeField] private GameObject _club;
         [SerializeField] private GameObject _ringGate;
+        [SerializeField] private RoomZone _backRoom;
 
         [Header("Personnages")]
         [SerializeField] private Character[] _characters = new Character[0];
@@ -372,7 +373,7 @@ namespace UberBagarre.World
 
             // Chapitre 2 : la commande tombe une fois DANS la salle du fond.
             if (chapter == Taureau && _progress.HasFlag("c2:annonce") && !_progress.HasFlag("c2:salle") &&
-                _club != null && _club.activeInHierarchy)
+                _club != null && _club.activeInHierarchy && (_backRoom == null || _backRoom.ContainsPlayer()))
             {
                 StartCoroutine(InTheClub());
             }
@@ -589,7 +590,7 @@ namespace UberBagarre.World
 
         private void AskForClub()
         {
-            Goal("Va au Vertigo (ville nord) et entre dans la salle du fond.");
+            Goal("Va au Vertigo (ville nord), descends, et passe la porte du fond.");
             if (_map != null) _map.SetWaypoint(_vertigoDoor, "LE VERTIGO", null);
         }
 
@@ -602,7 +603,7 @@ namespace UberBagarre.World
 
             yield return Lines(
                 DialogueLine.Say("MOI", "La fumée, le son, la sueur."),
-                DialogueLine.Say("MOI", "La salle du fond, c'est là où il y a du monde. Derrière les barrières."),
+                DialogueLine.Say("MOI", "Une porte noire, un videur, pas de fenêtre. Ici, personne n'a rien vu."),
                 DialogueLine.Say("MOI", "J'y suis. Maintenant, on attend que ça tombe."));
             yield return new WaitForSeconds(3f);
             yield return Lines(
@@ -985,9 +986,10 @@ namespace UberBagarre.World
         }
 
         /// <summary>Le constructeur de la scène y déclare les personnages et le Vertigo.</summary>
-        public void Configure(Character[] characters, Vector3 vertigoDoor, GameObject club, GameObject ringGate, bool autoStart,
-            LetterReader letters)
+        public void Configure(Character[] characters, Vector3 vertigoDoor, GameObject club, GameObject ringGate, RoomZone backRoom,
+            bool autoStart, LetterReader letters)
         {
+            _backRoom = backRoom;
             _letterReader = letters;
             _characters = characters ?? new Character[0];
             _vertigoDoor = vertigoDoor;

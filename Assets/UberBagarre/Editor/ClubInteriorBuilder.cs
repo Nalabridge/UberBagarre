@@ -8,8 +8,10 @@ using UnityEngine;
 namespace UberBagarre.EditorTools
 {
     /// <summary>
-    /// L'intérieur du Vertigo : la salle, le bar, la scène du DJ, la piste, et au fond à
-    /// droite, derrière les barrières, la fosse où l'on se bat pour de l'argent.
+    /// L'intérieur du Vertigo : un sous-sol. On entre par la rue, on descend un escalier aux
+    /// rampes de néon, et l'on arrive dans la salle — le bar, la scène du DJ, la piste. Au fond
+    /// à droite, une porte noire marquée PRIVÉ : derrière, sans fenêtre, la fosse où l'on se
+    /// bat pour de l'argent. C'est illégal, ça se cache.
     ///
     /// Trois zones, trois lumières, et c'est volontaire :
     ///
@@ -43,6 +45,20 @@ namespace UberBagarre.EditorTools
 
         private static readonly Vector3 DanceFloorCenter = new Vector3(-2f, 0f, 3.5f);
 
+        // L'escalier : la salle est en sous-sol, la rue 3,6 m plus haut.
+        public const float StairRise = 3.6f;
+        private const float StairRun = 6f;
+        private const int StairSteps = 20;
+        private const float BottomLanding = 1.2f;
+        private const float TopLanding = 2.2f;
+        private const float WallThickness = 0.4f;
+
+        // La salle du fond : une cloison à l'ouest de la fosse, une autre au nord.
+        private const float PartitionX = 1.6f;
+        private const float PartitionZ = 4.4f;
+        private const float PitDoorWidth = 1.5f;
+        private const float PitDoorHeight = 2.3f;
+
         public class Result
         {
             public Transform Root;
@@ -62,6 +78,12 @@ namespace UberBagarre.EditorTools
 
             public CrowdAudio Crowd;
             public List<Spectator> RingCrowd = new List<Spectator>();
+
+            /// <summary>La porte de la salle du fond (la fosse).</summary>
+            public SwingDoor PitDoor;
+
+            /// <summary>La salle du fond : pour savoir si le joueur y est.</summary>
+            public RoomZone BackRoom;
         }
 
         private class Materials
@@ -86,6 +108,8 @@ namespace UberBagarre.EditorTools
             result.Root = t;
 
             BuildShell(t, night, m, result);
+            BuildStairs(t, night, m, result);
+            BuildBackRoom(t, night, m, body, result);
             BuildBar(t, night, m, body);
             Transform stage = BuildStage(t, night, m, body);
             BuildDanceFloor(t, night, m, body, stage);
@@ -97,8 +121,9 @@ namespace UberBagarre.EditorTools
             EditorBuildUtility.AddReflectionProbe(t, "Sonde de reflexion (salle)",
                 new Vector3(0f, Height * 0.5f, 0f), new Vector3(HalfWidth * 2f, Height, HalfDepth * 2f), true, 1f);
 
-            GameObject arrival = EditorBuildUtility.CreateEmpty("Arrivee", t, new Vector3(0f, 0f, -HalfDepth + 1.8f));
-            arrival.transform.localRotation = Quaternion.Euler(0f, 25f, 0f);
+            // On arrive en haut de l'escalier, la porte de la rue dans le dos, la salle en bas.
+            GameObject arrival = EditorBuildUtility.CreateEmpty("Arrivee", t, new Vector3(0f, StairRise, StairTopWall + 1.7f));
+            arrival.transform.localRotation = Quaternion.identity;
             result.Arrival = arrival.transform;
 
             return result;
@@ -203,28 +228,11 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.Box(t, "Linteau", new Vector3(0f, (Height + DoorHeight) * 0.5f, z),
                 new Vector3(DoorWidth, Height - DoorHeight, thick), night.DarkBrick, true);
 
-            // La porte elle-même, fermée : un double battant métallique au fond du passage.
-            NightStreetBuilder.Box(t, "Porte", new Vector3(0f, DoorHeight * 0.5f, z - 0.1f),
-                new Vector3(DoorWidth, DoorHeight, 0.08f), night.DarkMetal, true);
-
-            // Sortie de secours : un petit néon vert et sa lueur, comme dans toutes les salles.
+            // Sortie : un petit néon vert au-dessus du passage vers l'escalier.
             GameObject exitSign = EditorBuildUtility.CreateEmpty("Sortie", t, new Vector3(0f, DoorHeight + 0.3f, -HalfDepth + 0.05f));
             NightStreetBuilder.Box(exitSign.transform, "Panneau", Vector3.zero, new Vector3(0.9f, 0.3f, 0.04f), night.NeonGreen, false);
             NightStreetBuilder.AddLight(exitSign.transform, "Lueur", new Vector3(0f, -0.2f, 0.4f),
                 new Color(0.3f, 1f, 0.45f), 0.9f, 4f, false, false);
-
-            GameObject door = EditorBuildUtility.CreateEmpty("Porte (sortie)", t, new Vector3(0f, 1.1f, -HalfDepth + 0.6f));
-            BoxCollider trigger = door.AddComponent<BoxCollider>();
-            trigger.size = new Vector3(DoorWidth, 2.2f, 1.2f);
-            trigger.isTrigger = true;
-
-            Interactable exit = door.AddComponent<Interactable>();
-            SerializedWiring.SetString(exit, "_label", "Sortir du club");
-            SerializedWiring.SetString(exit, "_hint", "Rentrer a la planque");
-            SerializedWiring.SetFloat(exit, "_range", 3f);
-            SerializedWiring.SetBool(exit, "_once", true);
-            SerializedWiring.SetBool(exit, "_enabledForPlayer", false);
-            result.Exit = exit;
 
             // Charpente : les poutres portent les lampes, et leurs ombres au plafond disent
             // la hauteur de la salle mieux que n'importe quel mur.
@@ -248,6 +256,228 @@ namespace UberBagarre.EditorTools
                 new Vector3(0.04f, 0.04f, d), night.NeonBlue, false);
             NightStreetBuilder.Box(t, "Plinthe ouest", new Vector3(-HalfWidth + 0.03f, 0.06f, 0f),
                 new Vector3(0.04f, 0.04f, d), night.NeonBlue, false);
+        }
+
+        // ------------------------------------------------------------------ escalier
+
+        /// <summary>Le mur du haut de l'escalier (celui de la porte de la rue), en z local.</summary>
+        private static float StairTopWall
+        {
+            get { return -HalfDepth - WallThickness - BottomLanding - StairRun - TopLanding; }
+        }
+
+        /// <summary>
+        /// L'escalier qui monte de la salle à la rue : droit, entre deux murs de brique, une
+        /// rampe de néon magenta de chaque côté et un liseré cyan au nez de chaque marche. On
+        /// marche sur une rampe invisible (les marches seules feraient sautiller la caméra).
+        /// En haut, la porte de la rue : E pour sortir.
+        /// </summary>
+        private static void BuildStairs(Transform parent, NightMaterialFactory.Palette night, Materials m, Result result)
+        {
+            GameObject stairs = EditorBuildUtility.CreateEmpty("Escalier", parent, Vector3.zero);
+            Transform t = stairs.transform;
+
+            float half = DoorWidth * 0.5f;
+            float wallFace = -HalfDepth - WallThickness;            // l'autre face du mur sud
+            float bottom = wallFace - BottomLanding;                 // pied de la première marche
+            float top = bottom - StairRun;                           // haut de la dernière marche
+            float end = StairTopWall;                                // le mur de la porte de la rue
+            float tread = StairRun / StairSteps;
+            float rise = StairRise / StairSteps;
+            float ceiling = 2.9f;
+
+            // Palier du bas : le prolongement du sol de la salle, sous le passage du mur compris.
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Palier du bas", t,
+                new Vector3(0f, -0.25f, (-HalfDepth + bottom) * 0.5f), new Vector3(DoorWidth, 0.5f, -HalfDepth - bottom), m.Floor, true);
+
+            // Les marches : des blocs pleins, sans collider (on marche sur la rampe).
+            for (int k = 0; k < StairSteps; k++)
+            {
+                float height = (k + 1) * rise;
+                float z = bottom - (k + 0.5f) * tread;
+                NightStreetBuilder.Box(t, "Marche", new Vector3(0f, height * 0.5f, z), new Vector3(DoorWidth, height, tread),
+                    night.DarkConcrete, false);
+                NightStreetBuilder.Box(t, "Nez de marche", new Vector3(0f, height - 0.025f, z + tread * 0.5f + 0.006f),
+                    new Vector3(DoorWidth - 0.1f, 0.03f, 0.012f), night.NeonCyan, false);
+            }
+
+            // La rampe invisible : du pied de la première marche au haut de la dernière.
+            Vector3 along = new Vector3(0f, StairRise, top - bottom);
+            Vector3 normal = new Vector3(0f, -along.z, along.y).normalized;
+            if (normal.y < 0f) normal = -normal;
+            GameObject ramp = EditorBuildUtility.CreateEmpty("Rampe (collision)", t,
+                new Vector3(0f, StairRise * 0.5f, (bottom + top) * 0.5f) - normal * 0.1f);
+            ramp.transform.localRotation = Quaternion.LookRotation(along.normalized, normal);
+            BoxCollider rampCollider = ramp.AddComponent<BoxCollider>();
+            rampCollider.size = new Vector3(DoorWidth, 0.2f, along.magnitude + 0.1f);
+
+            // Palier du haut : plein jusqu'au sol, au niveau de la rue.
+            EditorBuildUtility.CreatePrimitive(PrimitiveType.Cube, "Palier du haut", t,
+                new Vector3(0f, StairRise * 0.5f, (top + end) * 0.5f), new Vector3(DoorWidth, StairRise, TopLanding), m.Floor, true);
+
+            // Murs, plafond (qui suit la pente), mur de la porte.
+            float length = wallFace - end;
+            float wallHeight = StairRise + ceiling + 0.4f;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                NightStreetBuilder.Box(t, side < 0 ? "Mur de l'escalier ouest" : "Mur de l'escalier est",
+                    new Vector3(side * (half + WallThickness * 0.5f), wallHeight * 0.5f, wallFace - length * 0.5f),
+                    new Vector3(WallThickness, wallHeight, length + WallThickness), night.DarkBrick, true);
+
+                // La main courante : un tube de néon magenta, à 90 cm au-dessus des marches.
+                GameObject rail = EditorBuildUtility.CreateEmpty("Main courante", t,
+                    new Vector3(side * (half - 0.06f), StairRise * 0.5f + 0.9f, (bottom + top) * 0.5f));
+                rail.transform.localRotation = Quaternion.LookRotation(along.normalized, normal);
+                NightStreetBuilder.Box(rail.transform, "Tube", Vector3.zero, new Vector3(0.05f, 0.05f, along.magnitude), night.NeonMagenta, false);
+                NightStreetBuilder.AddFlicker(rail, NeonFlicker.Pattern.Calme, 6f, 0.04f, 1f, 5f + side * 3f);
+            }
+
+            NightStreetBuilder.Box(t, "Plafond du palier du bas", new Vector3(0f, ceiling + 0.15f, (wallFace + bottom) * 0.5f),
+                new Vector3(DoorWidth, 0.3f, BottomLanding + 0.1f), night.DarkConcrete, false);
+            GameObject slope = EditorBuildUtility.CreateEmpty("Plafond en pente", t,
+                new Vector3(0f, StairRise * 0.5f + ceiling + 0.15f, (bottom + top) * 0.5f));
+            slope.transform.localRotation = Quaternion.LookRotation(along.normalized, normal);
+            NightStreetBuilder.Box(slope.transform, "Dalle", Vector3.zero, new Vector3(DoorWidth, 0.3f, along.magnitude + 0.3f), night.DarkConcrete, false);
+            NightStreetBuilder.Box(t, "Plafond du palier du haut", new Vector3(0f, StairRise + ceiling + 0.15f, (top + end) * 0.5f),
+                new Vector3(DoorWidth, 0.3f, TopLanding + 0.1f), night.DarkConcrete, false);
+
+            NightStreetBuilder.Box(t, "Mur de la rue", new Vector3(0f, wallHeight * 0.5f, end - WallThickness * 0.5f),
+                new Vector3(DoorWidth + WallThickness * 2f, wallHeight, WallThickness), night.DarkBrick, true);
+
+            // La porte de la rue : un battant métallique, une barre anti-panique, SORTIE au-dessus.
+            GameObject door = EditorBuildUtility.CreateEmpty("Porte de la rue", t, new Vector3(0f, StairRise, end + 0.03f));
+            NightStreetBuilder.Box(door.transform, "Battant", new Vector3(0f, 1.1f, 0f), new Vector3(1.5f, 2.2f, 0.06f), night.DarkMetal, false);
+            NightStreetBuilder.Box(door.transform, "Barre anti-panique", new Vector3(0f, 1.0f, 0.08f), new Vector3(1.1f, 0.06f, 0.06f), night.Chrome, false);
+            NightStreetBuilder.Box(door.transform, "Jour sous la porte", new Vector3(0f, 0.01f, 0.06f), new Vector3(1.4f, 0.015f, 0.05f), night.NeonWarm, false);
+
+            GameObject sign = EditorBuildUtility.CreateEmpty("Sortie (rue)", t, new Vector3(0f, StairRise + 2.5f, end + 0.05f));
+            NightStreetBuilder.Box(sign.transform, "Panneau", Vector3.zero, new Vector3(0.9f, 0.3f, 0.04f), night.NeonGreen, false);
+            NightStreetBuilder.AddLight(sign.transform, "Lueur", new Vector3(0f, -0.3f, 0.5f), new Color(0.3f, 1f, 0.45f), 1f, 4f, false, false);
+
+            // Lumières : une applique chaude au-dessus de la porte, une lueur magenta en bas.
+            NightStreetBuilder.AddSpot(t, "Applique de la porte", new Vector3(0f, StairRise + ceiling - 0.2f, end + 0.6f),
+                new Vector3(0f, -1f, 0.35f), new Color(1f, 0.78f, 0.5f), 2.6f, 7f, 95f, false);
+            NightStreetBuilder.AddLight(t, "Lueur du bas", new Vector3(0f, 1.6f, bottom + 0.3f), new Color(1f, 0.25f, 0.7f), 1.4f, 6f, false, false);
+            NightStreetBuilder.AddLight(t, "Lueur de la rampe", new Vector3(0f, StairRise * 0.5f + 1.6f, (bottom + top) * 0.5f),
+                new Color(0.9f, 0.3f, 1f), 1.1f, 6f, false, false);
+
+            // Des affiches collées sur la brique : les soirées du club.
+            Color[] tints = { new Color(1f, 0.2f, 0.6f), new Color(0.2f, 0.85f, 1f), new Color(1f, 0.55f, 0.15f) };
+            for (int i = 0; i < 3; i++)
+            {
+                float z = bottom - (i + 0.8f) * 1.8f;
+                float y = (bottom - z) / StairRun * StairRise + 1.7f;
+                NightStreetBuilder.Box(t, "Affiche", new Vector3(-half + 0.01f, y, z),
+                    new Vector3(0.02f, 0.9f, 0.62f), i == 1 ? night.FacadeLitCool : night.FacadeLit, false);
+                NightStreetBuilder.AddLight(t, "Reflet d'affiche", new Vector3(-half + 0.35f, y, z), tints[i], 0.25f, 1.6f, false, false);
+            }
+
+            // La sortie : E en haut, devant la porte.
+            GameObject exit = EditorBuildUtility.CreateEmpty("Porte (sortie)", t, new Vector3(0f, StairRise + 1.1f, end + 0.7f));
+            BoxCollider trigger = exit.AddComponent<BoxCollider>();
+            trigger.size = new Vector3(DoorWidth, 2.2f, 1.2f);
+            trigger.isTrigger = true;
+
+            Interactable interactable = exit.AddComponent<Interactable>();
+            SerializedWiring.SetString(interactable, "_label", "Sortir du club");
+            SerializedWiring.SetString(interactable, "_hint", "Rentrer a la planque");
+            SerializedWiring.SetFloat(interactable, "_range", 3f);
+            SerializedWiring.SetBool(interactable, "_once", true);
+            SerializedWiring.SetBool(interactable, "_enabledForPlayer", false);
+            result.Exit = interactable;
+        }
+
+        // ------------------------------------------------------------------ salle du fond
+
+        /// <summary>
+        /// La salle du fond : deux cloisons ferment la fosse. On y entre par une seule porte,
+        /// noire, marquée PRIVÉ, avec un videur à côté et la lumière rouge qui passe dessous.
+        /// De la salle, on entend la fosse ; on ne la voit pas.
+        /// </summary>
+        private static void BuildBackRoom(Transform parent, NightMaterialFactory.Palette night, Materials m,
+            BuildMaterials body, Result result)
+        {
+            GameObject room = EditorBuildUtility.CreateEmpty("Salle du fond", parent, Vector3.zero);
+            Transform t = room.transform;
+            const float thick = 0.3f;
+
+            // Cloison ouest (x = PartitionX), percée de la porte face à la barrière de la fosse.
+            float doorZ = RingCenter.z;
+            float south = -HalfDepth;
+            float north = PartitionZ + thick * 0.5f;
+            float doorLow = doorZ - PitDoorWidth * 0.5f;
+            float doorHigh = doorZ + PitDoorWidth * 0.5f;
+
+            NightStreetBuilder.Box(t, "Cloison (sud de la porte)", new Vector3(PartitionX, Height * 0.5f, (south + doorLow) * 0.5f),
+                new Vector3(thick, Height, doorLow - south), night.DarkBrick, true);
+            NightStreetBuilder.Box(t, "Cloison (nord de la porte)", new Vector3(PartitionX, Height * 0.5f, (doorHigh + north) * 0.5f),
+                new Vector3(thick, Height, north - doorHigh), night.DarkBrick, true);
+            NightStreetBuilder.Box(t, "Linteau", new Vector3(PartitionX, (Height + PitDoorHeight) * 0.5f, doorZ),
+                new Vector3(thick, Height - PitDoorHeight, PitDoorWidth), night.DarkBrick, true);
+
+            // Cloison nord (z = PartitionZ), jusqu'au mur est.
+            NightStreetBuilder.Box(t, "Cloison nord", new Vector3((PartitionX + HalfWidth) * 0.5f, Height * 0.5f, PartitionZ),
+                new Vector3(HalfWidth - PartitionX, Height, thick), night.DarkBrick, true);
+
+            // La porte : un battant sur son gond, qui s'ouvre loin de celui qui la pousse.
+            GameObject hinge = EditorBuildUtility.CreateEmpty("Porte de la fosse", t, new Vector3(PartitionX, 0f, doorLow + 0.02f));
+            Rigidbody rigidbody = hinge.AddComponent<Rigidbody>();
+            rigidbody.isKinematic = true;
+            rigidbody.useGravity = false;
+            NightStreetBuilder.Box(hinge.transform, "Battant", new Vector3(0f, PitDoorHeight * 0.5f - 0.01f, PitDoorWidth * 0.5f - 0.02f),
+                new Vector3(0.06f, PitDoorHeight - 0.03f, PitDoorWidth - 0.05f), m.Speaker, true);
+            NightStreetBuilder.Box(hinge.transform, "Poignee", new Vector3(-0.06f, 1.05f, PitDoorWidth - 0.2f),
+                new Vector3(0.05f, 0.04f, 0.16f), night.Chrome, false);
+            NightStreetBuilder.Box(hinge.transform, "Poignee (fosse)", new Vector3(0.06f, 1.05f, PitDoorWidth - 0.2f),
+                new Vector3(0.05f, 0.04f, 0.16f), night.Chrome, false);
+            NightStreetBuilder.Box(hinge.transform, "Judas", new Vector3(-0.035f, 1.62f, PitDoorWidth * 0.5f),
+                new Vector3(0.02f, 0.08f, 0.28f), night.Chrome, false);
+
+            Interactable handle = hinge.AddComponent<Interactable>();
+            SerializedWiring.SetFloat(handle, "_range", 2.6f);
+            Transform grip = EditorBuildUtility.CreateEmpty("Poignee (visee)", hinge.transform,
+                new Vector3(0f, 1.05f, PitDoorWidth - 0.25f)).transform;
+            SerializedWiring.SetObject(handle, "_focus", grip);
+
+            SwingDoor swing = hinge.AddComponent<SwingDoor>();
+            SerializedWiring.SetFloat(swing, "_openAngle", -100f);
+            SerializedWiring.SetString(swing, "_openLabel", "Pousser la porte du fond");
+            SerializedWiring.SetString(swing, "_closeLabel", "Fermer la porte du fond");
+            result.PitDoor = swing;
+
+            // La lumière rouge de la fosse passe sous la porte.
+            NightStreetBuilder.Box(t, "Lumiere sous la porte", new Vector3(PartitionX - thick * 0.5f - 0.02f, 0.012f, doorZ),
+                new Vector3(0.06f, 0.012f, PitDoorWidth - 0.1f), night.NeonRed, false);
+
+            // PRIVÉ, en néon rouge, côté salle.
+            GameObject sign = EditorBuildUtility.CreateEmpty("Enseigne PRIVE", t,
+                new Vector3(PartitionX - thick * 0.5f - 0.04f, PitDoorHeight + 0.55f, doorZ));
+            sign.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            NeonTextBuilder.Build(sign.transform, "PRIVE", 0.34f, 0.045f, night.NeonRed);
+            NightStreetBuilder.AddLight(sign.transform, "Lueur", new Vector3(0f, 0.1f, 0.5f), new Color(1f, 0.15f, 0.12f), 1.2f, 4.5f, false, false);
+            NightStreetBuilder.AddFlicker(sign, NeonFlicker.Pattern.Bourdonnement, 5f, 0.1f, 1f, 41f);
+
+            // Le videur : bras croisés, adossé à la cloison, à côté de la porte.
+            Transform watch = EditorBuildUtility.CreateEmpty("Regard du videur", t, new Vector3(-3f, 1.6f, doorZ - 1f)).transform;
+            AddSpectator(t, body, m, 1, new Vector3(PartitionX - 0.55f, 0f, doorLow - 0.75f), 270f, Spectator.Mood.Accoude, watch,
+                0.15f, 3.3f, false).name = "Videur de la fosse";
+
+            // Au fond, une caisse pour les paris, deux néons rouges, du béton nu.
+            NightStreetBuilder.Box(t, "Table des paris", new Vector3(PartitionX + 1.1f, 0.5f, PartitionZ - 1.3f),
+                new Vector3(1.4f, 1f, 0.7f), night.DarkMetal, true);
+            NightStreetBuilder.Box(t, "Liseré", new Vector3(PartitionX + 1.1f, 1.0f, PartitionZ - 1.66f),
+                new Vector3(1.4f, 0.03f, 0.03f), night.NeonRed, false);
+            NightStreetBuilder.Box(t, "Neon (cloison)", new Vector3(PartitionX + thick * 0.5f + 0.03f, 3.2f, -8f),
+                new Vector3(0.04f, 0.05f, 3.2f), night.NeonRed, false);
+            NightStreetBuilder.Box(t, "Neon (cloison nord)", new Vector3(10f, 3.2f, PartitionZ - thick * 0.5f - 0.03f),
+                new Vector3(4f, 0.05f, 0.04f), night.NeonRed, false);
+
+            // La zone : toute la salle du fond, du sol au plafond.
+            GameObject zone = EditorBuildUtility.CreateEmpty("Salle du fond (zone)", t,
+                new Vector3((PartitionX + HalfWidth) * 0.5f, Height * 0.5f, (south + PartitionZ) * 0.5f));
+            RoomZone roomZone = zone.AddComponent<RoomZone>();
+            SerializedWiring.SetVector3(roomZone, "_size", new Vector3(HalfWidth - PartitionX, Height, PartitionZ - south));
+            result.BackRoom = roomZone;
         }
 
         // ------------------------------------------------------------------ bar
@@ -487,7 +717,7 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.Cylinder(t, "Toile", new Vector3(0f, 0.011f, 0f),
                 new Vector3(RingRadius * 2f - 0.3f, 0.01f, RingRadius * 2f - 0.3f), m.RingCanvas, false);
 
-            // Barrieres en cercle. Celle qui fait face a l'entree de la salle (cote ouest) est
+            // Barrieres en cercle. Celle qui fait face a la porte de la salle du fond (ouest) est
             // la PORTE : elle s'ouvre pour laisser entrer le joueur, et se referme derriere lui.
             const int segments = 14;
             for (int i = 0; i < segments; i++)
@@ -541,8 +771,8 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.AddFlicker(sign, NeonFlicker.Pattern.Bourdonnement, 7f, 0.12f, 1f, 71f);
 
             // Tables hautes et caisses autour : de quoi lancer, de quoi buter.
-            BuildHighTable(parent, night, RingCenter + new Vector3(-6.2f, 0f, -5.4f));
-            BuildHighTable(parent, night, RingCenter + new Vector3(-6.4f, 0f, 3.9f));
+            BuildHighTable(parent, night, new Vector3(PartitionX + 1.0f, 0f, -HalfDepth + 1.3f));
+            BuildHighTable(parent, night, new Vector3(PartitionX + 1.0f, 0f, PartitionZ - 3.0f));
             NightStreetBuilder.Crate(parent, night, new Vector3(HalfWidth - 0.9f, 0f, -HalfDepth + 1.2f), 0.7f, 12f);
             NightStreetBuilder.Crate(parent, night, new Vector3(HalfWidth - 1.7f, 0f, -HalfDepth + 1.0f), 0.6f, -18f);
             NightStreetBuilder.Crate(parent, night, new Vector3(HalfWidth - 1.1f, 0.7f, -HalfDepth + 1.2f), 0.55f, 30f);
@@ -567,8 +797,9 @@ namespace UberBagarre.EditorTools
                     Vector3 local = new Vector3(Mathf.Cos(radians), 0f, Mathf.Sin(radians)) * radii[row];
                     Vector3 inRoom = RingCenter + local;
 
-                    // Pas de spectateur dans les murs ni sur la piste.
+                    // Pas de spectateur dans les murs ni derrière les cloisons.
                     if (Mathf.Abs(inRoom.x) > HalfWidth - 0.6f || Mathf.Abs(inRoom.z) > HalfDepth - 0.6f) continue;
+                    if (inRoom.x < PartitionX + 0.6f || inRoom.z > PartitionZ - 0.6f) continue;
 
                     float yaw = Mathf.Atan2(-local.x, -local.z) * Mathf.Rad2Deg;
 

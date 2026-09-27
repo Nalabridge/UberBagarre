@@ -209,7 +209,7 @@ namespace UberBagarre.EditorTools
             letters.Configure("Monsieur\nMotel Hyland\nChambre 3", true);
             EditorUtility.SetDirty(letters);
 
-            story.Configure(characters, door, club.Root.gameObject, club.RingGate, false, letters);
+            story.Configure(characters, door, club.Root.gameObject, club.RingGate, club.BackRoom, false, letters);
             EditorUtility.SetDirty(story);
             return story;
         }
