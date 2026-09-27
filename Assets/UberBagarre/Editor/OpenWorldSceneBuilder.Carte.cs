@@ -208,6 +208,7 @@ namespace UberBagarre.EditorTools
             if (saved)
             {
                 SandboxSceneBuilder.RegisterSceneInBuildSettings(ScenePath);
+                MakeLaunchScene(ScenePath);
                 AppendSceneToBuildSettings(MapPack.ScenePath);
             }
 
@@ -259,6 +260,22 @@ namespace UberBagarre.EditorTools
             }
 
             return points.ToArray();
+        }
+
+        /// <summary>
+        /// L'histoire se joue désormais dans la ville : c'est cette scène que le jeu lance (la
+        /// première des Build Settings), avec son écran titre.
+        /// </summary>
+        private static void MakeLaunchScene(string scenePath)
+        {
+            List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+            int index = scenes.FindIndex(s => s.path == scenePath);
+            if (index <= 0) return;
+
+            EditorBuildSettingsScene scene = scenes[index];
+            scenes.RemoveAt(index);
+            scenes.Insert(0, scene);
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         private static void AppendSceneToBuildSettings(string scenePath)

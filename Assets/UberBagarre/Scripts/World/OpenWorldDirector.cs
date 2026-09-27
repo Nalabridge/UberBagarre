@@ -201,6 +201,9 @@ namespace UberBagarre.World
         /// <summary>Le joueur est mort : la partie vient d'être rechargée.</summary>
         public event Action Died;
 
+        /// <summary>La nuit passe : le jour a changé, la partie n'est pas encore sauvegardée (loyer, drapeaux).</summary>
+        public event Action Sleeping;
+
         /// <summary>Le joueur vient de dormir (partie sauvegardée).</summary>
         public event Action Slept;
 
@@ -971,6 +974,8 @@ namespace UberBagarre.World
             if (_progress != null)
             {
                 _progress.Sleep();
+                Action sleeping = Sleeping;
+                if (sleeping != null) sleeping();
                 bool saved = _progress.Save();
                 if (_fader != null) _fader.ShowCard("Jour " + _progress.Day + (saved ? "\nPartie sauvegardée." : ""));
             }

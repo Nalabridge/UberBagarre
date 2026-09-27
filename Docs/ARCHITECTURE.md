@@ -2436,3 +2436,125 @@ la cadence monte de 70 à 150 par minute ; l'endurance en dessous (reflet qui co
 repères aux quarts, « À BOUT DE SOUFFLE ») ; l'étourdissement (« SONNÉ » près du seuil). Grand en
 combat, réduit hors combat (sans disparaître). Monde ouvert : argent qui défile et gain qui monte,
 niveau et progression ; au volant : compteur (km/h), régime en arc de graduations, rapport, aide.
+
+## 29. La vraie ville, une histoire dedans, et tout ce qu'on fait entre deux bagarres
+
+Demande : jouer sur la carte fournie, « faire l'histoire dans le monde ouvert », des courses « avec un
+contexte » (la cible fait quelque chose), des objectifs dans l'appli (casser un nez, une jambe), la
+réputation qui baisse quand on rate et la mort qui fait recommencer, des photos qui marchent et un
+profil dans l'appli, un menu de personnalisation (voies d'amélioration des stats et de l'apparence),
+un ordinateur et des jeux d'argent, un menu principal qui ne soit plus « la maison dans le vide ».
+
+### 29.1 La carte : un pack à part, chargé par-dessus
+
+La carte convertie (`Tools/schedule1/python`, voir son LISEZMOI) vit dans `Assets/Schedule1`,
+**ignoré par git** : c'est du contenu tiers, il se transmet à part. Le code ne suppose jamais sa
+présence : `MapPack.Load()` (éditeur) renvoie null sans lui, et le constructeur du monde ouvert
+retombe sur la ville procédurale.
+
+- **Une scène à elle** (`CarteSchedule1.unity`), chargée en additif par `MapStreamer` au démarrage.
+  Le joueur est retenu (moteur coupé) tant qu'elle n'est pas là ; la physique est synchronisée avant
+  de le relâcher. Une ville de 800 m dans la scène du jeu rendrait chaque reconstruction interminable
+  et chaque modification du jeu illisible dans git.
+- **Ce que la carte a perdu, refait à l'exécution** : ses portes (`SwingDoor`, posé sur le gond par
+  son chemin dans la hiérarchie : `@Properties/Bungalow/bungalow/Classical Wooden door/Container`) ;
+  ses lampes (lumières confiées au `DistanceCuller`, matériaux « off » échangés la nuit contre une
+  copie émissive préparée par l'éditeur) ; l'eau (sous l'eau plus d'une seconde : fondu, repêché sur
+  le point de trottoir le plus proche).
+- **`reseau.json`** porte ce que le code doit savoir de la ville : les boucles de circulation (à
+  droite de la chaussée) et de marche (sur le trottoir), les lieux de rendez-vous et ce qu'on y fait,
+  les places de parking, les logements (points de réveil, meubles, portes), les portes classiques de
+  la ville, la vue de dessus de la minicarte. Les meubles des logements ont été placés sur des rendus
+  vus de dessus au mètre près (`room.py`) : lit tête au mur, bureau dos au mur, armoire façade vers
+  la pièce.
+
+### 29.2 L'histoire dans la ville : des faits, pas des minuteurs
+
+`OpenWorldStory` reprend la trame du prologue et la prolonge (chapitres 3 et 4). Elle ne pilote rien
+elle-même : elle **commande des courses** au directeur (`QueueStoryContract`) et écoute ce qui se
+passe (`StoryContractFinished`, `Sleeping`, `Slept`, `Died`, le téléphone décroché, la salle du
+Vertigo ouverte, le courrier lu).
+
+- **Tout l'état est dans la sauvegarde** : le chapitre et des drapeaux (`p:courrier`, `c1:dragan`,
+  `c2:salle`…). `Resume()` relit ces deux choses et remet en place ce qui doit l'être : l'objectif, la
+  course attendue, le téléphone qui sonne. C'est la même fonction au lancement, après une mort
+  (partie rechargée : le chapitre a pu reculer) et après un échec. Aucune étape n'est « en cours »
+  en mémoire seulement.
+- **Une course d'histoire ne se perd pas** : non acceptée, elle ne part pas à un autre ; ratée, elle
+  retombe 25 s plus tard (« deuxième chance ») ; la cible disparue, elle revient. `PendingStoryTag`
+  empêche de la commander deux fois.
+- **Les chapitres avancent sur des faits** : une course gagnée, une nuit de sommeil, une porte
+  franchie. Pour les deux chapitres qui attendent « le lendemain », un filet : sept minutes de jeu
+  libre suffisent aussi, pour qui ne pense pas à dormir.
+- **Le sommeil a deux temps** : `Sleeping` (le jour a changé, pas encore sauvegardé : le loyer, les
+  drapeaux du réveil) puis `Slept` (après la sauvegarde : ce qu'on dit au réveil). Sinon le loyer
+  payé et le chapitre prêt disparaissaient avec la partie.
+
+### 29.3 Les courses ont un contexte
+
+- **`TargetActivity`** : la cible passe sa soirée (fume, téléphone, boit, tague, s'entraîne, pêche,
+  deale, se dispute, retire au distributeur). Accessoires faits de primitives (les matières viennent
+  de `TargetActivityKit`, construites par l'éditeur : un shader non référencé manquerait dans une
+  build), bras posés par IK en fin d'image, tête qui regarde ce qu'elle fait. Le tag cherche le mur le
+  plus proche dans quatre directions et s'y colle. À quelques mètres (plus ou moins selon ce qu'elle
+  fait : un téléphone rend sourd), elle lâche tout — les accessoires tombent, physiques.
+- **`ContractObjective`** : la consigne du client (nez, jambe, côtes, rapide, sans visage, uppercut,
+  deux chutes, poings seuls), abonnée aux événements du combat et des blessures, évaluée au K.O.
+  Tenue : bonus et cinq étoiles ; ratée : payé sans bonus, avis mitigé.
+- **`TargetInjuries`** : les fractures, sur des seuils de dégâts par zone (rendus plus bas par
+  l'entraînement), avec un effet réel — une jambe cassée ralentit de 45 %, des côtes cassées
+  baissent la défense et la récupération.
+
+### 29.4 Réputation, blessures, mort
+
+`PlayerProgress` tient le tout, et le reste le lit : les étoiles proposées (`MaxStarsOffered`), le
+tarif (`PayMultiplier` 0,8 à 1,4), la suspension (réputation à zéro). Trois blessures au maximum :
+chaque K.O. en ajoute une, dormir les soigne, et un K.O. avec trois blessures **tue** — la partie est
+rechargée depuis la dernière nuit (`TakeKnockout` renvoie la mort, le directeur recharge, l'histoire
+relit). On ne sauvegarde qu'en dormant : la mort a un vrai prix, celui de tout ce qui s'est passé
+depuis la dernière nuit.
+
+### 29.5 L'appli : des photos qui restent
+
+`PhotoArchive` écrit chaque photo en JPEG (`persistentDataPath/photos`), préfixée `preuve` ou
+`photo`, et en garde trente de chaque. La course payée retient le nom de sa preuve
+(`ContractRecord.photo`) : l'historique montre la vraie photo de chaque K.O., le profil la dernière.
+La galerie du téléphone les recharge au lancement.
+
+### 29.6 Les écrans pleins : une base, deux meubles, trois maisons
+
+`FullScreenPanel` fait tout ce qui est commun à l'armoire et à l'ordinateur : ouvrir (jeu verrouillé,
+curseur libre), naviguer (flèches et souris sur la même liste de boutons, comptés à chaque dessin),
+fermer (Échap), les sons, les messages. Les écrans ne dessinent que leur contenu.
+
+- Un écran s'ouvre depuis **plusieurs meubles** (`Attach`) : une armoire et un ordinateur par
+  logement, un seul écran de chaque.
+- `HomeRegistry` tient la règle des logements : on se réveille dans celui qu'on a choisi, les meubles
+  n'existent que dans ceux qu'on possède, les portes des autres sont **fermées à clé**
+  (`SwingDoor.SetLocked` : la poignée tremble), le portail du manoir disparaît pour son propriétaire.
+  Les portes appartiennent à la ville, chargée après : l'état est réappliqué à `MapStreamer.Loaded`.
+- **L'entraînement** (`PlayerUpgrades`) passe par les modificateurs de `CombatantStats`, source
+  « Entrainement » : tout est retiré puis reposé à chaque changement, jamais compté deux fois.
+- **La tenue** (`PlayerWardrobe`) : les trois coupes sont des maillages construits d'avance sur le
+  même squelette ; changer de haut, c'est changer de maillage sur le même rendu, et son ombre (le
+  corps entier) avec lui.
+- **Les jeux d'argent** suivent les vraies règles (roulette européenne, blackjack six jeux avec
+  croupier à 17 et blackjack payé 3 pour 2, machine à sous à symboles pondérés) : la maison gagne à
+  la longue, comme il se doit.
+
+### 29.7 L'écran titre
+
+`GameMenu` sait maintenant lancer l'histoire de la ville (`_openWorld`) : CONTINUER (lu dans la
+sauvegarde sans la charger), NOUVELLE PARTIE, CHAPITRES (une partie neuve au chapitre choisi, avec
+l'argent et l'expérience qu'on y aurait). Le fond n'est plus un plan fixe : un **survol en plusieurs
+plans** (`_tour`, triplets départ / arrivée / visée) enchaînés en fondu au noir, dont un le long d'une
+avenue calculée sur la boucle de circulation — sur la chaussée, aucun immeuble sur le chemin de la
+caméra. Tant que la ville se charge, l'écran reste noir et le dit.
+
+### 29.8 Les add-ons fournis
+
+Vérifiés avant usage : les archives de PuppetMaster et de Punch Swing Hit Sounds contiennent un
+`Readme.txt` de redistribution (unityassetpack.com), ce ne sont pas des copies achetées — non
+intégrées. Le pack de voitures « TrafficManiac » est un mod pour Euro Truck Simulator (`.scs`), pas un
+asset Unity. Avec les `.unitypackage` officiels (Package Manager → My Assets), PuppetMaster se
+brancherait sur les adversaires (ils ont déjà un Animator humanoïde) pour les réactions aux coups.

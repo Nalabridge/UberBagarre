@@ -128,6 +128,7 @@ namespace UberBagarre.World
             if (_director != null)
             {
                 _director.StoryContractFinished += OnContractFinished;
+                _director.Sleeping += OnSleeping;
                 _director.Slept += OnSlept;
                 _director.Died += OnDied;
             }
@@ -141,6 +142,7 @@ namespace UberBagarre.World
             if (_director != null)
             {
                 _director.StoryContractFinished -= OnContractFinished;
+                _director.Sleeping -= OnSleeping;
                 _director.Slept -= OnSlept;
                 _director.Died -= OnDied;
             }
@@ -806,29 +808,37 @@ namespace UberBagarre.World
 
         // ------------------------------------------------------------------ nuits, mort
 
-        private void OnSlept()
+        private string _morning;
+
+        /// <summary>Pendant la nuit, avant la sauvegarde : le loyer, et ce que le réveil déclenche.</summary>
+        private void OnSleeping()
         {
+            _morning = null;
             if (!_started || _progress == null) return;
 
             if (_progress.Chapter == Kovac) _progress.SetFlag("c1:pret");
             if (_progress.Chapter == Comptable) _progress.SetFlag("c3:pret");
 
             // Le loyer du motel, tous les sept jours.
-            if (_rent > 0 && _progress.Home == "Motel" && _progress.Day > 1 && _progress.Day % _rentEvery == 0)
+            if (_rent <= 0 || _progress.Home != "Motel" || _progress.Day <= 1 || _progress.Day % _rentEvery != 0) return;
+
+            if (_progress.Spend(_rent))
             {
-                if (_progress.Spend(_rent))
-                {
-                    Play(DialogueLine.Say("MOI", "Le motel a prélevé le loyer. " + _rent + " euros de moins."));
-                }
-                else
-                {
-                    int all = _progress.Money;
-                    if (all > 0) _progress.AddMoney(-all);
-                    Mail("Motel Hyland", "Dernier avertissement (jour " + _progress.Day + ")",
-                        "Votre compte ne couvrait pas le loyer. Nous avons prélevé " + all + " €.\nLa prochaine fois, nous changeons la serrure.", true);
-                    Play(DialogueLine.Say("MOI", "Le loyer a vidé le compte. Et il manquait encore."));
-                }
+                _morning = "Le motel a prélevé le loyer. " + _rent + " euros de moins.";
+                return;
             }
+
+            int all = _progress.Money;
+            if (all > 0) _progress.AddMoney(-all);
+            Mail("Motel Hyland", "Dernier avertissement (jour " + _progress.Day + ")",
+                "Votre compte ne couvrait pas le loyer. Nous avons prélevé " + all + " €.\nLa prochaine fois, nous changeons la serrure.", true);
+            _morning = "Le loyer a vidé le compte. Et il manquait encore.";
+        }
+
+        private void OnSlept()
+        {
+            if (!string.IsNullOrEmpty(_morning)) Play(DialogueLine.Say("MOI", _morning));
+            _morning = null;
         }
 
         private void OnDied()

@@ -80,6 +80,9 @@ namespace UberBagarre.Story
             // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
             if (FightIntro.AnyPlaying) return;
 
+            // Un écran plein (armoire, ordinateur) ou le menu : l'objectif s'efface derrière.
+            if (UI.ModalScreen.Active || UI.GameMenu.IsOpen) return;
+
             if (_visibility <= 0.01f) return;
 
             float y = _margin.y;

@@ -13,6 +13,8 @@ Le dépôt contient **trois scènes**, générées par le menu **Uber Bagarre** 
   réglages sous la main. Même là, l'adversaire attend qu'on ait **accepté la course au téléphone**.
 - **Le MONDE OUVERT** (`MondeOuvert.unity`, menu **3b**) — toute la ville d'un seul tenant, et des
   courses qui tombent sur le téléphone sans fin. Lancée depuis l'écran titre : **MONDE OUVERT**.
+  **Avec le pack de la carte installé** (`Assets/Schedule1`, voir « Le jeu dans la ville »), c'est
+  **le jeu entier** : l'histoire, les logements, l'ordinateur, le vestiaire — et la scène de lancement.
 
 Le rendu est en **différé** (toutes les lampes calculées par pixel, avec leurs ombres), avec une
 lumière **volumétrique** calculée à partir des vraies lampes, des matériaux **PBR** (cartes de relief,
@@ -220,15 +222,20 @@ Assets/UberBagarre/
     Feedback/    camera shake, recul, arrêt sur impact, vignette progressive, reflets du
                  soleil, réglages de rendu, sons générés
     UI/          HUD de combat, indicateur de garde, overlay de debug (F1), écran titre et
-                 pause (GameMenu), écrans pleins (ModalScreen)
+                 pause (GameMenu), écrans pleins (ModalScreen, FullScreenPanel), vestiaire
+                 (WardrobeScreen), ordinateur (ComputerScreen)
     Sandbox/     points de spawn, directeur de spawn, menu de réglage, vagues, statistiques
     Story/       moteur d'étapes, sous-titres, objectifs, fondu, tutoriel, scénario du prologue
                  et des chapitres, face-à-face, courrier à l'écran (LetterReader),
                  progression (argent, XP, niveaux, avis)
-    Phone/       le téléphone tenu en main, ses écrans, son appareil photo
+    Phone/       le téléphone tenu en main, ses écrans, son appareil photo, les photos gardées
+                 sur disque (PhotoArchive)
     World/       interaction (E), lieux, groupe devant le club, identification de la cible,
                  objets physiques (frapper, pousser, ramasser, lancer), public anime
-                 (Spectator), musique et foule generees (ClubMusic, CrowdAudio)
+                 (Spectator), musique et foule generees (ClubMusic, CrowdAudio), monde ouvert
+                 (OpenWorldDirector, OpenWorldStory), la ville chargée par-dessus (MapStreamer),
+                 portes (SwingDoor), logements (HomeRegistry), ce que font les cibles
+                 (TargetActivity), consignes des clients (ContractObjective)
   Editor/        outils de génération (scène, décor, matériaux, coups)  -- non inclus dans le build
   Scenes/        CombatSandbox.unity  (généré)
   Settings/      InputBindings.asset  (généré)
@@ -238,6 +245,8 @@ Assets/UberBagarre/
     Materials/   matériaux générés
     Textures/    textures générées (bitume, flaques, briques, grilles de fenêtres)
     Meshes/      maillages générés (corps, tête, cônes de lumière, pignon de toit)
+  Schedule1/     le pack de la carte (ignoré par git, installé à part)
+Tools/schedule1/    conversion de la carte (python/) et ses shaders (shaders/)
 Docs/
   ARCHITECTURE.md   pourquoi le code est organisé comme ça + comment l'étendre
 ```
@@ -347,6 +356,62 @@ quand ils attendent ou marchent, mains qui se relâchent quand ils tombent.
 
 > ⚠️ **Le dépôt doit rester privé** : la licence de l'Asset Store interdit de redistribuer le
 > contenu du paquet.
+
+## Le jeu dans la ville (la carte)
+
+Quand le pack de la carte est installé dans `Assets/Schedule1` (dossier **ignoré par git** : il se
+récupère à part, voir `Tools/schedule1/python/LISEZMOI.md`), le menu **3b** construit le monde ouvert
+**sur la ville convertie** au lieu de la ville procédurale. La ville vit dans sa propre scène,
+chargée par-dessus au lancement (`MapStreamer`) : ses portes deviennent de vraies portes, ses
+lampadaires et ses fenêtres s'allument la nuit, et qui tombe à l'eau est repêché sur le trottoir.
+
+**L'écran titre** survole la ville en cinq plans (l'avenue, l'enseigne du Vertigo, le motel, le port
+vu d'en haut, le manoir) : **CONTINUER** (le jour, le niveau, l'argent, le titre, le chapitre de la
+sauvegarde), **NOUVELLE PARTIE**, **CHAPITRES**, graphismes, commandes.
+
+**L'histoire** (`OpenWorldStory`) :
+
+| Chapitre | Ce qui se passe |
+|---|---|
+| Prologue — la planque | Réveil au motel Hyland, chambre 3. Le courrier sur le bureau. Sami appelle (sors le téléphone, réponds) : l'appli. Première course : Bruno Moretti, qui fume devant le Vertigo. |
+| 1 — deux étoiles | Après une nuit (ou quelques courses) : Dragan Kovac sur le parking de la pizzeria, puis son frère Milan qui te cherche. |
+| 2 — trois étoiles | Sami rappelle : la salle du fond du Vertigo. Entre, attends : la commande tombe — le Taureau, dans la fosse. |
+| 3 — quatre étoiles | Quelqu'un avait commandé ce combat contre toi. Victor Sarkis, « le Comptable », derrière le casino. |
+| 4 — cinq étoiles | Sarkis crache le nom : Sami. Une commande à ton nom tombe — les docks. |
+| Épilogue | La ville continue : courses, casino, le manoir sur la colline. |
+
+Entre deux chapitres, le jeu est libre. Chapitre et étapes sont dans la sauvegarde.
+
+**Les courses** ont un contexte : la cible **fait quelque chose** (fume, téléphone, boit, tague un
+mur, s'entraîne, pêche, deale, se dispute, retire au distributeur) avec ses accessoires ; à quelques
+mètres elle lâche tout et se retourne. Le client ajoute souvent une **consigne** payée en bonus :
+casser le nez, une jambe, des côtes (les fractures se voient et se sentent : une jambe cassée boite),
+K.O. en moins de 40 s, sans frapper au visage, finir à l'uppercut, le mettre deux fois au sol, poings
+seulement. Et il n'attend pas éternellement : trop lent, il annule.
+
+**Réputation, blessures, mort** : une course ratée ou un K.O. coûte de la réputation (titres :
+GRILLÉ, INCONNU, BAGARREUR, COGNEUR, TERREUR, LÉGENDE ; à zéro, compte suspendu un moment). La
+réputation décide des étoiles proposées et du tarif. Chaque K.O. laisse une **blessure** ; à la
+troisième, le K.O. suivant **tue** : la partie reprend à la dernière nuit. **Dormir** (E sur le lit)
+soigne, fait passer le jour et **sauvegarde**. Le loyer du motel (450 €) tombe tous les sept jours.
+
+**L'appli** : quatre onglets — la COURSE (lieu, ce que fait la cible, la consigne, le délai), le
+PROFIL (ta dernière photo de preuve, niveau, titre, jauge de réputation, note, fractures, blessures),
+l'HISTORIQUE (chaque course et sa photo, en grand d'un clic), les AVIS. Les photos sont gardées sur
+le disque.
+
+**Chez toi** : trois logements — la chambre du motel au départ, le **bungalow** (6 500 €) et le
+**manoir** (85 000 €) à l'achat ; chacun a son lit, son ordinateur, son armoire (tant qu'ils ne sont
+pas à toi, leurs portes sont fermées à clé et le portail du manoir reste fermé). On se réveille dans
+le logement choisi.
+
+- **L'armoire** (E) : **ENTRAÎNEMENT** — cinq qualités (Puissance, Endurance, Encaisse, Vitesse,
+  Technique), cinq paliers nommés chacune, payés en points (deux par niveau, ou achetés à la salle) ;
+  **TENUE** — t-shirt, veste ou débardeur, couleurs du haut, du pantalon, des chaussures, chaque
+  article débloqué par le niveau et acheté une fois.
+- **L'ordinateur** (E) : le CASINO ROYAL (roulette européenne, blackjack, machine à sous), les
+  PARIS de combat (trois combats clandestins, des cotes), la SALLE DE SPORT, l'IMMOBILIER, la
+  BANQUE, les MAILS (l'histoire y écrit).
 
 ## Le monde ouvert
 
