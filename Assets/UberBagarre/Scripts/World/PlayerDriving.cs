@@ -67,6 +67,7 @@ namespace UberBagarre.World
         private float _idleMouse;
         private float _enteredAt;
         private float _exitedAt = -10f;
+        private float _hotwire;
         private readonly RaycastHit[] _hits = new RaycastHit[16];
 
         /// <summary>Le joueur conduit.</summary>
@@ -344,8 +345,22 @@ namespace UberBagarre.World
                 bool handbrake = provider != null && bindings != null && provider.GetHeld(bindings.jump);
                 bool horn = provider != null && bindings != null && provider.GetHeld(bindings.attackStraight);
 
-                _car.SetInput(_input.Move.y, _input.Move.x, handbrake);
-                _car.Honk(horn);
+                if (_car.NeedsHotwire)
+                {
+                    // Une voiture volée n'a pas de clé : on fait les fils sous le volant.
+                    _hotwire += Time.deltaTime / 2.6f;
+                    _car.SetInput(0f, 0f, true);
+                    if (_hotwire >= 1f)
+                    {
+                        _hotwire = 0f;
+                        _car.NeedsHotwire = false;
+                    }
+                }
+                else
+                {
+                    _car.SetInput(_input.Move.y, _input.Move.x, handbrake);
+                    _car.Honk(horn);
+                }
 
                 Vector2 look = _input.LookDelta;
                 if (look.sqrMagnitude > 0.01f)
@@ -364,7 +379,8 @@ namespace UberBagarre.World
 
             if (_car == null) return;
 
-            Hint = Mathf.Abs(speed) <= _maxExitSpeed ? "E  descendre" : "Ralentis pour descendre";
+            Hint = _car.NeedsHotwire ? "Tu fais les fils sous le volant…  " + Mathf.RoundToInt(_hotwire * 100f) + " %"
+                : Mathf.Abs(speed) <= _maxExitSpeed ? "E  descendre" : "Ralentis pour descendre";
             FollowSeat();
         }
 

@@ -82,6 +82,7 @@ namespace UberBagarre.EditorTools
 
                 GameObject mine = vehicles.Spawn("Shitbox", parked.transform, p, yaw, "Ta caisse");
                 if (mine != null) personal = mine.GetComponent<DrivableCar>();
+                if (personal != null) SerializedWiring.SetEnum(personal, "_access", (int)DrivableCar.Access.Perso);
                 taken.Add(p);
             }
 
@@ -90,7 +91,7 @@ namespace UberBagarre.EditorTools
                 if (i == mineIndex) continue;
                 CityVehicles.Parked c = vehicles.CityParked[i];
                 if (Near(taken, c.position, 6.5f)) continue;
-                vehicles.Spawn(c.model, parked.transform, c.position, c.yaw, "Voiture");
+                Parked(vehicles.Spawn(c.model, parked.transform, c.position, c.yaw, "Voiture"), i);
                 taken.Add(c.position);
             }
 
@@ -101,7 +102,7 @@ namespace UberBagarre.EditorTools
                     if (map.cars[i] == null || map.cars[i].v == null || map.cars[i].v.Length < 3) continue;
                     Vector3 p = MapPack.Position(map.cars[i].v);
                     if (Near(taken, p, 6.5f)) continue;
-                    vehicles.Spawn(ParkedMix[i % ParkedMix.Length], parked.transform, p, MapPack.Yaw(map.cars[i].v), "Voiture");
+                    Parked(vehicles.Spawn(ParkedMix[i % ParkedMix.Length], parked.transform, p, MapPack.Yaw(map.cars[i].v), "Voiture"), i + 31);
                     taken.Add(p);
                 }
             }
@@ -116,6 +117,18 @@ namespace UberBagarre.EditorTools
             catalog.Configure(entries.ToArray(), progress, spot, personal, "Shitbox");
             EditorUtility.SetDirty(catalog);
             return catalog;
+        }
+
+        /// <summary>
+        /// Une voiture garée par la ville : elle n'est pas à nous. Presque toujours fermée à clé
+        /// (il faut la crocheter) ; une sur sept a été oubliée ouverte.
+        /// </summary>
+        private static void Parked(GameObject car, int index)
+        {
+            DrivableCar drivable = car != null ? car.GetComponent<DrivableCar>() : null;
+            if (drivable == null) return;
+            SerializedWiring.SetEnum(drivable, "_access", (int)DrivableCar.Access.Garee);
+            SerializedWiring.SetBool(drivable, "_locked", index % 7 != 3);
         }
 
         private static bool Near(List<Vector3> points, Vector3 p, float distance)

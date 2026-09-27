@@ -168,6 +168,11 @@ namespace UberBagarre.EditorTools
             HomeRegistry registry = BuildHomeRegistry(systems, homes, progress, director, wardrobeScreen, computerScreen);
             SerializedWiring.SetObject(registry, "_subtitles", subtitles);
 
+            // --- voler une voiture : crochetage, fils, alarme, conducteur sorti de force
+            CarThief thief = systems.AddComponent<CarThief>();
+            thief.Configure(player.GetComponent<PlayerInputReader>(), progress, subtitles);
+            EditorUtility.SetDirty(thief);
+
             // --- l'état du joueur : la faim, les blessures (coups plus lents, courses refusées)
             PlayerCondition condition = player.AddComponent<PlayerCondition>();
             condition.Configure(player.GetComponent<Combatant>(), progress);

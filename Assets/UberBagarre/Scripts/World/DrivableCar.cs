@@ -118,6 +118,72 @@ namespace UberBagarre.World
         /// <summary>Le joueur demande à monter (E sur la portière).</summary>
         public static event Action<DrivableCar> EnterRequested;
 
+        /// <summary>À qui est la voiture : ça décide de ce que fait E sur la portière.</summary>
+        public enum Access
+        {
+            /// <summary>N'importe qui monte (le bac à sable, les voitures de test).</summary>
+            Libre = 0,
+
+            /// <summary>La voiture du joueur (la sienne, ou achetée) : elle s'ouvre.</summary>
+            Perso = 1,
+
+            /// <summary>Garée par la ville : fermée à clé (le plus souvent). Il faut la crocheter.</summary>
+            Garee = 2,
+
+            /// <summary>Dans la circulation, un conducteur au volant : il faut l'en sortir.</summary>
+            Circulation = 3
+        }
+
+        [Header("Propriété")]
+        [SerializeField] private Access _access = Access.Libre;
+        [SerializeField] private bool _locked;
+
+        public Access Kind
+        {
+            get { return _access; }
+            set
+            {
+                _access = value;
+                RefreshAccessLabel();
+            }
+        }
+
+        /// <summary>Portière verrouillée : il faut la crocheter.</summary>
+        public bool Locked
+        {
+            get { return _locked; }
+            set
+            {
+                _locked = value;
+                RefreshAccessLabel();
+            }
+        }
+
+        /// <summary>Volée par le joueur (la police la cherche).</summary>
+        public bool Stolen { get; set; }
+
+        /// <summary>Pas de clé : il faut faire les fils avant de démarrer.</summary>
+        public bool NeedsHotwire { get; set; }
+
+        /// <summary>Portière verrouillée : le joueur veut la crocheter.</summary>
+        public static event Action<DrivableCar> LockpickRequested;
+
+        /// <summary>Un conducteur au volant : le joueur veut l'en sortir.</summary>
+        public static event Action<DrivableCar> CarjackRequested;
+
+        private void RefreshAccessLabel()
+        {
+            Interactable door = _interactable != null ? _interactable : GetComponent<Interactable>();
+            if (door == null) return;
+
+            switch (_access)
+            {
+                case Access.Perso: door.Label = "Monter"; break;
+                case Access.Garee: door.Label = _locked ? "Crocheter la portière" : Stolen ? "Monter" : "Voler la voiture"; break;
+                case Access.Circulation: door.Label = "Sortir le conducteur"; break;
+            }
+        }
+
         public Transform Seat { get { return _seat != null ? _seat : transform; } }
         public string DisplayName { get { return _displayName; } }
 
@@ -282,6 +348,7 @@ namespace UberBagarre.World
                 if (!colliders[i].isTrigger) colliders[i].sharedMaterial = slick;
             }
 
+            RefreshAccessLabel();
             SetupAudio();
             _lastSafePosition = transform.position;
             _lastSafeRotation = transform.rotation;
@@ -306,7 +373,68 @@ namespace UberBagarre.World
 
         private void OnActivated(Interactable source)
         {
+            if (_occupied) return;
+
+            switch (_access)
+            {
+                case Access.Garee:
+                    if (_locked)
+                    {
+                        if (LockpickRequested != null) LockpickRequested(this);
+                        return;
+                    }
+
+                    // Pas fermée à clé : on monte, mais c'est un vol, et il n'y a pas de clé.
+                    if (!Stolen)
+                    {
+                        Stolen = true;
+                        NeedsHotwire = true;
+                        Crimes.Report(Crime.VolDeVoiture, transform.position, gameObject);
+                        RefreshAccessLabel();
+                    }
+
+                    break;
+
+                case Access.Circulation:
+                    if (_autopilot)
+                    {
+                        if (CarjackRequested != null) CarjackRequested(this);
+                        return;
+                    }
+
+                    break;
+            }
+
+            if (EnterRequested != null) EnterRequested(this);
+        }
+
+        /// <summary>Le joueur monte (après un crochetage, une sortie de force…).</summary>
+        public void RequestEnter()
+        {
             if (!_occupied && EnterRequested != null) EnterRequested(this);
+        }
+
+        /// <summary>Le conducteur est sorti de force : la voiture est au joueur, moteur tournant.</summary>
+        public void TakenByForce()
+        {
+            _access = Access.Garee;
+            _locked = false;
+            Stolen = true;
+            NeedsHotwire = false;
+            RefreshAccessLabel();
+        }
+
+        /// <summary>La serrure a cédé (crochetage réussi).</summary>
+        public void Unlock(bool stolen)
+        {
+            _locked = false;
+            if (stolen)
+            {
+                Stolen = true;
+                NeedsHotwire = true;
+            }
+
+            RefreshAccessLabel();
         }
 
         /// <summary>Gaz (+) / frein puis marche arrière (−), volant (−1 gauche, +1 droite), frein à main.</summary>

@@ -202,6 +202,11 @@ namespace UberBagarre.UI
                     Toast("+" + Mathf.RoundToInt(item.amount) + " repas dans le frigo (" + _progress.Meals + " en tout).", false);
                     return true;
 
+                case ShopEffect.Lockpicks:
+                    _progress.AddLockpicks(Mathf.RoundToInt(item.amount));
+                    Toast("+" + Mathf.RoundToInt(item.amount) + " crochets (" + _progress.Lockpicks + ").", false);
+                    return true;
+
                 case ShopEffect.Medkit:
                     _progress.AddMedkit();
                     Toast("Trousse rangée pour la maison (" + _progress.Medkits + ").", false);

@@ -70,7 +70,10 @@ namespace UberBagarre.World
         Groceries,
 
         /// <summary>Une trousse de soins à ranger chez soi (on s'en sert à la maison).</summary>
-        Medkit
+        Medkit,
+
+        /// <summary>Des crochets pour les serrures de voitures (amount = combien).</summary>
+        Lockpicks
     }
 
     [Serializable]
@@ -328,12 +331,14 @@ namespace UberBagarre.World
                             .Boost(StatType.Defense, 10f, 10f),
                         new ShopItem("Chaussures de sécurité", 60, ShopEffect.Buff, 0f, "+8 % de puissance de chute (coups de pied) pendant 10 minutes.")
                             .Boost(StatType.KnockdownPower, 8f, 10f),
+                        new ShopItem("Jeu de crochets (x3)", 24, ShopEffect.Lockpicks, 3f, "Pour les serrures récalcitrantes. On ne pose pas de questions."),
                         new ShopItem("Ruban adhésif", 4, ShopEffect.Heal, 8f, "Une arcade qui saigne, on scotche : +8 PV.")
                     };
 
                 case ShopKind.MarcheNoir:
                     return new[]
                     {
+                        new ShopItem("Crochets de pro (x8)", 60, ShopEffect.Lockpicks, 8f, "Acier trempé, huit pièces. Ils ouvrent tout ce qui roule."),
                         new ShopItem("Poing américain", 600, ShopEffect.Buff, 0f, "Dans la poche, pour les grands soirs : +30 % de puissance pendant 5 minutes.")
                             .Boost(StatType.Strength, 30f, 5f),
                         new ShopItem("Stéroïdes", 180, ShopEffect.Buff, 0f, "+40 % d'endurance maximale pendant 6 minutes. À tes risques.")

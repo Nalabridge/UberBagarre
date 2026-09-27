@@ -59,6 +59,15 @@ namespace UberBagarre.World
         /// <summary>Transform de celui qu'on évite en priorité (le joueur).</summary>
         public static Transform Player { get; set; }
 
+        private static readonly System.Collections.Generic.List<TrafficDriver> Active = new System.Collections.Generic.List<TrafficDriver>();
+        private float _yieldingFor;
+        private float _ignoreYieldUntil;
+
+        private void OnEnable()
+        {
+            if (!Active.Contains(this)) Active.Add(this);
+        }
+
         public void SetPath(Vector3[] path, int start, float cruise)
         {
             _path = path;
@@ -86,6 +95,7 @@ namespace UberBagarre.World
             }
 
             _wheelbase = _car.Wheelbase;
+            _car.Kind = DrivableCar.Access.Circulation;
             _segment = Mathf.Abs(_startIndex) % _path.Length;
             PlaceOnPath(_segment, 0f);
             _car.Autopilot = true;
@@ -93,7 +103,19 @@ namespace UberBagarre.World
 
         private void OnDisable()
         {
+            Active.Remove(this);
             if (_car != null && !_car.Occupied) _car.Autopilot = false;
+        }
+
+        /// <summary>Le joueur sort le conducteur : il disparaît, la voiture s'arrête là.</summary>
+        public void Evict()
+        {
+            if (_driverBody != null) _driverBody.SetActive(false);
+            if (_asleep) Wake();
+            _car.Sleeping = false;
+            _car.Autopilot = false;
+            _car.SetInput(0f, 0f, true);
+            enabled = false;
         }
 
         private int Next(int i) { return (i + 1) % _path.Length; }
@@ -145,6 +167,14 @@ namespace UberBagarre.World
                 float room = Mathf.Max(0f, obstacle - 2f);
                 wanted = Mathf.Min(wanted, Mathf.Sqrt(2f * _comfortBraking * room));
                 if (room < 0.4f) wanted = 0f;
+            }
+
+            // --- carrefour : celui qui arrive le premier passe ; à égalité, priorité à droite
+            float yieldAt = Yield(position, speed);
+            if (yieldAt < float.MaxValue)
+            {
+                wanted = Mathf.Min(wanted, Mathf.Sqrt(2f * _comfortBraking * Mathf.Max(0f, yieldAt - 3.5f)));
+                if (yieldAt < 4.5f) wanted = 0f;
             }
 
             // --- coincé : on recule en contrebraquant
@@ -339,6 +369,103 @@ namespace UberBagarre.World
             }
 
             return nearest;
+        }
+
+        /// <summary>
+        /// Les trajectoires qui croisent la nôtre dans les prochains mètres : les autres voitures
+        /// de la circulation (le long de leur route) et celle du joueur (le long de sa vitesse).
+        /// Rend la distance au point de croisement si c'est à nous de céder, sinon MaxValue.
+        /// </summary>
+        private float Yield(Vector3 position, float speed)
+        {
+            if (Time.time < _ignoreYieldUntil) return float.MaxValue;
+
+            Vector3 a0 = Flat(position);
+            Vector3 a1 = Flat(PointAhead(position, 18f));
+            Vector3 dirA = a1 - a0;
+            if (dirA.sqrMagnitude < 1f) return float.MaxValue;
+            dirA.Normalize();
+            Vector3 right = new Vector3(dirA.z, 0f, -dirA.x);
+            float mySpeed = Mathf.Max(2f, speed);
+            float best = float.MaxValue;
+
+            for (int i = 0; i < Active.Count; i++)
+            {
+                TrafficDriver other = Active[i];
+                if (other == null || other == this || other._path == null || other._path.Length < 3) continue;
+                Vector3 b0 = Flat(other.transform.position);
+                if ((b0 - a0).sqrMagnitude > 35f * 35f) continue;
+                Vector3 b1 = Flat(other.PointAhead(other.transform.position, 18f));
+                float d = Conflict(a0, a1, dirA, right, mySpeed, b0, b1, Mathf.Max(2f, other._car.ForwardSpeed));
+                if (d < best) best = d;
+            }
+
+            // La voiture du joueur : on lui laisse le passage (il ne s'arrêtera pas, lui).
+            DrivableCar driven = DrivableCar.Driven;
+            if (driven != null && driven.Body != null)
+            {
+                Vector3 b0 = Flat(driven.transform.position);
+                Vector3 velocity = Flat(driven.Body.linearVelocity);
+                if ((b0 - a0).sqrMagnitude < 35f * 35f && velocity.sqrMagnitude > 4f)
+                {
+                    float d = Conflict(a0, a1, dirA, right, mySpeed, b0, b0 + velocity * 2.2f, velocity.magnitude, true);
+                    if (d < best) best = d;
+                }
+            }
+
+            // On ne cède pas pour toujours (deux voitures qui se font des politesses).
+            _yieldingFor = best < float.MaxValue && Mathf.Abs(speed) < 0.5f ? _yieldingFor + Time.fixedDeltaTime : 0f;
+            if (_yieldingFor > 5f)
+            {
+                _yieldingFor = 0f;
+                _ignoreYieldUntil = Time.time + 2.5f;
+                return float.MaxValue;
+            }
+
+            return best;
+        }
+
+        private static float Conflict(Vector3 a0, Vector3 a1, Vector3 dirA, Vector3 right, float speedA,
+            Vector3 b0, Vector3 b1, float speedB, bool alwaysYield = false)
+        {
+            Vector3 dirB = b1 - b0;
+            if (dirB.sqrMagnitude < 1f) return float.MaxValue;
+
+            // Seulement les trajectoires qui se CROISENT (pas la même voie, pas la voie d'en face).
+            float angle = Vector3.Angle(dirA, dirB);
+            if (angle < 25f || angle > 155f) return float.MaxValue;
+
+            Vector3 x;
+            if (!Intersect(a0, a1, b0, b1, out x)) return float.MaxValue;
+
+            float dA = (x - a0).magnitude;
+            float dB = (x - b0).magnitude;
+            if (alwaysYield) return dA;
+
+            float tA = dA / speedA;
+            float tB = dB / speedB;
+            bool otherFirst = tB < tA - 0.35f;
+            bool tie = Mathf.Abs(tA - tB) <= 0.35f;
+            bool otherOnRight = Vector3.Dot(right, b0 - a0) > 0f;
+
+            return otherFirst || (tie && otherOnRight) ? dA : float.MaxValue;
+        }
+
+        private static bool Intersect(Vector3 p0, Vector3 p1, Vector3 q0, Vector3 q1, out Vector3 point)
+        {
+            point = Vector3.zero;
+            float rx = p1.x - p0.x, rz = p1.z - p0.z;
+            float sx = q1.x - q0.x, sz = q1.z - q0.z;
+            float denominator = rx * sz - rz * sx;
+            if (Mathf.Abs(denominator) < 1e-4f) return false;
+
+            float qpx = q0.x - p0.x, qpz = q0.z - p0.z;
+            float t = (qpx * sz - qpz * sx) / denominator;
+            float u = (qpx * rz - qpz * rx) / denominator;
+            if (t < 0f || t > 1f || u < 0f || u > 1f) return false;
+
+            point = new Vector3(p0.x + t * rx, 0f, p0.z + t * rz);
+            return true;
         }
 
         private void StopHonk()

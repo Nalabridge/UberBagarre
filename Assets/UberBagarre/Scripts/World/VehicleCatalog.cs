@@ -104,7 +104,12 @@ namespace UberBagarre.World
             car.SetActive(true);
 
             _personal = car.GetComponent<DrivableCar>();
-            if (_personal != null) _personal.Rename(_personalName);
+            if (_personal != null)
+            {
+                _personal.Rename(_personalName);
+                _personal.Kind = DrivableCar.Access.Perso;
+                _personal.Locked = false;
+            }
             _personalKey = key;
         }
 

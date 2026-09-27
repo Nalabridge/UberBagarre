@@ -118,6 +118,9 @@ namespace UberBagarre.Story
 
             /// <summary>Les trousses de soins rangées à la maison.</summary>
             public int medkits;
+
+            /// <summary>Les crochets (pour les serrures des voitures) : Léo vient des Slums.</summary>
+            public int lockpicks = 3;
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -492,6 +495,21 @@ namespace UberBagarre.Story
             _data.meals--;
             RaiseChanged();
             return true;
+        }
+
+        public int Lockpicks { get { return _data.lockpicks; } }
+
+        public void AddLockpicks(int count)
+        {
+            _data.lockpicks = Mathf.Max(0, _data.lockpicks + count);
+            RaiseChanged();
+        }
+
+        /// <summary>Un crochet cassé.</summary>
+        public void UseLockpick()
+        {
+            _data.lockpicks = Mathf.Max(0, _data.lockpicks - 1);
+            RaiseChanged();
         }
 
         public int Medkits { get { return _data.medkits; } }

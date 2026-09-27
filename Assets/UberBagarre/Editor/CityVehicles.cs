@@ -240,6 +240,7 @@ namespace UberBagarre.EditorTools
                 SerializedWiring.SetString(door, "_hint", model.label + " — son conducteur s'enfuit");
             }
 
+            SerializedWiring.SetEnum(car.GetComponent<DrivableCar>(), "_access", (int)DrivableCar.Access.Circulation);
             GameObject driver = SeatDriver(car.transform, model, seed);
 
             TrafficDriver pilot = car.AddComponent<TrafficDriver>();
