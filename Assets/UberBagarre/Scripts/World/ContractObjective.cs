@@ -14,7 +14,8 @@ namespace UberBagarre.World
         SansVisage = 5,
         FinirUppercut = 6,
         DeuxChutes = 7,
-        PoingsSeuls = 8
+        PoingsSeuls = 8,
+        CoupsAuSol = 9
     }
 
     /// <summary>
@@ -22,7 +23,11 @@ namespace UberBagarre.World
     /// moins de quarante secondes », « sans prendre un coup au visage »...
     ///
     /// Réussie, elle paie un bonus et le client laisse cinq étoiles ; ratée, la course est quand
-    /// même payée, mais l'avis s'en ressent — et la réputation aussi.
+    /// même payée, mais l'avis s'en ressent — et la réputation aussi. Elle est FACULTATIVE.
+    ///
+    /// Les consignes de « casse » (nez, jambe, côtes) et les coups au sol restent ouvertes
+    /// après le K.O. : la cible est à terre, on peut finir le travail (un coup de pied au sol)
+    /// tant que la photo n'est pas prise. Les autres se jugent au moment du K.O.
     /// </summary>
     public sealed class ContractObjective
     {
@@ -38,6 +43,13 @@ namespace UberBagarre.World
         private bool _kicked;
         private string _lastAttack = string.Empty;
         private bool _running;
+        private bool _knockedOut;
+        private int _groundHits;
+        private HealthSystem _targetHealth;
+        private bool _frozen;
+        private bool _frozenResult;
+
+        public const int GroundHitsNeeded = 3;
 
         public ContractGoal Goal { get; private set; }
         public int Bonus { get; private set; }
@@ -62,17 +74,32 @@ namespace UberBagarre.World
                 case ContractGoal.FinirUppercut: return "Finis-le à l'uppercut";
                 case ContractGoal.DeuxChutes: return "Mets-le au sol deux fois";
                 case ContractGoal.PoingsSeuls: return "Uniquement aux poings";
+                case ContractGoal.CoupsAuSol: return "Une fois à terre, " + GroundHitsNeeded + " coups au sol";
                 default: return string.Empty;
             }
         }
 
         public string Text { get { return Label(Goal); } }
 
+        /// <summary>Ce que rapporte une consigne, en part du prix de la course : casser une jambe paie plus.</summary>
+        public static float BonusShare(ContractGoal goal)
+        {
+            switch (goal)
+            {
+                case ContractGoal.CasserJambe: return 0.6f;
+                case ContractGoal.CasserCotes: return 0.5f;
+                case ContractGoal.SansVisage: return 0.5f;
+                case ContractGoal.Rapide: return 0.5f;
+                case ContractGoal.CoupsAuSol: return 0.35f;
+                default: return 0.42f;
+            }
+        }
+
         /// <summary>Une consigne au hasard, plus exigeante quand la course vaut plus d'étoiles.</summary>
         public static ContractGoal Pick(int stars, ContractGoal avoid)
         {
-            ContractGoal[] easy = { ContractGoal.CasserNez, ContractGoal.PoingsSeuls, ContractGoal.CasserCotes, ContractGoal.FinirUppercut };
-            ContractGoal[] hard = { ContractGoal.CasserJambe, ContractGoal.Rapide, ContractGoal.SansVisage, ContractGoal.DeuxChutes, ContractGoal.CasserNez };
+            ContractGoal[] easy = { ContractGoal.CasserNez, ContractGoal.PoingsSeuls, ContractGoal.CasserCotes, ContractGoal.FinirUppercut, ContractGoal.CoupsAuSol };
+            ContractGoal[] hard = { ContractGoal.CasserJambe, ContractGoal.Rapide, ContractGoal.SansVisage, ContractGoal.DeuxChutes, ContractGoal.CasserNez, ContractGoal.CasserJambe };
             ContractGoal[] pool = stars >= 2 && Random.value < 0.6f ? hard : easy;
 
             for (int i = 0; i < 6; i++)
@@ -101,6 +128,8 @@ namespace UberBagarre.World
                 _injuries = _target.GetComponent<TargetInjuries>();
                 _knockdown = _target.GetComponentInChildren<KnockdownSystem>(true);
                 if (_knockdown != null) _knockdown.KnockedDown += OnFall;
+                _targetHealth = _target.Health;
+                if (_targetHealth != null) _targetHealth.HitWhileDown += OnHitWhileDown;
             }
 
             if (_player != null) _player.Damaged += OnPlayerDamaged;
@@ -114,6 +143,47 @@ namespace UberBagarre.World
             if (_target != null) _target.Damaged -= OnTargetDamaged;
             if (_knockdown != null) _knockdown.KnockedDown -= OnFall;
             if (_player != null) _player.Damaged -= OnPlayerDamaged;
+            if (_targetHealth != null) _targetHealth.HitWhileDown -= OnHitWhileDown;
+        }
+
+        /// <summary>Un coup sur la cible K.O., au sol.</summary>
+        private void OnHitWhileDown(DamageInfo info)
+        {
+            if (info.AttackerFaction != Faction.Player) return;
+            _groundHits++;
+        }
+
+        /// <summary>Coups portés à la cible pendant qu'elle était à terre (tombée ou K.O.).</summary>
+        public int GroundHits { get { return _groundHits; } }
+
+        /// <summary>
+        /// La cible est K.O. : les consignes de rapidité, de style ou de chutes sont jugées ici ;
+        /// celles de casse et de coups au sol restent ouvertes jusqu'à la photo.
+        /// </summary>
+        public void Knockout()
+        {
+            if (_knockedOut) return;
+            _knockedOut = true;
+
+            if (StaysOpen) return;
+            _frozenResult = Judge(Time.time - _start);
+            _frozen = true;
+        }
+
+        /// <summary>La consigne peut encore se remplir après le K.O. (la cible est à terre).</summary>
+        public bool StaysOpen
+        {
+            get
+            {
+                return Goal == ContractGoal.CasserNez || Goal == ContractGoal.CasserJambe || Goal == ContractGoal.CasserCotes ||
+                       Goal == ContractGoal.CoupsAuSol;
+            }
+        }
+
+        /// <summary>Déjà tenue (avant la photo) : pour l'afficher en vert tout de suite.</summary>
+        public bool AlreadyMet
+        {
+            get { return Goal != ContractGoal.Aucune && (_frozen ? _frozenResult : Judge(Time.time - _start)); }
         }
 
         private void OnTargetDamaged(Combatant self, DamageInfo info)
@@ -122,6 +192,7 @@ namespace UberBagarre.World
 
             string name = info.Attack != null ? info.Attack.displayName : string.Empty;
             _lastAttack = name ?? string.Empty;
+            if (_knockdown != null && _knockdown.IsDown) _groundHits++;
 
             string lower = _lastAttack.ToLowerInvariant();
             if (lower.Contains("pied") || lower.Contains("balayage") || lower.Contains("tete") || lower.Contains("tête") ||
@@ -150,6 +221,7 @@ namespace UberBagarre.World
             get
             {
                 if (Goal == ContractGoal.Aucune || !_running) return string.Empty;
+                if (_frozen) return _frozenResult ? "Consigne tenue ✓" : "Consigne ratée ✗";
 
                 switch (Goal)
                 {
@@ -162,6 +234,7 @@ namespace UberBagarre.World
                     case ContractGoal.SansVisage: return _faceHit ? "Touché au visage ✗" : "Visage intact";
                     case ContractGoal.DeuxChutes: return "Au sol : " + Mathf.Min(_falls, 2) + " / 2";
                     case ContractGoal.PoingsSeuls: return _kicked ? "Pas que les poings ✗" : "Poings seulement";
+                    case ContractGoal.CoupsAuSol: return "Coups au sol : " + Mathf.Min(_groundHits, GroundHitsNeeded) + " / " + GroundHitsNeeded;
                     default: return string.Empty;
                 }
             }
@@ -173,23 +246,27 @@ namespace UberBagarre.World
             if (Evaluated) return Succeeded;
 
             float elapsed = Time.time - _start;
+            Succeeded = _frozen ? _frozenResult : Judge(elapsed);
             End();
             Evaluated = true;
+            return Succeeded;
+        }
 
+        private bool Judge(float elapsed)
+        {
             switch (Goal)
             {
-                case ContractGoal.Aucune: Succeeded = true; break;
-                case ContractGoal.CasserNez: Succeeded = _injuries != null && _injuries.NoseBroken; break;
-                case ContractGoal.CasserJambe: Succeeded = _injuries != null && _injuries.LegBroken; break;
-                case ContractGoal.CasserCotes: Succeeded = _injuries != null && _injuries.RibsBroken; break;
-                case ContractGoal.Rapide: Succeeded = elapsed <= FastLimit; break;
-                case ContractGoal.SansVisage: Succeeded = !_faceHit; break;
-                case ContractGoal.FinirUppercut: Succeeded = _lastAttack.ToLowerInvariant().Contains("uppercut"); break;
-                case ContractGoal.DeuxChutes: Succeeded = _falls >= 2; break;
-                case ContractGoal.PoingsSeuls: Succeeded = !_kicked; break;
+                case ContractGoal.CasserNez: return _injuries != null && _injuries.NoseBroken;
+                case ContractGoal.CasserJambe: return _injuries != null && _injuries.LegBroken;
+                case ContractGoal.CasserCotes: return _injuries != null && _injuries.RibsBroken;
+                case ContractGoal.Rapide: return elapsed <= FastLimit;
+                case ContractGoal.SansVisage: return !_faceHit;
+                case ContractGoal.FinirUppercut: return _lastAttack.ToLowerInvariant().Contains("uppercut");
+                case ContractGoal.DeuxChutes: return _falls >= 2;
+                case ContractGoal.PoingsSeuls: return !_kicked;
+                case ContractGoal.CoupsAuSol: return _groundHits >= GroundHitsNeeded;
+                default: return true;
             }
-
-            return Succeeded;
         }
     }
 }

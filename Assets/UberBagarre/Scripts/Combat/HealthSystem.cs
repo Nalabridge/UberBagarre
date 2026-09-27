@@ -48,8 +48,32 @@ namespace UberBagarre.Combat
             _current = _maxHealth;
         }
 
+        /// <summary>
+        /// Un coup sur un combattant déjà K.O. (au sol) : il ne perd plus de vie, mais le coup
+        /// porte quand même — les fractures continuent de compter, la consigne d'un client aussi.
+        /// </summary>
+        public event Action<DamageInfo> HitWhileDown;
+
+        /// <summary>Même chose, pour tous (la police, les témoins, la réputation).</summary>
+        public static event Action<HealthSystem, DamageInfo> AnyHitWhileDown;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            AnyHitWhileDown = null;
+        }
+
         public void ApplyDamage(DamageInfo info)
         {
+            if (!IsAlive && !GodMode && info.Amount > 0f)
+            {
+                Action<DamageInfo> down = HitWhileDown;
+                if (down != null) down(info);
+                Action<HealthSystem, DamageInfo> any = AnyHitWhileDown;
+                if (any != null) any(this, info);
+                return;
+            }
+
             if (!IsAlive || _invulnerable || GodMode || info.Amount <= 0f) return;
 
             _current = Mathf.Max(0f, _current - info.Amount);

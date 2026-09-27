@@ -189,6 +189,7 @@ namespace UberBagarre.Combat
 
             _health.Damaged += OnDamaged;
             _health.Died += OnDied;
+            _health.HitWhileDown += OnHitWhileDown;
         }
 
         private void OnDisable()
@@ -197,6 +198,18 @@ namespace UberBagarre.Combat
 
             _health.Damaged -= OnDamaged;
             _health.Died -= OnDied;
+            _health.HitWhileDown -= OnHitWhileDown;
+        }
+
+        // Un coup reçu à terre : le corps encaisse d'un sursaut, qui s'amortit vite.
+        private float _jolt;
+        private float _joltSign = 1f;
+
+        private void OnHitWhileDown(DamageInfo info)
+        {
+            if (!IsDown) return;
+            _jolt = 1f;
+            _joltSign = -_joltSign;
         }
 
         private void OnDied(DamageInfo info)
@@ -367,10 +380,15 @@ namespace UberBagarre.Combat
                     break;
             }
 
-            // Petit soubresaut a l'arrivee au sol, puis immobilite.
+            // Petit soubresaut a l'arrivee au sol, puis immobilite. Un coup au sol en redonne un.
             float settle = _phase == Phase.Grounded
                 ? Mathf.Sin(Time.time * 9f) * Mathf.Max(0f, _timer - _groundedDuration + 0.35f) * 6f
                 : 0f;
+            if (_jolt > 0f)
+            {
+                settle += _joltSign * Mathf.Sin(_jolt * Mathf.PI) * 7f;
+                _jolt = Mathf.Max(0f, _jolt - Time.deltaTime * 5f);
+            }
 
             // On se met sur le cote avant de se redresser : un corps qui se releve a plat dos,
             // d'une seule piece, n'existe pas. Le roulis part du cote ou on est tombe.

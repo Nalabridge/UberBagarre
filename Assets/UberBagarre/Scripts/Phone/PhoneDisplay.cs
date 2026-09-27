@@ -1224,7 +1224,7 @@ namespace UberBagarre.Phone
                 GuiKit.Fill(goal, new Color(_warn.r * 0.3f, _warn.g * 0.2f, 0f, 0.45f));
                 GuiKit.Fill(new Rect(goal.x, goal.y, U(0.005f), goal.height), _warn);
                 Label(new Rect(goal.x + U(0.02f), goal.y + U(0.006f), goal.width - U(0.04f), U(0.028f)),
-                    "CONSIGNE  ·  +" + _briefing.ObjectiveBonus + " EUR", Font(0.017f), FontStyle.Bold, TextAnchor.UpperLeft, _warn);
+                    "BONUS FACULTATIF  ·  +" + _briefing.ObjectiveBonus + " EUR", Font(0.017f), FontStyle.Bold, TextAnchor.UpperLeft, _warn);
                 Label(new Rect(goal.x + U(0.02f), goal.y + U(0.032f), goal.width - U(0.04f), U(0.035f)),
                     _briefing.Objective, Font(0.020f), FontStyle.Bold, TextAnchor.UpperLeft, _ink, true);
             }
@@ -1301,7 +1301,7 @@ namespace UberBagarre.Phone
             if (hasGoal)
             {
                 string progress = string.IsNullOrEmpty(_briefing.ObjectiveProgress) ? "" : "\n" + _briefing.ObjectiveProgress;
-                Field(new Rect(body.x, body.y + U(0.43f), body.width, U(0.115f)), "CONSIGNE  (+" + _briefing.ObjectiveBonus + " EUR)",
+                Field(new Rect(body.x, body.y + U(0.43f), body.width, U(0.115f)), "BONUS FACULTATIF  (+" + _briefing.ObjectiveBonus + " EUR)",
                     _briefing.Objective + progress, _warn);
             }
             else

@@ -59,11 +59,19 @@ namespace UberBagarre.Combat
         private void OnEnable()
         {
             if (_self != null) _self.Damaged += OnDamaged;
+            if (_self != null && _self.Health != null) _self.Health.HitWhileDown += OnHitWhileDown;
         }
 
         private void OnDisable()
         {
             if (_self != null) _self.Damaged -= OnDamaged;
+            if (_self != null && _self.Health != null) _self.Health.HitWhileDown -= OnHitWhileDown;
+        }
+
+        /// <summary>K.O., au sol : les coups continuent de casser (c'est là qu'on finit le travail).</summary>
+        private void OnHitWhileDown(DamageInfo info)
+        {
+            OnDamaged(_self, info);
         }
 
         private void OnDestroy()

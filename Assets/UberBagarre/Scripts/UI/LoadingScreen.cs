@@ -36,6 +36,7 @@ namespace UberBagarre.UI
         {
             "Le téléphone fait tout : les courses, le GPS, la banque, les photos. Sors-le souvent.",
             "Une course n'est payée qu'avec la preuve : la photo de la cible au sol, cadrée.",
+            "Le bonus d'une course est facultatif. Cible à terre : un coup de pied la frappe au sol — c'est là qu'on casse une jambe.",
             "Dormir au motel fait passer au jour suivant, et c'est là que la partie est sauvegardée.",
             "Le loyer du motel tombe toutes les semaines. L'appli Banque permet de l'avancer.",
             "Nestor attend ses 12 000 euros. Chaque virement depuis l'appli Banque fait baisser la dette.",

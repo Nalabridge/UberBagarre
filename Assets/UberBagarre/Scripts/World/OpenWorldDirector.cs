@@ -424,7 +424,7 @@ namespace UberBagarre.World
 
             ContractGoal goal = UnityEngine.Random.value < _goalChance ? ContractObjective.Pick(stars, _lastGoal) : ContractGoal.Aucune;
             _lastGoal = goal;
-            int bonus = Mathf.RoundToInt(_reward * 0.45f / 10f) * 10;
+            int bonus = Mathf.RoundToInt(_reward * ContractObjective.BonusShare(goal) / 10f) * 10;
 
             Present(Clients[UnityEngine.Random.Range(0, Clients.Length)], goal, bonus, null);
         }
@@ -437,7 +437,7 @@ namespace UberBagarre.World
             _reward = contract.Reward;
             _experience = contract.Experience;
 
-            int bonus = Mathf.RoundToInt(_reward * 0.4f / 10f) * 10;
+            int bonus = Mathf.RoundToInt(_reward * ContractObjective.BonusShare(contract.Goal) / 10f) * 10;
             Present(contract.Client, contract.Goal, bonus, contract.Intro);
         }
 
@@ -802,8 +802,11 @@ namespace UberBagarre.World
         private void BeginProof()
         {
             _stage = Stage.Proof;
-            bool kept = _objective == null || _objective.Evaluate();
-            if (_briefing != null && _objective != null && _objective.Goal != ContractGoal.Aucune) _briefing.ObjectiveResult = kept ? 1 : -1;
+            bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
+            if (_objective != null) _objective.Knockout();
+            bool open = hasGoal && _objective.StaysOpen && !_objective.AlreadyMet;
+            bool kept = !hasGoal || _objective.AlreadyMet;
+            if (_briefing != null && hasGoal && !open) _briefing.ObjectiveResult = kept ? 1 : -1;
 
             if (_display != null) _display.PhotoCounter = "0 / 1";
 
@@ -811,9 +814,9 @@ namespace UberBagarre.World
             if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Photo);
             if (_map != null) _map.SetWaypoint(_target.transform.position, "PREUVE : PHOTO", _target.transform);
 
-            string goal = _objective != null && _objective.Goal != ContractGoal.Aucune
-                ? (kept ? " Consigne tenue : bonus débloqué." : " Consigne ratée : pas de bonus.")
-                : "";
+            string goal = !hasGoal ? ""
+                : open ? " Consigne facultative (+" + _objective.Bonus + " €) : il est à terre, finis le travail au pied — puis la photo."
+                : kept ? " Consigne tenue : bonus débloqué." : " Consigne ratée : pas de bonus.";
             Say("APPLI", "Cible au sol." + goal + " Preuve requise : sors le téléphone, appli Photo, cadre-le.");
         }
 
@@ -842,7 +845,7 @@ namespace UberBagarre.World
             _timer = 7f;
 
             bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
-            bool kept = !hasGoal || _objective.Succeeded;
+            bool kept = !hasGoal || _objective.Evaluate();
             int reward = _reward + (hasGoal && kept ? _objective.Bonus : 0);
             int reviewStars = hasGoal ? (kept ? 5 : 3) : UnityEngine.Random.Range(4, 6);
             string review = kept ? Reviews[UnityEngine.Random.Range(0, Reviews.Length)] : HalfReviews[UnityEngine.Random.Range(0, HalfReviews.Length)];
@@ -1302,7 +1305,7 @@ namespace UberBagarre.World
 
             if (!hasGoal) return;
 
-            string goal = "CONSIGNE : " + _objective.Text + "  (+" + _objective.Bonus + " €)";
+            string goal = "BONUS : " + _objective.Text + "  (+" + _objective.Bonus + " €, facultatif)";
             GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 58f * unit, w - 28f * unit, 20f * unit), goal, _small,
                 new Color(1f, 0.8f, 0.35f), 0.5f);
 
