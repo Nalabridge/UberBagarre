@@ -188,6 +188,9 @@ namespace UberBagarre.EditorTools
             clock.Configure(graphics, graphics.GetComponent<TimeOfDay>(), director, 8f);
             EditorUtility.SetDirty(clock);
 
+            // --- la météo : pluie, flaques, orage
+            BuildWeather(systems, graphics.GetComponent<TimeOfDay>(), driveLoops, walkLoops, map);
+
             // --- la ville, chargée par-dessus au lancement
             MapStreamer streamer = systems.AddComponent<MapStreamer>();
             SerializedWiring.SetObject(streamer, "_player", player.transform);
@@ -422,6 +425,10 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.AddSpot(root.transform, "Projecteur de la porte", doorPosition + Vector3.up * 2.2f - inward * Vector3.forward * 0.6f,
                 new Vector3(0f, -1f, 0f) - inward * Vector3.forward * 0.4f, new Color(1f, 0.86f, 0.66f), 2.4f, 9f, 80f, false);
 
+            // --- les néons de la façade : un cadre autour de la porte, un bandeau, BAR · CLUB.
+            // La nuit, sous la pluie, c'est ce qui se reflète dans les flaques du trottoir.
+            BuildVertigoNeons(root.transform, night, doorPosition, inward);
+
             // --- la porte : E pour entrer
             GameObject door = EditorBuildUtility.CreateEmpty("Porte du Vertigo (entree)", root.transform, doorPosition);
             door.transform.rotation = inward;
@@ -457,6 +464,52 @@ namespace UberBagarre.EditorTools
                 SerializedWiring.SetObject(outPortal, "_fader", fader);
                 SandboxSceneBuilder.SetObjectArray(outPortal, "_deactivate", club.Root.gameObject);
             }
+        }
+
+        private static void BuildVertigoNeons(Transform parent, NightMaterialFactory.Palette night, Vector3 door, Quaternion inward)
+        {
+            GameObject neons = EditorBuildUtility.CreateEmpty("Neons de la facade", parent, door);
+            // Tourné vers la rue : z local = dehors, x local = le long de la façade.
+            neons.transform.rotation = inward * Quaternion.Euler(0f, 180f, 0f);
+            Transform t = neons.transform;
+            const float out_ = 0.14f;
+
+            // Le cadre : deux montants magenta, un linteau cyan.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject post = EditorBuildUtility.CreateEmpty(side < 0 ? "Montant gauche" : "Montant droit", t, new Vector3(side * 1.55f, 0f, out_));
+                Box(post.transform, "Tube", new Vector3(0f, 1.45f, 0f), new Vector3(0.06f, 2.9f, 0.06f), night.NeonMagenta, false);
+                NightStreetBuilder.AddLight(post.transform, "Lueur", new Vector3(0f, 1.3f, 0.35f), new Color(1f, 0.2f, 0.65f), 1.5f, 6f, false, false);
+                NightStreetBuilder.AddFlicker(post, NeonFlicker.Pattern.Calme, 6f, 0.05f, 1f, 11f + side * 4f);
+            }
+
+            GameObject lintel = EditorBuildUtility.CreateEmpty("Linteau", t, new Vector3(0f, 2.95f, out_));
+            Box(lintel.transform, "Tube", Vector3.zero, new Vector3(3.2f, 0.06f, 0.06f), night.NeonCyan, false);
+            NightStreetBuilder.AddLight(lintel.transform, "Lueur", new Vector3(0f, -0.2f, 0.45f), new Color(0.25f, 0.85f, 1f), 1.3f, 6f, false, false);
+            NightStreetBuilder.AddFlicker(lintel, NeonFlicker.Pattern.Calme, 6f, 0.05f, 1f, 29f);
+
+            // Le bandeau le long de la façade, plus haut, qui dessine le bâtiment dans la nuit.
+            GameObject band = EditorBuildUtility.CreateEmpty("Bandeau", t, new Vector3(0f, 3.6f, out_));
+            Box(band.transform, "Tube", Vector3.zero, new Vector3(9f, 0.05f, 0.05f), night.NeonMagenta, false);
+            NightStreetBuilder.AddFlicker(band, NeonFlicker.Pattern.Calme, 5f, 0.04f, 1f, 37f);
+
+            // BAR · CLUB, à côté de la porte, qui grésille un peu.
+            GameObject sign = EditorBuildUtility.CreateEmpty("Enseigne BAR CLUB", t, new Vector3(3.4f, 2.2f, out_));
+            sign.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            NeonTextBuilder.Build(sign.transform, "BAR - CLUB", 0.32f, 0.04f, night.NeonWarm);
+            NightStreetBuilder.AddLight(sign.transform, "Lueur", new Vector3(0f, 0.1f, -0.4f), new Color(1f, 0.62f, 0.25f), 1.1f, 5f, false, false);
+            NightStreetBuilder.AddFlicker(sign, NeonFlicker.Pattern.Bourdonnement, 6f, 0.12f, 1f, 53f);
+
+            // La corde de velours et ses deux poteaux chromés, devant la porte.
+            for (int k = 0; k < 2; k++)
+            {
+                Vector3 at = new Vector3(-2.4f + k * 1.4f, 0f, 1.3f);
+                NightStreetBuilder.Cylinder(t, "Poteau", at + new Vector3(0f, 0.5f, 0f), new Vector3(0.07f, 0.5f, 0.07f), night.Chrome, true);
+                NightStreetBuilder.Cylinder(t, "Socle", at + new Vector3(0f, 0.02f, 0f), new Vector3(0.32f, 0.02f, 0.32f), night.Chrome, false);
+            }
+
+            GameObject rope = NightStreetBuilder.Cylinder(t, "Corde", new Vector3(-1.7f, 0.86f, 1.3f), new Vector3(0.04f, 0.7f, 0.04f), night.Velvet, false);
+            rope.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
         }
 
         // ------------------------------------------------------------------ carte

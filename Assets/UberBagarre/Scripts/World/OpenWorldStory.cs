@@ -278,6 +278,9 @@ namespace UberBagarre.World
 
             if (_director != null) _director.ReturnHome();
 
+            // Une partie neuve commence à 14 h : la première course, elle, attendra la nuit.
+            if (fresh && WorldClock.Instance != null) WorldClock.Instance.SetHour(14f);
+
             // Deux images pour que tout soit en place (physique, portes, voitures) derrière l'écran.
             yield return null;
             yield return null;
@@ -325,7 +328,7 @@ namespace UberBagarre.World
                     else if (!_progress.HasFlag("p:courrier")) Goal("Lis le courrier, sur le bureau.");
                     else if (!_progress.HasFlag("p:appel")) Ring("SAMI");
                     else if (!_progress.HasFlag("p:appli")) StartCoroutine(InstallApp());
-                    else Queue("moretti", "Bruno Moretti. Le videur du Vertigo : il sort fumer à la fin de son service.");
+                    else AwaitNight();
                     break;
 
                 case Kovac:
@@ -367,6 +370,12 @@ namespace UberBagarre.World
 
             if (!_started || _scene || GameMenu.IsOpen || _progress == null || _director == null) return;
             if (_director.Busy) return;
+
+            if (_awaitingNight && WorldClock.Instance != null && IsNight(WorldClock.Instance.Hour) && !Speaking)
+            {
+                StartCoroutine(NightFalls());
+                return;
+            }
 
             _freeTime += Time.deltaTime;
             int chapter = _progress.Chapter;
@@ -536,6 +545,50 @@ namespace UberBagarre.World
                 DialogueLine.Say("APPLI", "Une course, un contrat. De une à cinq étoiles."),
                 DialogueLine.Say("APPLI", "Une étoile, c'est pour apprendre. Cinq, c'est pour finir à l'hôpital."));
 
+            _scene = false;
+            AwaitNight();
+        }
+
+        // ------------------------------------------------------------------ la première nuit
+
+        private bool _awaitingNight;
+
+        private static bool IsNight(float hour)
+        {
+            return hour >= 21.5f || hour < 4f;
+        }
+
+        /// <summary>
+        /// Moretti sort fumer à la fin de son service, vers 23 h : la première course se fait de
+        /// nuit, sous les néons du Vertigo. D'ici là, la ville est ouverte — ou le lit du motel
+        /// fait passer l'après-midi.
+        /// </summary>
+        private void AwaitNight()
+        {
+            float hour = WorldClock.Instance != null ? WorldClock.Instance.Hour : 23f;
+            if (IsNight(hour))
+            {
+                StartCoroutine(NightFalls());
+                return;
+            }
+
+            _awaitingNight = true;
+            if (_director != null) _director.NapUntilHour = 21.75f;
+            Goal("Moretti finit son service vers 23 h. D'ici là, fais un tour en ville… ou une sieste au motel (le lit).");
+        }
+
+        private IEnumerator NightFalls()
+        {
+            _awaitingNight = false;
+            _scene = true;
+            if (_director != null) _director.NapUntilHour = -1f;
+
+            // Une pluie fine pour la première nuit : les néons du Vertigo dans les flaques.
+            if (Weather.Instance != null) Weather.Instance.Force(0.45f, 5f);
+
+            yield return Lines(
+                DialogueLine.Say("SAMI", "(SMS) Moretti finit à 23 h. Il sort fumer par la porte de devant, toujours."),
+                DialogueLine.Say("SAMI", "(SMS) Il pleut, tant mieux : personne ne traîne dehors. Vas-y."));
             _scene = false;
             Queue("moretti", "Bruno Moretti. Le videur du Vertigo : il sort fumer à la fin de son service.");
         }

@@ -93,6 +93,25 @@ namespace UberBagarre.View
             }
         }
 
+        private float _overcast;
+        private float _sunShadowBase = -1f;
+
+        /// <summary>
+        /// Le ciel couvert (0 = dégagé, 1 = pluie battante) : soleil voilé et gris, ciel bas,
+        /// brume plus épaisse, ambiante plus terne. La météo le fait varier.
+        /// </summary>
+        public float Overcast
+        {
+            get { return _overcast; }
+            set
+            {
+                value = Mathf.Clamp01(value);
+                if (Mathf.Abs(value - _overcast) < 0.002f) return;
+                _overcast = value;
+                Apply();
+            }
+        }
+
         /// <summary>La position du soleil (l'horloge de la ville le fait tourner).</summary>
         public Vector3 SunAngles
         {
@@ -164,12 +183,15 @@ namespace UberBagarre.View
             if (_sun == null) return;
 
             _sun.transform.rotation = Quaternion.Euler(_sunAngles);
-            _sun.color = _sunColor;
+            _sun.color = Color.Lerp(_sunColor, new Color(0.78f, 0.82f, 0.88f), _overcast);
 
             // Le soleil ne s'eteint pas lineairement : il disparait vite sous l'horizon.
             // Une decroissance au carre evite une longue plage ou la scene est eclairee
-            // par un soleil fantome en meme temps que par les lampadaires.
-            _sun.intensity = _sunIntensity * t * t;
+            // par un soleil fantome en meme temps que par les lampadaires. Sous la pluie, il
+            // passe a travers les nuages : faible, et presque sans ombre.
+            _sun.intensity = _sunIntensity * t * t * (1f - 0.72f * _overcast);
+            if (_sunShadowBase < 0f) _sunShadowBase = _sun.shadowStrength;
+            _sun.shadowStrength = _sunShadowBase * (1f - 0.55f * _overcast);
             _sun.enabled = _sun.intensity > 0.002f;
         }
 
@@ -190,8 +212,8 @@ namespace UberBagarre.View
             Material target = SkyTarget();
             if (target == null) return;
 
-            SetFloat(target, "_Exposure", Mathf.Lerp(_skyExposureNight, _skyExposureDay, t));
-            SetColor(target, "_SkyTint", Color.Lerp(_skyTintNight, _skyTintDay, t));
+            SetFloat(target, "_Exposure", Mathf.Lerp(_skyExposureNight, _skyExposureDay, t) * (1f - 0.45f * _overcast));
+            SetColor(target, "_SkyTint", Color.Lerp(Color.Lerp(_skyTintNight, _skyTintDay, t), new Color(0.42f, 0.44f, 0.47f) * Mathf.Lerp(0.35f, 1f, t), _overcast));
             SetColor(target, "_GroundColor", Color.Lerp(_skyGroundNight, _skyGroundDay, t));
 
             // Une atmosphere epaisse la nuit etale la lueur urbaine sur l'horizon au lieu
@@ -231,13 +253,15 @@ namespace UberBagarre.View
         {
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = Color.Lerp(_fogNight, _fogDay, t);
-            RenderSettings.fogDensity = Mathf.Lerp(_fogDensityNight, _fogDensityDay, t);
+            // La pluie epaissit l'air : plus de brume, plus grise.
+            Color fog = Color.Lerp(_fogNight, _fogDay, t);
+            RenderSettings.fogColor = Color.Lerp(fog, new Color(0.46f, 0.48f, 0.5f) * Mathf.Lerp(0.18f, 1f, t), _overcast * 0.7f);
+            RenderSettings.fogDensity = Mathf.Lerp(_fogDensityNight, _fogDensityDay, t) + _overcast * Mathf.Lerp(0.010f, 0.016f, t);
 
             if (RenderSettings.skybox != null)
             {
                 RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Skybox;
-                RenderSettings.ambientIntensity = Mathf.Lerp(_ambientNight, _ambientDay, t);
+                RenderSettings.ambientIntensity = Mathf.Lerp(_ambientNight, _ambientDay, t) * (1f - 0.22f * _overcast);
                 return;
             }
 

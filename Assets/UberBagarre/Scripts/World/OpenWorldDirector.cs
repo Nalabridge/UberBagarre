@@ -1103,6 +1103,16 @@ namespace UberBagarre.World
 
         // ------------------------------------------------------------------ sommeil
 
+        /// <summary>
+        /// Une sieste plutôt qu'une nuit : si l'histoire attend le soir (la première course, à
+        /// la sortie du Vertigo), le lit fait passer l'après-midi jusqu'à cette heure, sans
+        /// changer de jour. Négatif : le lit fait dormir normalement.
+        /// </summary>
+        public float NapUntilHour { get; set; } = -1f;
+
+        /// <summary>Une sieste vient de finir (l'heure a avancé, pas le jour).</summary>
+        public event Action Napped;
+
         /// <summary>Dormir : un jour passe, les blessures guérissent, la vie remonte, la partie est sauvegardée.</summary>
         public void Sleep()
         {
@@ -1129,6 +1139,28 @@ namespace UberBagarre.World
             }
 
             if (_stage == Stage.Offered) Expire();
+
+            if (NapUntilHour >= 0f && WorldClock.Instance != null)
+            {
+                // La sieste : l'heure avance, on récupère un peu, rien n'est sauvegardé.
+                float hour = NapUntilHour;
+                if (_fader != null) _fader.ShowCard("Sieste…\n" + Mathf.FloorToInt(hour).ToString("00") + " h " + Mathf.RoundToInt((hour % 1f) * 60f).ToString("00"));
+                WorldClock.Instance.SetHour(hour);
+                if (_player != null && _player.Health != null) _player.Health.Heal(_player.Health.MaxHealth * 0.35f);
+                yield return new WaitForSeconds(2f);
+
+                if (_fader != null)
+                {
+                    _fader.ShowCard(null);
+                    _fader.FadeIn(1.2f);
+                }
+
+                if (_input != null) _input.SetGameplayLock(this, false);
+                _sleeping = false;
+                Action napped = Napped;
+                if (napped != null) napped();
+                yield break;
+            }
 
             if (_progress != null)
             {

@@ -387,7 +387,9 @@ namespace UberBagarre.Phone
             Label(new Rect(body.x, body.y + U(0.02f), body.width, U(0.085f)), Clock,
                 Font(0.075f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
 
-            Label(new Rect(body.x, body.y + U(0.105f), body.width, U(0.035f)), _date,
+            string date = _date;
+            if (World.Weather.Instance != null) date += "   ·   " + World.Weather.Instance.Describe();
+            Label(new Rect(body.x, body.y + U(0.105f), body.width, U(0.035f)), date,
                 Font(0.022f), FontStyle.Normal, TextAnchor.MiddleCenter, _dim);
 
             IList<PhoneOS.App> apps = _os.Apps;

@@ -172,6 +172,19 @@ namespace UberBagarre.World
             }
         }
 
+        /// <summary>Les racines de la ville chargée (vide tant qu'elle ne l'est pas).</summary>
+        public static GameObject[] CityRoots()
+        {
+            if (!Ready || !_city.IsValid() || !_city.isLoaded) return new GameObject[0];
+            return _city.GetRootGameObjects();
+        }
+
+        /// <summary>Ce rendu change de matériaux la nuit (fenêtres allumées) : ne pas y toucher.</summary>
+        public static bool IsNightSwapped(Renderer renderer)
+        {
+            return renderer != null && Swapped.Contains(renderer);
+        }
+
         /// <summary>Un objet de la ville, par son chemin (« @Properties/Manor/Manor Gate »).</summary>
         public static Transform FindInCity(string path)
         {

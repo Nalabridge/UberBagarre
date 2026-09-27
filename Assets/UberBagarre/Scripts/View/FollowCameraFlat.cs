@@ -33,6 +33,10 @@ namespace UberBagarre.View
         [Tooltip("Pas de déplacement. Plus il est grand, moins la nappe glisse avec le joueur.")]
         private float _step = 6f;
 
+        [SerializeField]
+        [Tooltip("Hauteur comptée depuis la caméra (par pas), pour une ville qui monte et descend.")]
+        private bool _relativeHeight;
+
         private void LateUpdate()
         {
             if (_target == null)
@@ -48,7 +52,8 @@ namespace UberBagarre.View
             float x = Mathf.Round(position.x / _step) * _step;
             float z = Mathf.Round(position.z / _step) * _step;
 
-            transform.position = new Vector3(x, _height, z);
+            float y = _relativeHeight ? Mathf.Round(position.y / _step) * _step + _height : _height;
+            transform.position = new Vector3(x, y, z);
         }
     }
 }
