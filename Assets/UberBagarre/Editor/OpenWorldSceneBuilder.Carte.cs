@@ -215,6 +215,9 @@ namespace UberBagarre.EditorTools
             SandboxSceneBuilder.OfferLinearColorSpace();
             Selection.activeGameObject = player;
 
+            // La ville, visible dans la vue Scene (elle se charge de toute façon en Play).
+            EditorApplication.delayCall += MapSceneLoader.OpenCity;
+
             Debug.Log("[UberBagarre] Monde ouvert genere SUR LA VILLE (Assets/Schedule1) : " + ScenePath + "\n" +
                       "  Logements     : " + homes.Count + " (le motel au départ ; bungalow et manoir à l'achat, sur l'ordinateur)\n" +
                       "  Le Vertigo    : la porte du club desaffecte, ville nord (E pour entrer)\n" +
@@ -223,7 +226,7 @@ namespace UberBagarre.EditorTools
                       "  Les courses   : " + map.spots.Length + " coins de la ville, chacun avec ce que la cible y fait\n" +
                       "  Passants      : " + walkers.transform.childCount + ", voitures : " + traffic.transform.childCount +
                       ", garees : " + parked.transform.childCount + "\n" +
-                      "  La ville se charge par-dessus au lancement (quelques secondes la premiere fois).\n" +
+                      "  La ville est ouverte par-dessus dans l'editeur, et se charge seule en Play.\n" +
                       "  Appuie sur Play.");
         }
 

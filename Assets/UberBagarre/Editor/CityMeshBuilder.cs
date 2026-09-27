@@ -295,6 +295,9 @@ namespace UberBagarre.EditorTools
         {
             string path = Folder + "/" + fileName + ".asset";
 
+            // Le nom de l'objet = le nom du fichier (sinon Unity avertit à chaque sauvegarde).
+            mesh.name = fileName;
+
             Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing == null)
             {

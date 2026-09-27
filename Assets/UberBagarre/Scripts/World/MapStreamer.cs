@@ -204,6 +204,11 @@ namespace UberBagarre.World
 
             for (int i = 0; i < roots.Length; i++) SwapMaterials(roots[i]);
 
+            int renderers = 0;
+            for (int i = 0; i < roots.Length; i++) renderers += roots[i].GetComponentsInChildren<Renderer>(true).Length;
+            Debug.Log("[UberBagarre] Ville chargee (" + scene.name + ") : " + roots.Length + " racines, " + renderers +
+                      " rendus, " + lights.Count + " lampes, " + Doors.Count + " portes.");
+
             // Le chargement a pris du temps : la physique doit connaître les nouveaux colliders
             // avant que le joueur ne reprenne son poids.
             Physics.SyncTransforms();

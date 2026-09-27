@@ -95,6 +95,9 @@ namespace UberBagarre.EditorTools
 
         private static readonly Dictionary<string, Data> Cache = new Dictionary<string, Data>();
         private static readonly Dictionary<string, Mesh> Meshes = new Dictionary<string, Mesh>();
+
+        // La date du fichier source dont chaque maillage en cache a été construit.
+        private static readonly Dictionary<string, long> MeshStamps = new Dictionary<string, long>();
         private static readonly Dictionary<string, Material> SkinMaterials = new Dictionary<string, Material>();
 
         public static bool Exists(string silhouette)
@@ -235,7 +238,9 @@ namespace UberBagarre.EditorTools
             }
 
             Mesh cached;
-            if (Meshes.TryGetValue(key, out cached) && cached != null && cached.name == key + "@" + data.Stamp.Ticks)
+            long built;
+            if (Meshes.TryGetValue(key, out cached) && cached != null && MeshStamps.TryGetValue(key, out built) &&
+                built == data.Stamp.Ticks)
             {
                 return cached;
             }
@@ -285,7 +290,7 @@ namespace UberBagarre.EditorTools
             }
 
             Mesh mesh = new Mesh();
-            mesh.name = key + "@" + data.Stamp.Ticks;
+            mesh.name = "Corps_" + key;
             mesh.indexFormat = count > 65000 ? IndexFormat.UInt32 : IndexFormat.UInt16;
             mesh.vertices = positions;
             mesh.normals = normals;
@@ -318,6 +323,7 @@ namespace UberBagarre.EditorTools
 
             mesh = SaveMesh(mesh, key);
             Meshes[key] = mesh;
+            MeshStamps[key] = data.Stamp.Ticks;
             return mesh;
         }
 
