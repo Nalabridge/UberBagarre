@@ -202,6 +202,27 @@ namespace UberBagarre.UI
                     Toast("+" + Mathf.RoundToInt(item.amount) + " repas dans le frigo (" + _progress.Meals + " en tout).", false);
                     return true;
 
+                case ShopEffect.ClearRecord:
+                {
+                    int weight = _progress.RecordWeight;
+                    if (weight <= 0)
+                    {
+                        Toast("Ton casier est vierge. Revenez quand vous aurez fait quelque chose.", true);
+                        return false;
+                    }
+
+                    int fee = 300 + 120 * weight;
+                    if (!_progress.Spend(fee, "Honoraires — Maître Lenoir"))
+                    {
+                        Toast("Honoraires : " + fee + " €. Tu ne les as pas.", true);
+                        return false;
+                    }
+
+                    _progress.ClearRecord();
+                    Toast("Casier nettoyé (" + fee + " €). « Vous n'avez jamais existé. »", false);
+                    return true;
+                }
+
                 case ShopEffect.Lockpicks:
                     _progress.AddLockpicks(Mathf.RoundToInt(item.amount));
                     Toast("+" + Mathf.RoundToInt(item.amount) + " crochets (" + _progress.Lockpicks + ").", false);

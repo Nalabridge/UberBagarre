@@ -75,6 +75,9 @@ namespace UberBagarre.World
         {
             if (_fighting || Time.time < _cooldown || (_walker != null && _walker.IsDown)) return;
             _cooldown = Time.time + 2.5f;
+
+            // Il était en train d'appeler la police : on va lui « parler ».
+            if (PoliceSystem.Instance != null && _walker != null && PoliceSystem.Instance.Intimidate(_walker)) return;
             _provoked++;
 
             Say("MOI", Insults[Mathf.Abs(_provoked * 7 + GetInstanceID()) % Insults.Length]);

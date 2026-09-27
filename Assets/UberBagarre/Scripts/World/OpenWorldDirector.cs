@@ -315,7 +315,20 @@ namespace UberBagarre.World
 
             if (_player != null && !_player.IsAlive)
             {
-                if (!_knockedOut) StartCoroutine(KnockedOut());
+                if (!_knockedOut)
+                {
+                    // Recherché et K.O. devant les agents : c'est la police qui le ramasse.
+                    if (PoliceSystem.Instance != null && PoliceSystem.Instance.ClaimKnockout())
+                    {
+                        _knockedOut = true;
+                        if (Busy) Fail("Arrêté : la course est ratée.", _knockedOutPenalty, true);
+                    }
+                    else
+                    {
+                        StartCoroutine(KnockedOut());
+                    }
+                }
+
                 return;
             }
 
@@ -397,6 +410,19 @@ namespace UberBagarre.World
             {
                 OfferStory(_story);
                 _story = null;
+                return;
+            }
+
+            // Une nuit au poste : l'appli suspend le compte jusqu'au lendemain.
+            if (_progress != null && _progress.AppSuspendedToday)
+            {
+                if (Time.time - _lastUnfitNotice > 120f)
+                {
+                    _lastUnfitNotice = Time.time;
+                    Say("APPLI", "Compte suspendu jusqu'à demain : un livreur au poste, ça fait mauvais genre.");
+                }
+
+                _timer = 30f;
                 return;
             }
 
@@ -797,6 +823,9 @@ namespace UberBagarre.World
             {
                 Vector3 center = (_target.transform.position + _player.transform.position) * 0.5f;
                 if (FightCrowd.Enclosure(center) >= 0.4f) _crowd.Gather(center);
+
+                // En plein découvert, une bagarre se voit : les passants peuvent appeler la police.
+                else Crimes.Report(Crime.Bagarre, center, _targetGo);
             }
 
             if (_objective != null) _objective.Begin(_target, _player);
@@ -1095,6 +1124,25 @@ namespace UberBagarre.World
                 Say("SAMI", (bill > 0 ? "Ils t'ont ramassé sur le trottoir. L'hosto t'a pris " + bill + " balles." : "Ils t'ont ramassé sur le trottoir.") + warning);
             }
 
+            _stage = Stage.Waiting;
+            _timer = _betweenOrders;
+            _knockedOut = false;
+        }
+
+        /// <summary>Relâché du commissariat : debout, soigné du strict minimum, devant la porte.</summary>
+        public void RestoreAfterArrest(Transform release)
+        {
+            if (_player != null)
+            {
+                if (!_player.IsAlive) _player.Revive();
+                KnockdownSystem knockdown = _player.GetComponentInChildren<KnockdownSystem>(true);
+                if (knockdown != null) knockdown.ForceStand();
+            }
+
+            if (release != null) Teleport(release);
+            else if (_home != null) Teleport(_home);
+
+            if (Busy) Abandon();
             _stage = Stage.Waiting;
             _timer = _betweenOrders;
             _knockedOut = false;

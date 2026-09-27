@@ -73,7 +73,10 @@ namespace UberBagarre.World
         Medkit,
 
         /// <summary>Des crochets pour les serrures de voitures (amount = combien).</summary>
-        Lockpicks
+        Lockpicks,
+
+        /// <summary>L'avocat nettoie le casier (le prix dépend de son poids).</summary>
+        ClearRecord
     }
 
     [Serializable]
@@ -389,6 +392,7 @@ namespace UberBagarre.World
                 case ShopKind.Avocat:
                     return new[]
                     {
+                        new ShopItem("Nettoyer le casier", 0, ShopEffect.ClearRecord, 0f, "Maître Lenoir fait disparaître ton casier judiciaire : 300 € plus 120 € par délit. Il ne juge pas. Il facture."),
                         new ShopItem("Faire classer une plainte", 250, ShopEffect.Reputation, 15f, "Les clients oublient : +15 réputation.").Daily(),
                         new ShopItem("Consultation", 60, ShopEffect.Rumor, 0f, "Le droit, et ce qu'on en fait.")
                     };

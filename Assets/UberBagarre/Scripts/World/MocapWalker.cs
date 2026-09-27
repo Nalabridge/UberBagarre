@@ -263,6 +263,18 @@ namespace UberBagarre.World
             _pause = 0f;
         }
 
+        /// <summary>Il s'arrête là (un témoin qui appelle la police) pendant <paramref name="seconds"/> s.</summary>
+        public void HoldStill(float seconds)
+        {
+            _pause = Mathf.Max(_pause, seconds);
+        }
+
+        /// <summary>Il repart (l'appel est fini, ou on l'a dissuadé).</summary>
+        public void Release()
+        {
+            _pause = 0f;
+        }
+
         /// <summary>Il presse le pas (provoqué, bousculé, témoin d'une bagarre) pendant <paramref name="seconds"/> s.</summary>
         public void Hurry(float seconds)
         {

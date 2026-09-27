@@ -77,6 +77,15 @@ namespace UberBagarre.Story
             public int day;
         }
 
+        /// <summary>Une ligne du casier judiciaire.</summary>
+        [Serializable]
+        public class RecordEntry
+        {
+            public string crime;
+            public int day;
+            public int weight;
+        }
+
         /// <summary>Tout ce qui s'écrit sur le disque.</summary>
         [Serializable]
         private class SaveData
@@ -121,6 +130,16 @@ namespace UberBagarre.Story
 
             /// <summary>Les crochets (pour les serrures des voitures) : Léo vient des Slums.</summary>
             public int lockpicks = 3;
+
+            /// <summary>Le casier judiciaire.</summary>
+            public List<RecordEntry> record = new List<RecordEntry>();
+            public int arrests;
+
+            /// <summary>L'appli est suspendue jusqu'à ce jour inclus (une nuit au poste).</summary>
+            public int suspendedUntilDay;
+
+            /// <summary>Le Code : négatif = la Brute, positif = le Justicier.</summary>
+            public int code;
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -495,6 +514,64 @@ namespace UberBagarre.Story
             _data.meals--;
             RaiseChanged();
             return true;
+        }
+
+        // ------------------------------------------------------------------ casier, Code
+
+        /// <summary>Le poids du casier : plus il est lourd, plus la police réagit vite.</summary>
+        public int RecordWeight
+        {
+            get
+            {
+                int total = 0;
+                for (int i = 0; i < _data.record.Count; i++) total += _data.record[i].weight;
+                return total;
+            }
+        }
+
+        public IReadOnlyList<RecordEntry> CriminalRecord { get { return _data.record; } }
+
+        public void AddToRecord(string crime, int weight)
+        {
+            _data.record.Add(new RecordEntry { crime = crime, day = _data.day, weight = Mathf.Max(1, weight) });
+            if (_data.record.Count > 60) _data.record.RemoveAt(0);
+            RaiseChanged();
+        }
+
+        /// <summary>Maître Lenoir a fait son travail : casier vierge.</summary>
+        public void ClearRecord()
+        {
+            _data.record.Clear();
+            RaiseChanged();
+        }
+
+        public int Arrests { get { return _data.arrests; } }
+
+        /// <summary>Une nuit au poste : un jour passe (sans soins), l'appli est suspendue jusqu'au lendemain.</summary>
+        public void NightInCell()
+        {
+            _data.arrests++;
+            _data.day++;
+            _data.suspendedUntilDay = _data.day;
+            _data.satiety = Mathf.Max(0f, _data.satiety - 20f);
+            RaiseChanged();
+        }
+
+        /// <summary>L'appli refuse les courses (suspendue par une nuit au poste).</summary>
+        public bool AppSuspendedToday { get { return _data.day <= _data.suspendedUntilDay && _data.suspendedUntilDay > 0; } }
+
+        /// <summary>Le Code : négatif = la Brute, positif = le Justicier (−100 à +100).</summary>
+        public int Code { get { return _data.code; } }
+
+        public event Action<int, string> CodeChanged;
+
+        public void ChangeCode(int delta, string reason)
+        {
+            if (delta == 0) return;
+            _data.code = Mathf.Clamp(_data.code + delta, -100, 100);
+            Action<int, string> handler = CodeChanged;
+            if (handler != null) handler(delta, reason);
+            RaiseChanged();
         }
 
         public int Lockpicks { get { return _data.lockpicks; } }

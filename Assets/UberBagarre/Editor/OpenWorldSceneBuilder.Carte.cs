@@ -168,6 +168,10 @@ namespace UberBagarre.EditorTools
             HomeRegistry registry = BuildHomeRegistry(systems, homes, progress, director, wardrobeScreen, computerScreen);
             SerializedWiring.SetObject(registry, "_subtitles", subtitles);
 
+            // --- la police : témoins, étoiles, patrouilles, recherche, garde à vue
+            BuildPolice(systems, player, materials, attacks, night, vehicles, map, walkLoops, driveLoops, progress, subtitles, fader,
+                director);
+
             // --- voler une voiture : crochetage, fils, alarme, conducteur sorti de force
             CarThief thief = systems.AddComponent<CarThief>();
             thief.Configure(player.GetComponent<PlayerInputReader>(), progress, subtitles);

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System;
 using UberBagarre.Phone;
 using UberBagarre.Player;
@@ -74,6 +75,39 @@ namespace UberBagarre.World
         private static readonly Color Park = new Color(0.14f, 0.24f, 0.13f, 1f);
 
         public bool HasWaypoint { get { return _hasWaypoint; } }
+
+        /// <summary>Un repère posé par un autre système (la police, un cercle de recherche).</summary>
+        public struct Blip
+        {
+            public Vector2 position;
+            public Color color;
+            public float size;
+
+            /// <summary>Plus de zéro : un cercle de ce rayon (mètres) au lieu d'un point.</summary>
+            public float radius;
+        }
+
+        /// <summary>Les repères des autres systèmes : remplis chaque image par qui les pose.</summary>
+        public static readonly List<Blip> Overlay = new List<Blip>();
+
+        private void DrawOverlay(Rect local, Vector2 center, float scale, float unit)
+        {
+            for (int i = 0; i < Overlay.Count; i++)
+            {
+                Blip b = Overlay[i];
+                Vector2 p = ToMap(local, center, scale, b.position);
+                if (b.radius > 0f)
+                {
+                    float r = b.radius * scale;
+                    Rect circle = new Rect(p.x - r, p.y - r, r * 2f, r * 2f);
+                    GuiKit.Rounded(circle, new Color(b.color.r, b.color.g, b.color.b, b.color.a * 0.18f), r);
+                    GuiKit.RoundedOutline(circle, b.color, r, Mathf.Max(1.5f, 2f * unit));
+                    continue;
+                }
+
+                DrawDot(p, b.size * unit, b.color);
+            }
+        }
 
         /// <summary>Le constructeur de la ville y écrit ce qu'il a bâti.</summary>
         public void Configure(Rect bounds, Rect[] roads, Rect[] blocks, Rect[] parks, Landmark[] landmarks)
@@ -186,6 +220,7 @@ namespace UberBagarre.World
             Rect local = new Rect(0f, 0f, frame.width, frame.height);
             GuiKit.Fill(local, Water);
             DrawCity(local, center, scale);
+            DrawOverlay(local, center, scale, unit);
 
             if (_hasWaypoint)
             {
@@ -224,6 +259,7 @@ namespace UberBagarre.World
             Rect local = new Rect(0f, 0f, area.width, area.height);
             GuiKit.Fill(local, Water);
             DrawCity(local, _bounds.center, scale);
+            DrawOverlay(local, _bounds.center, scale, unit);
 
             for (int i = 0; i < _landmarks.Length; i++)
             {

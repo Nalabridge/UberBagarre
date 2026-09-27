@@ -232,6 +232,7 @@ namespace UberBagarre.UI
             }
 
             _progress.Wear(next);
+            if (World.PoliceSystem.Instance != null) World.PoliceSystem.Instance.OutfitChanged();
         }
 
         /// <summary>Le mannequin : ce qu'on essaie (la ligne en cours) par-dessus ce qu'on porte.</summary>

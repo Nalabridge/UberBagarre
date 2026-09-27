@@ -180,6 +180,12 @@ namespace UberBagarre.World
         }
 
         /// <summary>Descendre. <paramref name="place"/> = poser le joueur à côté de la portière.</summary>
+        /// <summary>Sortir de la voiture tout de suite (une arrestation, une coupure).</summary>
+        public void ForceExit()
+        {
+            if (_car != null) Exit(false);
+        }
+
         private void Exit(bool place)
         {
             DrivableCar car = _car;

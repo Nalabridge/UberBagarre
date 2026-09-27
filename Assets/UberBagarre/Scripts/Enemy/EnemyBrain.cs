@@ -200,6 +200,13 @@ namespace UberBagarre.Enemy
         /// </summary>
         public static bool HoldAll { get; set; }
 
+        /// <summary>Jusqu'où il repère un adversaire (un policier voit loin).</summary>
+        public float DetectionRange
+        {
+            get { return _detectionRange; }
+            set { _detectionRange = Mathf.Max(0f, value); }
+        }
+
         /// <summary>
         /// Rend l'adversaire plus dur (0 = tel que construit, 1 = le haut du panier) : il frappe
         /// plus souvent, se repose moins entre deux coups, esquive et garde plus, réagit plus
