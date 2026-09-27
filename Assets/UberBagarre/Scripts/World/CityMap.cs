@@ -33,6 +33,14 @@ namespace UberBagarre.World
         [SerializeField] private Rect[] _parks = new Rect[0];
         [SerializeField] private Landmark[] _landmarks = new Landmark[0];
 
+        [SerializeField]
+        [Tooltip("Optionnel : une vue de dessus de la ville, dessinee sous les rues (la carte convertie).")]
+        private Texture2D _background;
+
+        [SerializeField]
+        [Tooltip("Rectangle du monde (x, z) couvert par l'image de fond.")]
+        private Rect _backgroundBounds;
+
         [Header("References")]
         [SerializeField] private Transform _player;
         [SerializeField] private Camera _camera;
@@ -75,6 +83,13 @@ namespace UberBagarre.World
             _blocks = blocks;
             _parks = parks;
             _landmarks = landmarks;
+        }
+
+        /// <summary>Une image de la ville vue de dessus, couvrant <paramref name="bounds"/> (x, z monde).</summary>
+        public void SetBackground(Texture2D background, Rect bounds)
+        {
+            _background = background;
+            _backgroundBounds = bounds;
         }
 
         /// <summary>Pose le GPS. <paramref name="follow"/> : il suit cet objet (une cible qui bouge).</summary>
@@ -228,6 +243,13 @@ namespace UberBagarre.World
 
         private void DrawCity(Rect local, Vector2 center, float scale)
         {
+            if (_background != null && _backgroundBounds.width > 0f && _backgroundBounds.height > 0f)
+            {
+                Vector2 a = ToMap(local, center, scale, new Vector2(_backgroundBounds.xMin, _backgroundBounds.yMax));
+                Vector2 b = ToMap(local, center, scale, new Vector2(_backgroundBounds.xMax, _backgroundBounds.yMin));
+                GUI.DrawTexture(Rect.MinMaxRect(a.x, a.y, b.x, b.y), _background, ScaleMode.StretchToFill, false);
+            }
+
             for (int i = 0; i < _blocks.Length; i++) FillWorld(local, center, scale, _blocks[i], Block);
             for (int i = 0; i < _parks.Length; i++) FillWorld(local, center, scale, _parks[i], Park);
             for (int i = 0; i < _roads.Length; i++) FillWorld(local, center, scale, _roads[i], Road);

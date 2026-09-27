@@ -1,0 +1,193 @@
+using UnityEngine;
+
+namespace UberBagarre.World
+{
+    /// <summary>
+    /// Une vraie porte : E l'ouvre, E la referme. Elle pivote autour de son gond (l'objet qui
+    /// porte ce composant), en douceur, et son collider tourne avec elle — ouverte, on passe.
+    ///
+    /// Les portes de la ville convertie ont perdu leur script d'origine : fermées, elles
+    /// muraient les pièces. Ce composant leur est posé au chargement de la ville.
+    /// </summary>
+    public class SwingDoor : MonoBehaviour
+    {
+        [SerializeField] private float _openAngle = -100f;
+        [SerializeField, Min(10f)] private float _speed = 240f;
+        [SerializeField] private string _openLabel = "Ouvrir la porte";
+        [SerializeField] private string _closeLabel = "Fermer la porte";
+        [SerializeField] private string _lockedLabel = "Fermé à clé";
+        [SerializeField] private AudioClip _sound;
+
+        private Interactable _interactable;
+        private Quaternion _closed;
+        private float _angle;
+        private bool _open;
+        private bool _locked;
+        private string _lockedHint;
+        private AudioSource _source;
+        private AudioClip _rattle;
+        private bool _ownsSound;
+
+        public bool IsOpen { get { return _open; } }
+
+        /// <summary>
+        /// Une porte fermée à clé ne s'ouvre pas : E fait juste trembler la poignée. Les maisons
+        /// à vendre sont fermées tant qu'on ne les a pas achetées.
+        /// </summary>
+        public bool Locked
+        {
+            get { return _locked; }
+        }
+
+        public void SetLocked(bool locked, string hint)
+        {
+            Prepare();
+            _locked = locked;
+            _lockedHint = hint;
+            if (locked && _open) SetOpen(false, false);
+            RefreshLabel();
+        }
+
+        /// <summary>Pose une porte sur un gond existant (à l'exécution).</summary>
+        public static SwingDoor Install(Transform hinge, float openAngle, bool startOpen)
+        {
+            if (hinge == null) return null;
+
+            SwingDoor door = hinge.GetComponent<SwingDoor>();
+            if (door == null) door = hinge.gameObject.AddComponent<SwingDoor>();
+            door._openAngle = openAngle;
+            door.Prepare();
+            if (startOpen) door.SetOpen(true, true);
+            return door;
+        }
+
+        private void Awake()
+        {
+            Prepare();
+        }
+
+        private void Prepare()
+        {
+            if (_interactable != null) return;
+
+            _closed = transform.localRotation;
+
+            _interactable = GetComponent<Interactable>();
+            if (_interactable == null) _interactable = gameObject.AddComponent<Interactable>();
+            _interactable.Label = _openLabel;
+            _interactable.Activated += OnActivated;
+
+            _source = gameObject.AddComponent<AudioSource>();
+            _source.playOnAwake = false;
+            _source.spatialBlend = 1f;
+            _source.maxDistance = 18f;
+            if (_sound == null)
+            {
+                _sound = Creak();
+                _ownsSound = true;
+            }
+        }
+
+        private void RefreshLabel()
+        {
+            if (_interactable == null) return;
+            _interactable.Label = _locked ? _lockedLabel : _open ? _closeLabel : _openLabel;
+            _interactable.Hint = _locked ? _lockedHint : null;
+        }
+
+        private void OnDestroy()
+        {
+            if (_interactable != null) _interactable.Activated -= OnActivated;
+            if (_ownsSound && _sound != null) Destroy(_sound);
+            if (_rattle != null) Destroy(_rattle);
+        }
+
+        private void OnActivated(Interactable source)
+        {
+            if (_locked)
+            {
+                if (_rattle == null) _rattle = Rattle();
+                if (_source != null) _source.PlayOneShot(_rattle, 0.6f);
+                return;
+            }
+
+            SetOpen(!_open, false);
+        }
+
+        public void SetOpen(bool open, bool instant)
+        {
+            Prepare();
+            _open = open;
+            RefreshLabel();
+
+            if (instant)
+            {
+                _angle = open ? _openAngle : 0f;
+                transform.localRotation = _closed * Quaternion.Euler(0f, _angle, 0f);
+                return;
+            }
+
+            if (_source != null && _sound != null) _source.PlayOneShot(_sound, 0.5f);
+        }
+
+        private void Update()
+        {
+            float target = _open ? _openAngle : 0f;
+            if (Mathf.Approximately(_angle, target)) return;
+
+            _angle = Mathf.MoveTowards(_angle, target, _speed * Time.deltaTime);
+            transform.localRotation = _closed * Quaternion.Euler(0f, _angle, 0f);
+        }
+
+        /// <summary>Un grincement de gond, synthétisé une fois.</summary>
+        private static AudioClip Creak()
+        {
+            const int rate = 22050;
+            int length = rate / 2;
+            float[] data = new float[length];
+            float phase = 0f;
+
+            for (int n = 0; n < length; n++)
+            {
+                float t = n / (float)rate;
+                float pitch = 240f + 60f * Mathf.Sin(t * 23f) + 30f * Mathf.Sin(t * 57f);
+                phase += pitch / rate;
+                phase -= Mathf.Floor(phase);
+
+                float envelope = Mathf.Clamp01(t * 30f) * Mathf.Clamp01((0.5f - t) * 6f);
+                float saw = phase * 2f - 1f;
+                data[n] = saw * envelope * 0.12f * (0.6f + 0.4f * Mathf.Sin(t * 140f));
+            }
+
+            AudioClip clip = AudioClip.Create("Porte (gond)", length, 1, rate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+
+        /// <summary>La poignée qu'on secoue : trois claquements secs de pêne.</summary>
+        private static AudioClip Rattle()
+        {
+            const int rate = 22050;
+            int length = (int)(rate * 0.42f);
+            float[] data = new float[length];
+            System.Random random = new System.Random(7);
+
+            for (int k = 0; k < 3; k++)
+            {
+                int start = (int)(rate * (0.02f + k * 0.13f));
+                for (int n = 0; n < rate / 20 && start + n < length; n++)
+                {
+                    float t = n / (float)rate;
+                    float envelope = Mathf.Exp(-t * 90f);
+                    float noise = (float)(random.NextDouble() * 2.0 - 1.0);
+                    float ring = Mathf.Sin(t * 2f * Mathf.PI * (1900f + k * 140f));
+                    data[start + n] += (noise * 0.5f + ring * 0.5f) * envelope * 0.35f;
+                }
+            }
+
+            AudioClip clip = AudioClip.Create("Porte (verrouillee)", length, 1, rate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+    }
+}

@@ -55,6 +55,27 @@ namespace UberBagarre.World
             // ne doit pas éteindre le ciel.
             lights.RemoveAll(l => l == null || l.type == LightType.Directional);
 
+            if (_lights != null) lights.AddRange(_lights);
+
+            _lights = lights.ToArray();
+            _lightOn = new bool[_lights.Length];
+            for (int i = 0; i < _lights.Length; i++) _lightOn[i] = _lights[i].enabled;
+        }
+
+        /// <summary>
+        /// Ajoute des lampes arrivées après le démarrage (la ville chargée par-dessus la scène).
+        /// Elles sont gérées comme les autres dès l'image suivante.
+        /// </summary>
+        public void Register(IList<Light> extra)
+        {
+            if (extra == null || extra.Count == 0) return;
+
+            List<Light> lights = new List<Light>(_lights ?? new Light[0]);
+            for (int i = 0; i < extra.Count; i++)
+            {
+                if (extra[i] != null && extra[i].type != LightType.Directional && !lights.Contains(extra[i])) lights.Add(extra[i]);
+            }
+
             _lights = lights.ToArray();
             _lightOn = new bool[_lights.Length];
             for (int i = 0; i < _lights.Length; i++) _lightOn[i] = _lights[i].enabled;

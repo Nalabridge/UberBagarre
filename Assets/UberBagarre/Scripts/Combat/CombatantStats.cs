@@ -15,7 +15,16 @@ namespace UberBagarre.Combat
         Defense = 5,
         MoveSpeed = 6,
         DodgeDistance = 7,
-        DodgeCooldown = 8
+        DodgeCooldown = 8,
+
+        /// <summary>Multiplie l'endurance depensee par coup (1 = normal, moins = econome).</summary>
+        StaminaEfficiency = 9,
+
+        /// <summary>Chance de chute ajoutee a chaque coup (0 = aucune).</summary>
+        KnockdownPower = 10,
+
+        /// <summary>Bonus ajoute au multiplicateur d'une riposte (0 = aucun).</summary>
+        RiposteBonus = 11
     }
 
     /// <summary>Un bonus de stat. Plat ou en pourcentage, avec une source pour pouvoir le retirer.</summary>
@@ -178,6 +187,8 @@ namespace UberBagarre.Combat
                 case StatType.Strength: return _fallbackStrength;
                 case StatType.Defense: return _fallbackDefense;
                 case StatType.StaminaRegen: return 22f;
+                case StatType.KnockdownPower: return 0f;
+                case StatType.RiposteBonus: return 0f;
                 default: return 1f;
             }
         }

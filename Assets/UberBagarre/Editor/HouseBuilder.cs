@@ -121,7 +121,7 @@ namespace UberBagarre.EditorTools
             return result;
         }
 
-        private static Palette CreatePalette()
+        internal static Palette CreatePalette()
         {
             const string materials = NightMaterialFactory.MaterialsFolder;
             const string textures = NightMaterialFactory.TexturesFolder;

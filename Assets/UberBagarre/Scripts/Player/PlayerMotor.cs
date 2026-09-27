@@ -89,6 +89,12 @@ namespace UberBagarre.Player
         private float _currentHeight;
 
         public float SpeedMultiplier { get; set; }
+
+        /// <summary>
+        /// Bonus durable de vitesse (l'entraînement). Séparé de <see cref="SpeedMultiplier"/>, que
+        /// le combat réécrit à chaque image.
+        /// </summary>
+        public float TrainingMultiplier { get; set; }
         public bool InputLocked { get; set; }
 
         /// <summary>Coupé de l'extérieur quand l'endurance est vide.</summary>
@@ -134,6 +140,7 @@ namespace UberBagarre.Player
         private void Awake()
         {
             SpeedMultiplier = 1f;
+            TrainingMultiplier = 1f;
             _controller = GetComponent<CharacterController>();
             _currentHeight = _standHeight;
 
@@ -308,7 +315,7 @@ namespace UberBagarre.Player
 
             localWish = Vector3.ClampMagnitude(localWish, 1f);
 
-            float targetSpeed = _walkSpeed * Mathf.Max(0f, SpeedMultiplier);
+            float targetSpeed = _walkSpeed * Mathf.Max(0f, SpeedMultiplier) * Mathf.Max(0.5f, TrainingMultiplier);
             if (IsSprinting) targetSpeed *= _sprintMultiplier;
             if (IsCrouching) targetSpeed *= _crouchSpeedMultiplier;
 

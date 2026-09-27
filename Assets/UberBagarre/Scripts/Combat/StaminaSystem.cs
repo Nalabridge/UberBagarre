@@ -76,6 +76,9 @@ namespace UberBagarre.Combat
         public float Normalized { get { return _maxStamina <= 0f ? 0f : Mathf.Clamp01(_current / _maxStamina); } }
         public bool IsEmpty { get { return _current <= 0.01f; } }
 
+        /// <summary>Multiplie la récupération (l'entraînement). 1 = normal.</summary>
+        public float RegenMultiplier { get; set; } = 1f;
+
         public float MaxStamina
         {
             get { return _maxStamina; }
@@ -151,7 +154,7 @@ namespace UberBagarre.Combat
         {
             if (_current < _maxStamina && Time.time >= _regenBlockedUntil)
             {
-                _current = Mathf.Min(_maxStamina, _current + _regenPerSecond * Time.deltaTime);
+                _current = Mathf.Min(_maxStamina, _current + _regenPerSecond * Mathf.Max(0.1f, RegenMultiplier) * Time.deltaTime);
             }
 
             if (!_exhausted) return;

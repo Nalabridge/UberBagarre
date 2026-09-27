@@ -632,7 +632,7 @@ namespace UberBagarre.Phone
             {
                 case App.Accueil: NavigateHome(up, down, left, right, select); break;
                 case App.UberBagarre:
-                    NavigateRdv(left, right);
+                    NavigateRdv(left, right, up, down, select && _device.Current != PhoneDevice.Screen.Photo);
 
                     // La course reclame une preuve : Entree ouvre l'appareil photo depuis l'appli.
                     if (select && _device.Current == PhoneDevice.Screen.Photo) Open(App.Photo, true);
@@ -660,12 +660,49 @@ namespace UberBagarre.Phone
             if (select) Open(Apps[_homeSelection], true);
         }
 
-        private void NavigateRdv(bool left, bool right)
+        /// <summary>Onglets de l'appli : course, profil, historique, avis.</summary>
+        public const int RdvTabCount = 4;
+
+        private int _historySelection;
+        private bool _historyZoom;
+
+        /// <summary>La course sélectionnée dans l'historique.</summary>
+        public int HistorySelection { get { return _historySelection; } }
+
+        /// <summary>La photo de la course sélectionnée est ouverte en grand.</summary>
+        public bool HistoryZoom { get { return _historyZoom; } }
+
+        private void NavigateRdv(bool left, bool right, bool up, bool down, bool select)
         {
             int before = _rdvTab;
-            if (left) _rdvTab = 0;
-            if (right) _rdvTab = 1;
-            if (_rdvTab != before) Play(_tick);
+            if (left) _rdvTab = (_rdvTab + RdvTabCount - 1) % RdvTabCount;
+            if (right) _rdvTab = (_rdvTab + 1) % RdvTabCount;
+            if (_rdvTab != before)
+            {
+                _historyZoom = false;
+                Play(_tick);
+            }
+
+            if (_rdvTab != 2) return;
+
+            int count = _progress != null ? _progress.History.Count : 0;
+            if (count == 0) return;
+
+            int previous = _historySelection;
+            if (up) _historySelection--;
+            if (down) _historySelection++;
+            _historySelection = Mathf.Clamp(_historySelection, 0, count - 1);
+            if (_historySelection != previous)
+            {
+                _historyZoom = false;
+                Play(_tick);
+            }
+
+            if (select)
+            {
+                _historyZoom = !_historyZoom;
+                Play(_historyZoom ? _open : _back);
+            }
         }
 
         private void NavigateMessages(bool up, bool down, bool select)
@@ -784,6 +821,12 @@ namespace UberBagarre.Phone
             if (_app == App.Galerie && _openPhoto >= 0)
             {
                 _openPhoto = -1;
+                return;
+            }
+
+            if (_app == App.UberBagarre && _historyZoom)
+            {
+                _historyZoom = false;
                 return;
             }
 

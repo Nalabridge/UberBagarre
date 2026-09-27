@@ -75,6 +75,37 @@ namespace UberBagarre.Story
             _reviewStars = Mathf.Clamp(reviewStars, 1, 5);
         }
 
+        /// <summary>
+        /// Le contexte et la consigne du monde ouvert : ce que fait la cible, ce que le client
+        /// exige en plus (et ce que ça rapporte), le temps qu'il reste pour arriver, et, une fois
+        /// la course finie, si la consigne a été tenue et ce que la réputation y a gagné.
+        /// </summary>
+        public void SetExtras(string scenario, string objective, int bonus)
+        {
+            Scenario = scenario ?? string.Empty;
+            Objective = objective ?? string.Empty;
+            ObjectiveBonus = bonus;
+            ObjectiveProgress = string.Empty;
+            Deadline = -1f;
+            ObjectiveResult = 0;
+            ReputationDelta = 0;
+        }
+
+        public string Scenario { get; private set; }
+        public string Objective { get; private set; }
+        public int ObjectiveBonus { get; private set; }
+
+        /// <summary>Suivi en direct de la consigne (« Nez : pas encore », « 23 s »).</summary>
+        public string ObjectiveProgress { get; set; }
+
+        /// <summary>Secondes restantes pour arriver sur place ; négatif = pas de limite.</summary>
+        public float Deadline { get; set; }
+
+        /// <summary>0 = pas encore jugée, 1 = tenue, -1 = ratée.</summary>
+        public int ObjectiveResult { get; set; }
+
+        public int ReputationDelta { get; set; }
+
         public string TargetName { get { return _targetName; } }
         public string TargetAge { get { return _targetAge; } }
         public string TargetClothing { get { return _targetClothing; } }

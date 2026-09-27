@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UberBagarre.Combat;
 using UberBagarre.Core;
 using UberBagarre.Enemy;
@@ -15,20 +16,23 @@ namespace UberBagarre.World
     /// <summary>
     /// Le monde ouvert : la ville vit, et l'appli fait tomber des courses.
     ///
-    /// Une course, c'est la boucle du jeu entier, sans scénario autour :
-    /// 1. le téléphone vibre — une commande : une cible, son signalement, un lieu, un prix ;
-    /// 2. on l'accepte dans l'appli, le GPS s'allume (mini-carte, repère à l'écran, colonne
-    ///    de lumière au-dessus des toits) ;
-    /// 3. sur place, la cible traîne, mains dans les poches — il faut la reconnaître ; à quelques
-    ///    mètres (ou au premier coup), elle se retourne : présentation, bagarre ;
-    /// 4. au sol, une photo pour la preuve ; l'appli paie, le client laisse son avis ;
+    /// Une course, c'est la boucle du jeu entier :
+    /// 1. le téléphone vibre — une commande : une cible, ce qu'elle est en train de faire, un
+    ///    lieu, un prix, et souvent une consigne du client (« casse-lui le nez », « K.O. en
+    ///    moins de 40 s »...) qui paie un bonus ;
+    /// 2. on l'accepte dans l'appli (sinon elle part à un autre), le GPS s'allume, et le client
+    ///    n'attend pas éternellement : trop lent, il annule — et ta réputation en prend un coup ;
+    /// 3. sur place, la cible vit sa soirée (elle fume, téléphone, tague...) : il faut la
+    ///    reconnaître ; à quelques mètres, elle lâche tout et se retourne ;
+    /// 4. au sol, une photo pour la preuve ; l'appli paie, le client note selon la consigne, la
+    ///    réputation monte ; la course et sa photo rejoignent l'historique de l'appli ;
     /// 5. quelques instants plus tard, une autre commande tombe ailleurs.
     ///
-    /// K.O. soi-même : on se réveille à la planque, la course est perdue, et l'hôpital n'est
-    /// pas gratuit. Entre deux bagarres, on récupère (lentement, hors combat).
+    /// K.O. soi-même : la course est ratée (réputation en baisse), on se réveille à la planque
+    /// et l'hôpital prend sa part — avec une blessure de plus. À la troisième blessure, le
+    /// prochain K.O. tue : la partie reprend au dernier sommeil. Dormir soigne et sauvegarde.
     ///
-    /// Les cibles sont des modèles construits d'avance (inactifs) : chaque course en tire un
-    /// neuf, qu'on détruit une fois la course finie et le joueur parti.
+    /// L'histoire peut glisser ses propres courses (un chapitre) entre les courses ordinaires.
     /// </summary>
     public class OpenWorldDirector : MonoBehaviour
     {
@@ -38,6 +42,12 @@ namespace UberBagarre.World
             public string name = "Coin de rue";
             public Vector3 position;
             public float yaw;
+
+            [Tooltip("Ce que la cible y fait quand on arrive (fume, telephone, boit, tague...). Vide = elle attend.")]
+            public string activity;
+
+            [Tooltip("Optionnel : ce qu'elle regarde (un distributeur, un mur).")]
+            public Vector3 lookAt;
         }
 
         [Serializable]
@@ -51,6 +61,19 @@ namespace UberBagarre.World
 
             [Range(1, 3)] public int stars = 1;
             public GameObject template;
+        }
+
+        /// <summary>Une course imposée par l'histoire (un chapitre).</summary>
+        public class StoryContract
+        {
+            public string Tag;
+            public Profile Profile;
+            public Spot Spot;
+            public string Client = "CLIENT VIP";
+            public int Reward = 300;
+            public int Experience = 250;
+            public ContractGoal Goal = ContractGoal.Aucune;
+            public string Intro;
         }
 
         private enum Stage
@@ -75,6 +98,7 @@ namespace UberBagarre.World
         [SerializeField] private CityMap _map;
         [SerializeField] private ScreenFader _fader;
         [SerializeField] private SubtitleDisplay _subtitles;
+        [SerializeField] private TargetActivityKit _kit;
 
         [SerializeField]
         [Tooltip("Ou l'on se reveille apres un K.O. : la planque.")]
@@ -89,12 +113,16 @@ namespace UberBagarre.World
         [SerializeField, Min(0f)] private float _firstOrder = 14f;
         [SerializeField, Min(0f)] private float _betweenOrders = 22f;
 
+        [SerializeField, Min(5f)]
+        [Tooltip("Une course non acceptee part a quelqu'un d'autre apres ce delai.")]
+        private float _offerTimeout = 50f;
+
         [SerializeField, Min(1f)]
         [Tooltip("La course tombe loin : il faut traverser un bout de ville.")]
         private float _minimumDistance = 45f;
 
         [SerializeField, Min(1f)]
-        [Tooltip("Distance a laquelle la cible remarque le joueur et se retourne.")]
+        [Tooltip("Distance a laquelle la cible remarque le joueur et se retourne (sans activite).")]
         private float _engageDistance = 6.5f;
 
         [SerializeField, Min(0f)] private float _regenPerSecond = 2.5f;
@@ -102,6 +130,15 @@ namespace UberBagarre.World
         [SerializeField, Range(0f, 1f)]
         [Tooltip("Part de l'argent perdue a l'hopital apres un K.O.")]
         private float _hospitalShare = 0.15f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Probabilite qu'un client ajoute une consigne.")]
+        private float _goalChance = 0.85f;
+
+        [Header("Reputation")]
+        [SerializeField] private int _knockedOutPenalty = 12;
+        [SerializeField] private int _latePenalty = 6;
+        [SerializeField, Min(10f)] private float _suspension = 120f;
 
         private static readonly string[] Clients =
         {
@@ -115,6 +152,12 @@ namespace UberBagarre.World
             "Il marchera droit maintenant.", "Enfin quelqu'un de sérieux dans cette appli."
         };
 
+        private static readonly string[] HalfReviews =
+        {
+            "Payé, mais j'avais demandé autre chose.", "Le travail est fait. À moitié.", "Correct. Sans plus.",
+            "Il est par terre, d'accord. C'était pas la consigne."
+        };
+
         private Stage _stage;
         private float _timer;
         private Spot _spot;
@@ -122,20 +165,62 @@ namespace UberBagarre.World
         private GameObject _targetGo;
         private Combatant _target;
         private EnemyBrain _targetBrain;
+        private TargetActivity _activity;
+        private ContractObjective _objective;
         private int _reward;
         private int _experience;
         private int _lastSpot = -1;
         private int _lastProfile = -1;
+        private ContractGoal _lastGoal;
         private bool _knockedOut;
+        private bool _sleeping;
         private GameObject _toClean;
         private float _cleanAt;
+        private float _deadline;
+        private bool _warned;
+        private float _suspendedUntil;
+        private StoryContract _story;
+        private StoryContract _running;
         private GUIStyle _banner;
+        private GUIStyle _small;
+        private GUIStyle _title;
+
+        private string _repNotice;
+        private float _repNoticeUntil;
+        private bool _repGood;
+
+        /// <summary>Plus de courses ordinaires tant que l'histoire le demande (une scène, un chapitre).</summary>
+        public bool Paused { get; set; }
+
+        /// <summary>Une course de l'histoire s'est terminée : son étiquette, et si elle est réussie.</summary>
+        public event Action<string, bool> StoryContractFinished;
+
+        /// <summary>Le joueur est mort : la partie vient d'être rechargée.</summary>
+        public event Action Died;
+
+        /// <summary>Le joueur vient de dormir (partie sauvegardée).</summary>
+        public event Action Slept;
+
+        /// <summary>Une course est en cours (acceptée, pas encore payée).</summary>
+        public bool Busy { get { return _stage == Stage.EnRoute || _stage == Stage.Fighting || _stage == Stage.Proof; } }
+
+        public Transform Home { get { return _home; } set { _home = value; } }
 
         /// <summary>Le constructeur de la scène y range les lieux de rendez-vous et les cibles.</summary>
         public void Configure(Spot[] spots, Profile[] profiles)
         {
             _spots = spots;
             _profiles = profiles;
+        }
+
+        public IList<Profile> Profiles { get { return _profiles; } }
+        public IList<Spot> Spots { get { return _spots; } }
+
+        /// <summary>L'histoire impose la prochaine course (elle tombe dès que possible).</summary>
+        public void QueueStoryContract(StoryContract contract)
+        {
+            _story = contract;
+            if (_stage == Stage.Waiting) _timer = Mathf.Min(_timer, 4f);
         }
 
         // ------------------------------------------------------------------ cycle
@@ -156,7 +241,7 @@ namespace UberBagarre.World
             if (_display != null) _display.PhotoCounter = string.Empty;
             if (_map != null) _map.ClearWaypoint();
 
-            Say("SAMI", "T'es en ville. Garde le téléphone allumé, les courses vont tomber.");
+            PhoneGallery.LoadSaved();
         }
 
         private void OnEnable()
@@ -166,6 +251,9 @@ namespace UberBagarre.World
                 _phone.StoryConfirmed += OnConfirmed;
                 _phone.PhotoTaken += OnPhotoTaken;
             }
+
+            if (_progress != null) _progress.ReputationChanged += OnReputationChanged;
+            TargetInjuries.AnyFractured += OnFracture;
         }
 
         private void OnDisable()
@@ -175,6 +263,10 @@ namespace UberBagarre.World
                 _phone.StoryConfirmed -= OnConfirmed;
                 _phone.PhotoTaken -= OnPhotoTaken;
             }
+
+            if (_progress != null) _progress.ReputationChanged -= OnReputationChanged;
+            TargetInjuries.AnyFractured -= OnFracture;
+            if (_objective != null) _objective.End();
         }
 
         private void Update()
@@ -195,19 +287,24 @@ namespace UberBagarre.World
             // on revient à la planque plutôt que de tomber pour toujours.
             if (_player != null && _home != null && _player.transform.position.y < -25f && !_knockedOut)
             {
-                ISpawnReceiver[] receivers = _player.GetComponentsInChildren<ISpawnReceiver>(true);
-                for (int i = 0; i < receivers.Length; i++) receivers[i].OnSpawned(_home.position, _home.rotation);
+                Teleport(_home);
             }
 
             switch (_stage)
             {
                 case Stage.Waiting:
+                    if (Paused && _story == null) break;
                     _timer -= dt;
                     if (_timer <= 0f) Offer();
                     break;
 
+                case Stage.Offered:
+                    _timer -= dt;
+                    if (_timer <= 0f) Expire();
+                    break;
+
                 case Stage.EnRoute:
-                    UpdateEnRoute();
+                    UpdateEnRoute(dt);
                     break;
 
                 case Stage.Fighting:
@@ -217,6 +314,7 @@ namespace UberBagarre.World
                         break;
                     }
 
+                    if (_briefing != null && _objective != null) _briefing.ObjectiveProgress = _objective.Progress;
                     if (!_target.IsAlive) BeginProof();
                     break;
 
@@ -236,14 +334,39 @@ namespace UberBagarre.World
 
         private void Offer()
         {
+            if (_progress != null && _progress.Suspended)
+            {
+                if (_suspendedUntil <= 0f)
+                {
+                    _suspendedUntil = Time.time + _suspension;
+                    Say("APPLI", "Compte suspendu : trop de courses ratées. Réessaie plus tard.");
+                }
+
+                if (Time.time < _suspendedUntil)
+                {
+                    _timer = 5f;
+                    return;
+                }
+
+                _suspendedUntil = 0f;
+                _progress.ChangeReputation(8, "Seconde chance");
+                Say("APPLI", "Ton compte est réactivé. Dernière chance : ne nous déçois pas.");
+            }
+
+            if (_story != null)
+            {
+                OfferStory(_story);
+                _story = null;
+                return;
+            }
+
             if (_profiles.Length == 0 || _spots.Length == 0)
             {
                 _timer = 30f;
                 return;
             }
 
-            int level = _progress != null ? _progress.Level : 1;
-            int maxStars = Mathf.Clamp(1 + level / 2, 1, 3);
+            int maxStars = _progress != null ? _progress.MaxStarsOffered : 1;
 
             _profile = PickProfile(maxStars);
             _spot = PickSpot();
@@ -254,14 +377,41 @@ namespace UberBagarre.World
             }
 
             int stars = _profile.stars;
-            _reward = Mathf.RoundToInt((stars == 1 ? 160 : stars == 2 ? 320 : 580) * UnityEngine.Random.Range(0.85f, 1.2f) / 10f) * 10;
+            float pay = (stars == 1 ? 160 : stars == 2 ? 320 : 580) * UnityEngine.Random.Range(0.85f, 1.2f) *
+                        (_progress != null ? _progress.PayMultiplier : 1f);
+            _reward = Mathf.RoundToInt(pay / 10f) * 10;
             _experience = stars == 1 ? 120 : stars == 2 ? 240 : 380;
+
+            ContractGoal goal = UnityEngine.Random.value < _goalChance ? ContractObjective.Pick(stars, _lastGoal) : ContractGoal.Aucune;
+            _lastGoal = goal;
+            int bonus = Mathf.RoundToInt(_reward * 0.45f / 10f) * 10;
+
+            Present(Clients[UnityEngine.Random.Range(0, Clients.Length)], goal, bonus, null);
+        }
+
+        private void OfferStory(StoryContract contract)
+        {
+            _running = contract;
+            _profile = contract.Profile;
+            _spot = contract.Spot;
+            _reward = contract.Reward;
+            _experience = contract.Experience;
+
+            int bonus = Mathf.RoundToInt(_reward * 0.4f / 10f) * 10;
+            Present(contract.Client, contract.Goal, bonus, contract.Intro);
+        }
+
+        private void Present(string client, ContractGoal goal, int bonus, string intro)
+        {
+            _objective = new ContractObjective(goal, bonus);
+            TargetActivity.Kind kind = TargetActivity.Parse(_spot.activity);
 
             if (_briefing != null)
             {
                 _briefing.Configure(_profile.name, _profile.age, _profile.clothing, _spot.name, "MAINTENANT",
-                    _profile.record, Clients[UnityEngine.Random.Range(0, Clients.Length)], stars, _reward, _experience,
-                    Reviews[UnityEngine.Random.Range(0, Reviews.Length)], UnityEngine.Random.Range(4, 6));
+                    _profile.record, client, _profile.stars, _reward, _experience,
+                    Reviews[UnityEngine.Random.Range(0, Reviews.Length)], 5);
+                _briefing.SetExtras(TargetActivity.Describe(kind), _objective.Text, _objective.Bonus);
             }
 
             if (_phone != null)
@@ -271,8 +421,30 @@ namespace UberBagarre.World
             }
 
             if (_display != null) _display.PhotoCounter = string.Empty;
+            if (!string.IsNullOrEmpty(intro)) Say("SAMI", intro);
 
             _stage = Stage.Offered;
+            _timer = _running != null ? 600f : _offerTimeout;
+        }
+
+        /// <summary>Personne n'a répondu : la course part à un autre bagarreur.</summary>
+        private void Expire()
+        {
+            if (_phone != null && _phone.Current == PhoneDevice.Screen.Accueil) _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+
+            if (_running != null)
+            {
+                // Une course de l'histoire revient : elle ne part pas à un autre.
+                _story = _running;
+                _running = null;
+            }
+            else
+            {
+                Banner("Course expirée : un autre bagarreur l'a prise.", 3f);
+            }
+
+            _stage = Stage.Waiting;
+            _timer = _betweenOrders * 0.6f;
         }
 
         private Profile PickProfile(int maxStars)
@@ -289,6 +461,11 @@ namespace UberBagarre.World
 
             for (int i = 0; i < _profiles.Length; i++)
             {
+                if (_profiles[i] != null && _profiles[i].template != null && _profiles[i].stars <= maxStars) return _profiles[i];
+            }
+
+            for (int i = 0; i < _profiles.Length; i++)
+            {
                 if (_profiles[i] != null && _profiles[i].template != null) return _profiles[i];
             }
 
@@ -299,12 +476,13 @@ namespace UberBagarre.World
         {
             Vector3 from = _player != null ? _player.transform.position : Vector3.zero;
 
-            for (int tries = 0; tries < 20; tries++)
+            for (int tries = 0; tries < 24; tries++)
             {
                 int i = UnityEngine.Random.Range(0, _spots.Length);
                 Spot s = _spots[i];
                 if (s == null || i == _lastSpot) continue;
-                if (tries < 14 && (s.position - from).magnitude < _minimumDistance) continue;
+                float distance = (s.position - from).magnitude;
+                if (tries < 16 && (distance < _minimumDistance || distance > 320f)) continue;
                 _lastSpot = i;
                 return s;
             }
@@ -327,7 +505,13 @@ namespace UberBagarre.World
                 _map.SetWaypoint(_targetGo.transform.position, _profile.name + " — " + _spot.name, null);
             }
 
-            Say("APPLI", "Course acceptée. " + _profile.name + ", " + _spot.name + ". Signalement : " + _profile.clothing + ".");
+            // Le client n'attend pas éternellement : de quoi traverser la ville, sans flâner.
+            float distance = _player != null ? Vector3.Distance(_player.transform.position, _spot.position) : 100f;
+            _deadline = _running != null ? -1f : 60f + distance / 3.2f;
+            _warned = false;
+
+            Say("APPLI", "Course acceptée. " + _profile.name + ", " + _spot.name + ". Signalement : " + _profile.clothing + "." +
+                         (_objective != null && _objective.Goal != ContractGoal.Aucune ? " Consigne : " + _objective.Text + "." : ""));
             _stage = Stage.EnRoute;
         }
 
@@ -345,17 +529,20 @@ namespace UberBagarre.World
 
             _target = _targetGo.GetComponent<Combatant>();
             if (_target != null) _target.SetDisplayName(_profile.name);
+            if (_targetGo.GetComponent<TargetInjuries>() == null && _target != null) _targetGo.AddComponent<TargetInjuries>();
 
-            // Il attend, ne se doute de rien : pas de cerveau, bras le long du corps.
+            // Il vit sa soirée, ne se doute de rien : pas de cerveau, une activité.
             _targetBrain = _targetGo.GetComponent<EnemyBrain>();
             if (_targetBrain != null) _targetBrain.enabled = false;
+
+            _activity = TargetActivity.Begin(_targetGo, TargetActivity.Parse(_spot.activity), _spot.lookAt, _kit);
 
             if (_target != null) _target.Damaged += OnTargetDamaged;
         }
 
         // ------------------------------------------------------------------ sur place
 
-        private void UpdateEnRoute()
+        private void UpdateEnRoute(float dt)
         {
             if (_target == null)
             {
@@ -365,17 +552,36 @@ namespace UberBagarre.World
 
             if (_player == null) return;
 
+            if (_deadline > 0f)
+            {
+                _deadline -= dt;
+                if (_briefing != null) _briefing.Deadline = _deadline;
+
+                if (!_warned && _deadline < 20f)
+                {
+                    _warned = true;
+                    Say("APPLI", "Le client s'impatiente : plus que 20 secondes.");
+                }
+
+                if (_deadline <= 0f)
+                {
+                    Fail("Trop lent : le client a annulé.", _latePenalty, false);
+                    return;
+                }
+            }
+
             Vector3 d = _target.transform.position - _player.transform.position;
             d.y = 0f;
 
             // On ne se bat pas au volant : la cible attend qu'on descende.
+            float notice = _activity != null ? _activity.NoticeDistance : _engageDistance;
             if (PlayerDriving.IsDriving)
             {
-                if (d.magnitude <= _engageDistance * 3f) Banner("Gare-toi et descends : il t'attend.", 0.2f);
+                if (d.magnitude <= notice * 3f) Banner("Gare-toi et descends : il t'attend.", 0.2f);
                 return;
             }
 
-            if (d.magnitude <= _engageDistance) Engage();
+            if (d.magnitude <= notice) Engage();
         }
 
         /// <summary>Frappé avant de se retourner : il se retourne.</summary>
@@ -389,6 +595,10 @@ namespace UberBagarre.World
             if (_stage != Stage.EnRoute || _target == null) return;
 
             _stage = Stage.Fighting;
+            if (_briefing != null) _briefing.Deadline = -1f;
+
+            TargetActivity.Kind kind = _activity != null ? _activity.Activity : TargetActivity.Kind.Attend;
+            if (_activity != null) _activity.Stop();
             if (_targetBrain != null) _targetBrain.enabled = true;
 
             if (_map != null) _map.SetWaypoint(_target.transform.position, _profile.name, _target.transform);
@@ -398,6 +608,10 @@ namespace UberBagarre.World
                 _crowd.Gather((_target.transform.position + _player.transform.position) * 0.5f);
             }
 
+            if (_objective != null) _objective.Begin(_target, _player);
+
+            Say(_profile.name, TargetActivity.Reaction(kind));
+
             string stars = new string('★', Mathf.Clamp(_profile.stars, 1, 3));
             if (_intro != null) _intro.Play(_target, _profile.name, "COURSE " + stars + "  ·  " + _reward + " EUR", null);
         }
@@ -405,13 +619,19 @@ namespace UberBagarre.World
         private void BeginProof()
         {
             _stage = Stage.Proof;
+            bool kept = _objective == null || _objective.Evaluate();
+            if (_briefing != null && _objective != null && _objective.Goal != ContractGoal.Aucune) _briefing.ObjectiveResult = kept ? 1 : -1;
+
             if (_display != null) _display.PhotoCounter = "0 / 1";
 
             // L'appareil n'envoie une photo que sur cet écran : c'est lui qui dit « preuve ».
             if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Photo);
             if (_map != null) _map.SetWaypoint(_target.transform.position, "PREUVE : PHOTO", _target.transform);
 
-            Say("APPLI", "Cible au sol. Preuve requise : sors le téléphone, appli Photo, cadre-le.");
+            string goal = _objective != null && _objective.Goal != ContractGoal.Aucune
+                ? (kept ? " Consigne tenue : bonus débloqué." : " Consigne ratée : pas de bonus.")
+                : "";
+            Say("APPLI", "Cible au sol." + goal + " Preuve requise : sors le téléphone, appli Photo, cadre-le.");
         }
 
         private void OnPhotoTaken(Transform aimed)
@@ -438,13 +658,43 @@ namespace UberBagarre.World
             _stage = Stage.Paid;
             _timer = 7f;
 
+            bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
+            bool kept = !hasGoal || _objective.Succeeded;
+            int reward = _reward + (hasGoal && kept ? _objective.Bonus : 0);
+            int reviewStars = hasGoal ? (kept ? 5 : 3) : UnityEngine.Random.Range(4, 6);
+            string review = kept ? Reviews[UnityEngine.Random.Range(0, Reviews.Length)] : HalfReviews[UnityEngine.Random.Range(0, HalfReviews.Length)];
+            int reputation = 2 + _profile.stars + (hasGoal ? (kept ? 3 : -2) : 0);
+
             if (_display != null) _display.PhotoCounter = "1 / 1";
             if (_map != null) _map.ClearWaypoint();
             if (_crowd != null) _crowd.Disperse();
 
-            if (_progress != null && _briefing != null)
+            if (_briefing != null)
             {
-                _progress.CompleteContract(_reward, _experience, _briefing.ReviewStars, _briefing.Review, _briefing.ClientName);
+                _briefing.Configure(_briefing.TargetName, _briefing.TargetAge, _briefing.TargetClothing, _briefing.TargetLocation,
+                    _briefing.MeetingTime, _briefing.TargetRecord, _briefing.ClientName, _briefing.Stars, reward, _experience,
+                    review, reviewStars);
+                _briefing.ReputationDelta = reputation;
+                _briefing.ObjectiveResult = hasGoal ? (kept ? 1 : -1) : 0;
+            }
+
+            if (_progress != null)
+            {
+                _progress.CompleteContract(reward, _experience, reviewStars, review, _briefing != null ? _briefing.ClientName : "CLIENT");
+                _progress.ChangeReputation(reputation, kept ? "Course réussie" : "Course réussie, consigne ratée");
+                _progress.Record(new PlayerProgress.ContractRecord
+                {
+                    target = _profile.name,
+                    place = _spot.name,
+                    reward = reward,
+                    stars = reviewStars,
+                    success = true,
+                    objective = hasGoal ? _objective.Text : string.Empty,
+                    objectiveDone = kept,
+                    photo = Time.unscaledTime - PhotoArchive.LastSavedTime < 5f ? PhotoArchive.LastSaved : string.Empty,
+                    note = review,
+                    reputation = reputation
+                });
             }
 
             if (_phone != null)
@@ -453,7 +703,64 @@ namespace UberBagarre.World
                 _phone.Raise();
             }
 
+            FinishStory(true);
             ScheduleCleanup();
+        }
+
+        /// <summary>Course ratée (trop lent, K.O.) : historique, réputation, nettoyage.</summary>
+        private void Fail(string reason, int penalty, bool knockedOut)
+        {
+            if (_progress != null && _profile != null)
+            {
+                _progress.ChangeReputation(-penalty, reason);
+                _progress.Record(new PlayerProgress.ContractRecord
+                {
+                    target = _profile.name,
+                    place = _spot != null ? _spot.name : string.Empty,
+                    reward = 0,
+                    stars = 1,
+                    success = false,
+                    objective = _objective != null ? _objective.Text : string.Empty,
+                    note = reason,
+                    reputation = -penalty
+                });
+                _progress.AddReview(knockedOut ? 1 : 2, knockedOut ? "Il s'est fait étaler. Remboursé." : "Jamais venu. Je change d'appli.",
+                    _briefing != null ? _briefing.ClientName : "CLIENT");
+            }
+
+            if (_map != null) _map.ClearWaypoint();
+            if (_crowd != null) _crowd.Disperse();
+            if (_display != null) _display.PhotoCounter = string.Empty;
+            if (_phone != null && (_phone.Current == PhoneDevice.Screen.Mission || _phone.Current == PhoneDevice.Screen.Photo))
+            {
+                _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+            }
+
+            if (!knockedOut) Say("APPLI", reason + " Réputation -" + penalty + ".");
+
+            FinishStory(false);
+
+            // La cible part si personne ne la regarde ; K.O., on la retire tout de suite.
+            if (knockedOut && _targetGo != null)
+            {
+                Destroy(_targetGo);
+                _targetGo = null;
+            }
+
+            ScheduleCleanup();
+            _stage = Stage.Waiting;
+            _timer = _betweenOrders;
+        }
+
+        private void FinishStory(bool success)
+        {
+            if (_running == null) return;
+
+            string tag = _running.Tag;
+            _running = null;
+
+            Action<string, bool> handler = StoryContractFinished;
+            if (handler != null) handler(tag, success);
         }
 
         /// <summary>La cible a disparu (détruite, tombée hors de la ville) : la course est annulée.</summary>
@@ -463,6 +770,13 @@ namespace UberBagarre.World
             if (_display != null) _display.PhotoCounter = string.Empty;
             if (_phone != null && _phone.Current == PhoneDevice.Screen.Mission) _phone.SetScreen(PhoneDevice.Screen.Verrouille);
 
+            if (_running != null)
+            {
+                // Une course de l'histoire ne se perd pas dans un trou : elle retombera.
+                _story = _running;
+                _running = null;
+            }
+
             ScheduleCleanup();
             _stage = Stage.Waiting;
             _timer = _betweenOrders;
@@ -471,6 +785,7 @@ namespace UberBagarre.World
         private void ScheduleCleanup()
         {
             if (_target != null) _target.Damaged -= OnTargetDamaged;
+            if (_objective != null) _objective.End();
 
             if (_targetGo != null)
             {
@@ -482,6 +797,7 @@ namespace UberBagarre.World
             _targetGo = null;
             _target = null;
             _targetBrain = null;
+            _activity = null;
         }
 
         /// <summary>Le corps part quand plus personne ne le regarde (loin, ou après un long moment).</summary>
@@ -496,66 +812,161 @@ namespace UberBagarre.World
             _toClean = null;
         }
 
-        // ------------------------------------------------------------------ K.O. du joueur
+        private void OnFracture(TargetInjuries target, string what)
+        {
+            if (_progress != null) _progress.CountFracture(what);
+
+            string label = what == "nez" ? "NEZ CASSÉ" : what == "jambe" ? "JAMBE CASSÉE" : "CÔTES CASSÉES";
+            Banner(label + " !", 1.6f);
+        }
+
+        // ------------------------------------------------------------------ K.O. du joueur, mort
 
         private IEnumerator KnockedOut()
         {
             _knockedOut = true;
+            bool contract = Busy;
 
             yield return new WaitForSeconds(2.5f);
+
+            bool dead = _progress != null && _progress.TakeKnockout();
 
             if (_fader != null)
             {
                 _fader.FadeOut(1.2f);
                 yield return new WaitForSeconds(1.4f);
-                _fader.ShowCard("Plus tard...");
+                _fader.ShowCard(dead ? "T'ES MORT." : "Plus tard...");
             }
 
-            if (_stage == Stage.EnRoute || _stage == Stage.Fighting || _stage == Stage.Proof)
+            if (contract) Fail("K.O. : la course est ratée.", _knockedOutPenalty, true);
+
+            if (dead)
             {
-                Destroy(_targetGo);
-                _targetGo = null;
-                _target = null;
-                if (_map != null) _map.ClearWaypoint();
-                if (_crowd != null) _crowd.Disperse();
-                if (_display != null) _display.PhotoCounter = string.Empty;
-                if (_phone != null) _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                yield return new WaitForSeconds(2.6f);
+                if (_fader != null) _fader.ShowCard("Tu reprends au dernier endroit où tu as dormi.");
+                yield return new WaitForSeconds(2.2f);
+
+                if (_progress != null && !_progress.Load()) _progress.ResetProgress();
+                if (_toClean != null) Destroy(_toClean);
+                _toClean = null;
             }
 
             int bill = 0;
-            if (_progress != null)
+            if (!dead && _progress != null)
             {
                 bill = Mathf.RoundToInt(_progress.Money * _hospitalShare / 10f) * 10;
                 if (bill > 0) _progress.AddMoney(-bill);
             }
 
-            if (_player != null)
-            {
-                _player.Revive();
-
-                KnockdownSystem knockdown = _player.GetComponentInChildren<KnockdownSystem>(true);
-                if (knockdown != null) knockdown.ForceStand();
-
-                BruiseSystem bruises = _player.GetComponentInChildren<BruiseSystem>(true);
-                if (bruises != null) bruises.Clear();
-
-                if (_home != null)
-                {
-                    ISpawnReceiver[] receivers = _player.GetComponentsInChildren<ISpawnReceiver>(true);
-                    for (int i = 0; i < receivers.Length; i++) receivers[i].OnSpawned(_home.position, _home.rotation);
-                }
-            }
+            RestorePlayer();
 
             yield return new WaitForSeconds(1f);
-            if (_fader != null) _fader.FadeIn(1.5f);
+            if (_fader != null)
+            {
+                _fader.ShowCard(null);
+                _fader.FadeIn(1.5f);
+            }
 
-            Say("SAMI", bill > 0
-                ? "Ils t'ont ramassé sur le trottoir. L'hosto t'a pris " + bill + " balles. Repose-toi, et reprends les courses."
-                : "Ils t'ont ramassé sur le trottoir. Repose-toi, et reprends les courses.");
+            if (dead)
+            {
+                Say("SAMI", "Mec... on a cru qu'on t'avait perdu. Fais gaffe. Vraiment.");
+                Action handler = Died;
+                if (handler != null) handler();
+            }
+            else
+            {
+                int injuries = _progress != null ? _progress.Injuries : 0;
+                string warning = injuries >= PlayerProgress.MaxInjuries - 1
+                    ? " Blessures : " + injuries + "/" + PlayerProgress.MaxInjuries + ". Un K.O. de plus et c'est fini. Va dormir."
+                    : " Blessures : " + injuries + "/" + PlayerProgress.MaxInjuries + ". Une nuit de sommeil et ça ira.";
+                Say("SAMI", (bill > 0 ? "Ils t'ont ramassé sur le trottoir. L'hosto t'a pris " + bill + " balles." : "Ils t'ont ramassé sur le trottoir.") + warning);
+            }
 
             _stage = Stage.Waiting;
             _timer = _betweenOrders;
             _knockedOut = false;
+        }
+
+        private void RestorePlayer()
+        {
+            if (_player == null) return;
+
+            _player.Revive();
+
+            KnockdownSystem knockdown = _player.GetComponentInChildren<KnockdownSystem>(true);
+            if (knockdown != null) knockdown.ForceStand();
+
+            BruiseSystem bruises = _player.GetComponentInChildren<BruiseSystem>(true);
+            if (bruises != null) bruises.Clear();
+
+            if (_home != null) Teleport(_home);
+        }
+
+        private void Teleport(Transform where)
+        {
+            if (_player == null || where == null) return;
+
+            ISpawnReceiver[] receivers = _player.GetComponentsInChildren<ISpawnReceiver>(true);
+            for (int i = 0; i < receivers.Length; i++) receivers[i].OnSpawned(where.position, where.rotation);
+        }
+
+        // ------------------------------------------------------------------ sommeil
+
+        /// <summary>Dormir : un jour passe, les blessures guérissent, la vie remonte, la partie est sauvegardée.</summary>
+        public void Sleep()
+        {
+            if (_sleeping || _knockedOut) return;
+
+            if (Busy)
+            {
+                Say("", "Pas maintenant : une course est en cours.");
+                return;
+            }
+
+            StartCoroutine(SleepRoutine());
+        }
+
+        private IEnumerator SleepRoutine()
+        {
+            _sleeping = true;
+            if (_input != null) _input.SetGameplayLock(this, true);
+
+            if (_fader != null)
+            {
+                _fader.FadeOut(1f);
+                yield return new WaitForSeconds(1.2f);
+            }
+
+            if (_stage == Stage.Offered) Expire();
+
+            if (_progress != null)
+            {
+                _progress.Sleep();
+                bool saved = _progress.Save();
+                if (_fader != null) _fader.ShowCard("Jour " + _progress.Day + (saved ? "\nPartie sauvegardée." : ""));
+            }
+
+            if (_player != null)
+            {
+                _player.Revive();
+                BruiseSystem bruises = _player.GetComponentInChildren<BruiseSystem>(true);
+                if (bruises != null) bruises.Clear();
+            }
+
+            yield return new WaitForSeconds(2.2f);
+
+            if (_fader != null)
+            {
+                _fader.ShowCard(null);
+                _fader.FadeIn(1.2f);
+            }
+
+            if (_input != null) _input.SetGameplayLock(this, false);
+            _sleeping = false;
+            _timer = Mathf.Max(_timer, 6f);
+
+            Action handler = Slept;
+            if (handler != null) handler();
         }
 
         // ------------------------------------------------------------------ utilitaires
@@ -575,11 +986,18 @@ namespace UberBagarre.World
             if (_subtitles != null) _subtitles.Play(DialogueLine.Say(speaker, text));
         }
 
+        private void OnReputationChanged(int delta, string reason)
+        {
+            _repGood = delta > 0;
+            _repNotice = (delta > 0 ? "+" : "") + delta + " RÉPUTATION  ·  " + reason;
+            _repNoticeUntil = Time.unscaledTime + 3.5f;
+        }
+
         private string _notice;
         private float _noticeUntil;
 
         /// <summary>Une consigne passagère en haut de l'écran.</summary>
-        private void Banner(string text, float duration)
+        public void Banner(string text, float duration)
         {
             _notice = text;
             _noticeUntil = Time.time + duration;
@@ -587,7 +1005,12 @@ namespace UberBagarre.World
 
         private void OnGUI()
         {
-            if (GameMenu.IsOpen || FightIntro.AnyPlaying) return;
+            if (GameMenu.IsOpen || FightIntro.AnyPlaying || ModalScreen.Active) return;
+            EnsureStyles();
+
+            float unit = Screen.height / 1080f;
+            DrawContractPanel(unit);
+            DrawReputationNotice(unit);
 
             string text = null;
             if (Time.time < _noticeUntil && !string.IsNullOrEmpty(_notice))
@@ -599,18 +1022,85 @@ namespace UberBagarre.World
                 if (_phone != null && _phone.IsRaised && _phone.Current == PhoneDevice.Screen.Accueil) return;
                 text = PlayerDriving.IsDriving
                     ? "NOUVELLE COURSE — gare-toi et descends pour lire le téléphone"
-                    : "NOUVELLE COURSE — T pour sortir le téléphone, E pour accepter";
+                    : "NOUVELLE COURSE — T pour sortir le téléphone, E pour accepter  (" + Mathf.CeilToInt(Mathf.Max(0f, _timer)) + " s)";
+            }
+            else if (_progress != null && _progress.Suspended && _suspendedUntil > 0f)
+            {
+                text = "COMPTE SUSPENDU — " + Mathf.CeilToInt(Mathf.Max(0f, _suspendedUntil - Time.time)) + " s";
             }
 
             if (text == null) return;
 
-            if (_banner == null) _banner = GuiKit.Style(18, FontStyle.Bold, TextAnchor.MiddleCenter);
-
             float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 5f);
-            Rect band = new Rect(Screen.width * 0.5f - 300f, 24f, 600f, 34f);
+            Rect band = new Rect(Screen.width * 0.5f - 330f * unit, 24f * unit, 660f * unit, 34f * unit);
             GuiKit.Fill(band, new Color(0f, 0f, 0f, 0.6f));
             GuiKit.OutlinedLabel(band, text, _banner,
                 new Color(1f, 0.85f, 0.4f, pulse), new Color(0f, 0f, 0f, 0.8f), 1f);
+        }
+
+        /// <summary>La course en cours, en haut à gauche : qui, où, le temps, la consigne.</summary>
+        private void DrawContractPanel(float unit)
+        {
+            if (!Busy || _profile == null) return;
+
+            float x = 24f * unit;
+            float y = 24f * unit;
+            float w = 380f * unit;
+            bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
+            float h = (hasGoal ? 104f : 70f) * unit;
+
+            GuiKit.Fill(new Rect(x, y, w, h), new Color(0f, 0f, 0f, 0.55f));
+            GuiKit.Fill(new Rect(x, y, 4f * unit, h), new Color(1f, 0.2f, 0.62f, 0.95f));
+
+            string header = "COURSE " + new string('★', Mathf.Clamp(_profile.stars, 1, 3)) + "  ·  " + _profile.name;
+            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 6f * unit, w - 20f * unit, 24f * unit), header, _title,
+                Color.white, Color.black, 1f);
+
+            string line = _spot != null ? _spot.name : "";
+            if (_stage == Stage.EnRoute && _deadline > 0f)
+            {
+                int s = Mathf.CeilToInt(_deadline);
+                line += "   ·   " + (s / 60) + ":" + (s % 60).ToString("00");
+            }
+            else if (_stage == Stage.Proof)
+            {
+                line = "PREUVE : une photo du sujet au sol";
+            }
+
+            Color lineColor = _stage == Stage.EnRoute && _deadline > 0f && _deadline < 20f
+                ? new Color(1f, 0.35f, 0.3f)
+                : new Color(0.85f, 0.85f, 0.9f);
+            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 34f * unit, w - 20f * unit, 22f * unit), line, _small, lineColor, Color.black, 1f);
+
+            if (!hasGoal) return;
+
+            string goal = "CONSIGNE : " + _objective.Text + "  (+" + _objective.Bonus + " €)";
+            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 58f * unit, w - 20f * unit, 20f * unit), goal, _small,
+                new Color(1f, 0.8f, 0.35f), Color.black, 1f);
+
+            string progress = _objective.Evaluated ? (_objective.Succeeded ? "Consigne tenue ✓" : "Consigne ratée ✗") : _objective.Progress;
+            if (!string.IsNullOrEmpty(progress))
+            {
+                GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 78f * unit, w - 20f * unit, 20f * unit), progress, _small,
+                    new Color(0.7f, 1f, 0.75f), Color.black, 1f);
+            }
+        }
+
+        private void DrawReputationNotice(float unit)
+        {
+            if (Time.unscaledTime > _repNoticeUntil || string.IsNullOrEmpty(_repNotice)) return;
+
+            float a = Mathf.Clamp01((_repNoticeUntil - Time.unscaledTime) / 0.6f);
+            Rect r = new Rect(Screen.width * 0.5f - 260f * unit, 66f * unit, 520f * unit, 28f * unit);
+            GuiKit.OutlinedLabel(r, _repNotice, _banner,
+                _repGood ? new Color(0.45f, 1f, 0.55f, a) : new Color(1f, 0.4f, 0.35f, a), new Color(0f, 0f, 0f, 0.8f * a), 1f);
+        }
+
+        private void EnsureStyles()
+        {
+            if (_banner == null) _banner = GuiKit.Style(18, FontStyle.Bold, TextAnchor.MiddleCenter);
+            if (_small == null) _small = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft);
+            if (_title == null) _title = GuiKit.Style(17, FontStyle.Bold, TextAnchor.MiddleLeft);
         }
     }
 }

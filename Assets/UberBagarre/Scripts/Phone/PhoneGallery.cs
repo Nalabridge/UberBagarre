@@ -10,7 +10,8 @@ namespace UberBagarre.Phone
     /// Les garder — et pouvoir les revoir dans la Galerie — fait de l'appareil un objet : on
     /// photographie un K.O. pour le client, et on le retrouve plus tard, avec la rue derrière.
     ///
-    /// Rien n'est écrit sur le disque : c'est la mémoire d'une partie, pas un album.
+    /// Les photos sont aussi écrites sur le disque (<see cref="PhotoArchive"/>) : la pellicule
+    /// d'une partie se retrouve à la suivante.
     /// </summary>
     public static class PhoneGallery
     {
@@ -40,6 +41,23 @@ namespace UberBagarre.Phone
             get { return Get(0); }
         }
 
+        /// <summary>
+        /// Recharge les photos gardées sur le disque (les plus récentes), une fois par partie :
+        /// la pellicule survit à la fermeture du jeu.
+        /// </summary>
+        public static void LoadSaved()
+        {
+            Prune();
+            if (_photos.Count > 0) return;
+
+            List<string> names = PhotoArchive.List();
+            for (int i = Mathf.Min(Capacity, names.Count) - 1; i >= 0; i--)
+            {
+                Texture2D photo = PhotoArchive.Load(names[i]);
+                if (photo != null) _photos.Add(photo);
+            }
+        }
+
         public static void Add(Texture2D photo)
         {
             if (photo == null) return;
@@ -47,7 +65,7 @@ namespace UberBagarre.Phone
             Prune();
             if (_photos.Count >= Capacity)
             {
-                Object.Destroy(_photos[0]);
+                // Une photo archivée reste en cache : on la retire de la pellicule sans la détruire.
                 _photos.RemoveAt(0);
             }
 

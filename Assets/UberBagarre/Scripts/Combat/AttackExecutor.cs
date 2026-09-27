@@ -437,8 +437,9 @@ namespace UberBagarre.Combat
 
             if (_combatant != null && _combatant.Stamina != null)
             {
-                if (!_combatant.Stamina.CanSpend(attack.staminaCost)) return Refuse("endurance insuffisante", false);
-                _combatant.Stamina.TrySpend(attack.staminaCost);
+                float cost = attack.staminaCost * (_combatant.Stats != null ? Mathf.Max(0.2f, _combatant.Stats.Get(StatType.StaminaEfficiency)) : 1f);
+                if (!_combatant.Stamina.CanSpend(cost)) return Refuse("endurance insuffisante", false);
+                _combatant.Stamina.TrySpend(cost);
             }
 
             if (chaining) EndCurrent(false);
@@ -865,6 +866,13 @@ namespace UberBagarre.Combat
             template.ChargeLevel = _charge;
             template.IsRiposte = _riposteMultiplier > 1.01f;
             template.BonusKnockdownChance = _attack.chargeKnockdownBonus * _charge;
+
+            // L'entraînement (technique, puissance) : un peu plus de chutes, des ripostes plus lourdes.
+            if (_combatant != null && _combatant.Stats != null)
+            {
+                template.BonusKnockdownChance += Mathf.Max(0f, _combatant.Stats.Get(StatType.KnockdownPower));
+                if (template.IsRiposte) template.Amount *= 1f + Mathf.Max(0f, _combatant.Stats.Get(StatType.RiposteBonus));
+            }
 
             // La zone : celle du coup guidé si on en a une, sinon celle sous le réticule.
             Hurtbox aimed = _target.Valid ? _target.Zone : AimResolver.Resolve(_combatant);

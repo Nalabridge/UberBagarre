@@ -580,29 +580,30 @@ namespace UberBagarre.Phone
 
         private void DrawRdv(Rect body)
         {
-            // Onglets : la course (ce que l'histoire affiche) et le profil.
-            float half = body.width * 0.5f;
-            string[] tabs = { "COURSE", "PROFIL" };
+            // Onglets : la course (ce que l'histoire affiche), le profil, l'historique, les avis.
+            string[] tabs = { "COURSE", "PROFIL", "HISTO", "AVIS" };
+            float width = body.width / tabs.Length;
 
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < tabs.Length; i++)
             {
-                Rect tab = new Rect(body.x + i * half, body.y, half, U(0.04f));
+                Rect tab = new Rect(body.x + i * width, body.y, width, U(0.04f));
                 bool active = _os.RdvTab == i;
 
-                Label(tab, tabs[i], Font(0.021f), FontStyle.Bold, TextAnchor.MiddleCenter, active ? _ink : _dim);
+                Label(tab, tabs[i], Font(0.018f), FontStyle.Bold, TextAnchor.MiddleCenter, active ? _ink : _dim);
 
                 if (active)
                 {
-                    GuiKit.Fill(new Rect(tab.x + half * 0.2f, tab.yMax, half * 0.6f, Mathf.Max(2f, U(0.004f))), _brand);
+                    GuiKit.Fill(new Rect(tab.x + width * 0.15f, tab.yMax, width * 0.7f, Mathf.Max(2f, U(0.004f))), _brand);
                 }
             }
 
             Rect content = new Rect(body.x, body.y + U(0.06f), body.width, body.height - U(0.06f));
 
-            if (_os.RdvTab == 1)
+            switch (_os.RdvTab)
             {
-                DrawProfile(content);
-                return;
+                case 1: DrawProfile(content); return;
+                case 2: DrawHistory(content); return;
+                case 3: DrawReviews(content); return;
             }
 
             PhoneDevice.Screen view = IsRdvScreen(_device.Current) ? _device.Current : _os.LastRdvScreen;
@@ -1169,14 +1170,29 @@ namespace UberBagarre.Phone
             Stars(new Rect(card.x + U(0.025f), card.y + U(0.078f), card.width, U(0.03f)),
                 _briefing != null ? _briefing.Stars : 1);
 
+            bool scenario = _briefing != null && !string.IsNullOrEmpty(_briefing.Scenario);
             Label(new Rect(card.x + U(0.025f), card.y + U(0.125f), card.width - U(0.05f), U(0.10f)),
-                "CE SOIR — " + (_briefing != null ? _briefing.MeetingTime : "02:30") + "\n" +
-                (_briefing != null ? _briefing.TargetLocation : "Devant le club"),
-                Font(0.023f), FontStyle.Normal, TextAnchor.UpperLeft, _dim, true);
+                scenario
+                    ? (_briefing.TargetLocation + "\n" + _briefing.Scenario)
+                    : "CE SOIR — " + (_briefing != null ? _briefing.MeetingTime : "02:30") + "\n" +
+                      (_briefing != null ? _briefing.TargetLocation : "Devant le club"),
+                Font(scenario ? 0.019f : 0.023f), FontStyle.Normal, TextAnchor.UpperLeft, _dim, true);
 
             Label(new Rect(card.x + U(0.025f), card.y + U(0.245f), card.width - U(0.05f), U(0.05f)),
                 (_briefing != null ? _briefing.Reward : 150) + " EUR",
                 Font(0.040f), FontStyle.Bold, TextAnchor.MiddleLeft, _good);
+
+            // La consigne du client, sous la carte : elle paie un bonus si on la tient.
+            if (_briefing != null && !string.IsNullOrEmpty(_briefing.Objective))
+            {
+                Rect goal = new Rect(body.x, card.yMax + U(0.012f), body.width, U(0.07f));
+                GuiKit.Fill(goal, new Color(_warn.r * 0.3f, _warn.g * 0.2f, 0f, 0.45f));
+                GuiKit.Fill(new Rect(goal.x, goal.y, U(0.005f), goal.height), _warn);
+                Label(new Rect(goal.x + U(0.02f), goal.y + U(0.006f), goal.width - U(0.04f), U(0.028f)),
+                    "CONSIGNE  ·  +" + _briefing.ObjectiveBonus + " EUR", Font(0.017f), FontStyle.Bold, TextAnchor.UpperLeft, _warn);
+                Label(new Rect(goal.x + U(0.02f), goal.y + U(0.032f), goal.width - U(0.04f), U(0.035f)),
+                    _briefing.Objective, Font(0.020f), FontStyle.Bold, TextAnchor.UpperLeft, _ink, true);
+            }
 
             float pulse = 0.5f + 0.5f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3.2f));
 
@@ -1246,11 +1262,28 @@ namespace UberBagarre.Phone
             Field(new Rect(body.x, body.y + U(0.30f), body.width, U(0.115f)), "SIGNALEMENT",
                 _briefing != null ? _briefing.TargetClothing : "", _warn);
 
-            Field(new Rect(body.x, body.y + U(0.43f), body.width, U(0.115f)), "CLIENT",
-                _briefing != null ? _briefing.ClientName : "", _dim);
+            bool hasGoal = _briefing != null && !string.IsNullOrEmpty(_briefing.Objective);
+            if (hasGoal)
+            {
+                string progress = string.IsNullOrEmpty(_briefing.ObjectiveProgress) ? "" : "\n" + _briefing.ObjectiveProgress;
+                Field(new Rect(body.x, body.y + U(0.43f), body.width, U(0.115f)), "CONSIGNE  (+" + _briefing.ObjectiveBonus + " EUR)",
+                    _briefing.Objective + progress, _warn);
+            }
+            else
+            {
+                Field(new Rect(body.x, body.y + U(0.43f), body.width, U(0.115f)), "CLIENT",
+                    _briefing != null ? _briefing.ClientName : "", _dim);
+            }
 
             Stars(new Rect(body.x, body.y + U(0.57f), body.width, U(0.035f)),
                 _briefing != null ? _briefing.Stars : 1);
+
+            if (_briefing != null && _briefing.Deadline > 0f)
+            {
+                int left = Mathf.CeilToInt(_briefing.Deadline);
+                Label(new Rect(body.x, body.y + U(0.565f), body.width, U(0.04f)), (left / 60) + ":" + (left % 60).ToString("00"),
+                    Font(0.030f), FontStyle.Bold, TextAnchor.MiddleRight, left < 20 ? _bad : _ink);
+            }
 
             Label(new Rect(body.x, body.yMax - U(0.11f), body.width, U(0.06f)),
                 (_briefing != null ? _briefing.Reward : 150) + " EUR a la validation",
@@ -1322,9 +1355,17 @@ namespace UberBagarre.Phone
             Row(new Rect(body.x, body.y + U(0.515f), body.width, U(0.055f)), "EXPERIENCE",
                 "+" + (_briefing != null ? _briefing.Experience : 120) + " XP", _brand);
 
+            if (_briefing != null && _briefing.ReputationDelta != 0)
+            {
+                string goal = _briefing.ObjectiveResult > 0 ? "consigne ✓  " : _briefing.ObjectiveResult < 0 ? "consigne ✗  " : "";
+                Row(new Rect(body.x, body.y + U(0.575f), body.width, U(0.05f)), "REPUTATION",
+                    goal + (_briefing.ReputationDelta > 0 ? "+" : "") + _briefing.ReputationDelta,
+                    _briefing.ReputationDelta > 0 ? _good : _bad);
+            }
+
             // L'avis du client : c'est la premiere ligne du systeme de reputation, et c'est
             // aussi la premiere fois que le jeu dit au joueur ce qu'il est devenu.
-            Rect review = new Rect(body.x, body.y + U(0.60f), body.width, U(0.16f));
+            Rect review = new Rect(body.x, body.y + U(0.64f), body.width, U(0.15f));
             GuiKit.Fill(review, new Color(1f, 1f, 1f, 0.07f));
 
             Stars(new Rect(review.x + U(0.02f), review.y + U(0.015f), review.width, U(0.03f)),
@@ -1338,80 +1379,230 @@ namespace UberBagarre.Phone
         /// <summary>
         /// Le profil : la « page notée avec des avis » du dossier.
         ///
-        /// L'ordre de lecture est voulu : d'abord le niveau et la barre d'expérience (ce qui va
-        /// changer le jeu), puis la réputation (ce que les clients pensent), puis le dernier avis
-        /// en toutes lettres. Une note seule ne raconte rien ; une phrase de client, si.
+        /// En tête, la photo (la dernière preuve envoyée : c'est elle que les clients voient),
+        /// le niveau et la réputation dans l'appli — le titre et la jauge de 0 à 100. Puis le
+        /// palmarès : courses, échecs, fractures, blessures en cours. L'annonce d'une nouvelle
+        /// capacité prend la place d'honneur tant qu'elle est neuve.
         /// </summary>
         private void DrawProfile(Rect body)
         {
-            Label(new Rect(body.x, body.y, body.width, U(0.04f)), "PROFIL",
-                Font(0.024f), FontStyle.Bold, TextAnchor.MiddleLeft, _warn);
-
             int level = _progress != null ? _progress.Level : 1;
+            int reputation = _progress != null ? _progress.Reputation : 0;
 
-            Label(new Rect(body.x, body.y + U(0.05f), body.width, U(0.07f)), "NIVEAU " + level,
-                Font(0.056f), FontStyle.Bold, TextAnchor.MiddleLeft, _ink);
+            // --- photo de profil : la dernière preuve, sinon un aplat
+            Rect photo = new Rect(body.x, body.y, U(0.20f), U(0.20f));
+            Texture2D avatar = LatestProof();
+            if (avatar != null)
+            {
+                GUI.DrawTexture(photo, avatar, ScaleMode.ScaleAndCrop);
+            }
+            else
+            {
+                GuiKit.Fill(photo, new Color(0.16f, 0.16f, 0.20f));
+                Label(photo, "PAS DE\nPHOTO", Font(0.018f), FontStyle.Normal, TextAnchor.MiddleCenter, new Color(1f, 1f, 1f, 0.3f), true);
+            }
 
-            float progress = _progress != null ? _progress.LevelProgress : 0f;
-            Rect bar = new Rect(body.x, body.y + U(0.135f), body.width, U(0.014f));
+            GuiKit.Outline(photo, Mathf.Max(1f, U(0.003f)), _brand);
+
+            float x = photo.xMax + U(0.02f);
+            float w = body.xMax - x;
+
+            Label(new Rect(x, body.y, w, U(0.035f)), "TOI", Font(0.022f), FontStyle.Bold, TextAnchor.UpperLeft, _dim);
+            Label(new Rect(x, body.y + U(0.03f), w, U(0.055f)), "NIVEAU " + level, Font(0.040f), FontStyle.Bold, TextAnchor.UpperLeft, _ink);
+
+            float xp = _progress != null ? _progress.LevelProgress : 0f;
+            Rect bar = new Rect(x, body.y + U(0.09f), w, U(0.012f));
             GuiKit.Fill(bar, new Color(1f, 1f, 1f, 0.12f));
-            GuiKit.Fill(new Rect(bar.x, bar.y, bar.width * progress, bar.height), _brand);
+            GuiKit.Fill(new Rect(bar.x, bar.y, bar.width * xp, bar.height), _brand);
 
-            Label(new Rect(body.x, body.y + U(0.155f), body.width, U(0.035f)),
+            Label(new Rect(x, body.y + U(0.105f), w, U(0.03f)),
                 _progress != null ? _progress.Experience + " / " + _progress.NextThreshold + " XP" : "0 XP",
-                Font(0.020f), FontStyle.Normal, TextAnchor.MiddleLeft, _dim);
+                Font(0.017f), FontStyle.Normal, TextAnchor.UpperLeft, _dim);
 
-            Row(new Rect(body.x, body.y + U(0.20f), body.width, U(0.05f)), "SOLDE",
-                (_progress != null ? _progress.Money : 0) + " EUR", _good);
+            Label(new Rect(x, body.y + U(0.14f), w, U(0.05f)),
+                _progress != null ? _progress.ReputationTitle : "INCONNU", Font(0.028f), FontStyle.Bold, TextAnchor.UpperLeft, _warn);
 
-            Row(new Rect(body.x, body.y + U(0.25f), body.width, U(0.05f)), "COURSES",
-                (_progress != null ? _progress.Contracts : 0).ToString(), _ink);
+            // --- la réputation, de 0 à 100
+            float y = body.y + U(0.225f);
+            Label(new Rect(body.x, y, body.width * 0.6f, U(0.03f)), "RÉPUTATION", Font(0.019f), FontStyle.Bold, TextAnchor.MiddleLeft, _dim);
+            Label(new Rect(body.x + body.width * 0.4f, y, body.width * 0.6f, U(0.03f)), reputation + " / 100",
+                Font(0.021f), FontStyle.Bold, TextAnchor.MiddleRight, ReputationColor(reputation));
 
-            float reputation = _progress != null ? _progress.Reputation : 0f;
+            Rect gauge = new Rect(body.x, y + U(0.035f), body.width, U(0.016f));
+            GuiKit.Fill(gauge, new Color(1f, 1f, 1f, 0.12f));
+            GuiKit.Fill(new Rect(gauge.x, gauge.y, gauge.width * Mathf.Clamp01(reputation / 100f), gauge.height), ReputationColor(reputation));
 
-            Label(new Rect(body.x, body.y + U(0.315f), body.width, U(0.035f)),
-                reputation > 0f ? "REPUTATION  " + reputation.ToString("0.0") + " / 5" : "REPUTATION  —",
-                Font(0.021f), FontStyle.Bold, TextAnchor.MiddleLeft, _warn);
+            float rating = _progress != null ? _progress.Rating : 0f;
+            Stars(new Rect(body.x, y + U(0.065f), body.width, U(0.03f)), Mathf.RoundToInt(rating));
+            Label(new Rect(body.x, y + U(0.06f), body.width, U(0.035f)), rating > 0f ? rating.ToString("0.0") + " / 5" : "—",
+                Font(0.019f), FontStyle.Bold, TextAnchor.MiddleRight, _warn);
 
-            Stars(new Rect(body.x, body.y + U(0.355f), body.width, U(0.03f)), Mathf.RoundToInt(reputation));
+            // --- palmarès
+            y += U(0.11f);
+            int contracts = _progress != null ? _progress.Contracts : 0;
+            int failures = _progress != null ? _progress.Failures : 0;
+            Row(new Rect(body.x, y, body.width, U(0.042f)), "COURSES", contracts + (failures > 0 ? "  (" + failures + " ratées)" : ""), _ink);
+            Row(new Rect(body.x, y + U(0.042f), body.width, U(0.042f)), "SOLDE", (_progress != null ? _progress.Money : 0) + " EUR", _good);
 
-            // L'annonce de capacité : elle occupe la place d'honneur tant qu'elle est neuve.
+            string fractures = _progress != null
+                ? _progress.NosesBroken + " nez · " + _progress.RibsBroken + " côtes · " + _progress.LegsBroken + " jambes"
+                : "—";
+            Row(new Rect(body.x, y + U(0.084f), body.width, U(0.042f)), "CASSÉ", fractures, _dim);
+
+            int injuries = _progress != null ? _progress.Injuries : 0;
+            Row(new Rect(body.x, y + U(0.126f), body.width, U(0.042f)), "BLESSURES",
+                injuries + " / " + PlayerProgress.MaxInjuries + (injuries >= PlayerProgress.MaxInjuries - 1 ? "  DANGER" : ""),
+                injuries >= PlayerProgress.MaxInjuries - 1 ? _bad : injuries > 0 ? _warn : _good);
+
+            // --- nouvelle capacité ou dernier avis
+            Rect box = new Rect(body.x, y + U(0.18f), body.width, body.yMax - (y + U(0.18f)));
             if (!string.IsNullOrEmpty(UnlockedAbility))
             {
                 float pulse = 0.55f + 0.45f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 3f));
-                Rect unlock = new Rect(body.x, body.y + U(0.405f), body.width, U(0.10f));
+                GuiKit.Fill(box, new Color(_brand.r, _brand.g, _brand.b, 0.18f + 0.2f * pulse));
+                GuiKit.Outline(box, Mathf.Max(1f, U(0.003f)), _brand);
 
-                GuiKit.Fill(unlock, new Color(_brand.r, _brand.g, _brand.b, 0.18f + 0.2f * pulse));
-                GuiKit.Outline(unlock, Mathf.Max(1f, U(0.003f)), _brand);
-
-                Label(new Rect(unlock.x + U(0.02f), unlock.y + U(0.01f), unlock.width - U(0.04f), U(0.03f)),
+                Label(new Rect(box.x + U(0.02f), box.y + U(0.01f), box.width - U(0.04f), U(0.03f)),
                     "NOUVELLE CAPACITE", Font(0.019f), FontStyle.Bold, TextAnchor.UpperLeft, _brand);
-
-                Label(new Rect(unlock.x + U(0.02f), unlock.y + U(0.045f), unlock.width - U(0.04f), U(0.05f)),
-                    UnlockedAbility, Font(0.028f), FontStyle.Bold, TextAnchor.UpperLeft, _ink, true);
+                Label(new Rect(box.x + U(0.02f), box.y + U(0.045f), box.width - U(0.04f), U(0.05f)),
+                    UnlockedAbility, Font(0.026f), FontStyle.Bold, TextAnchor.UpperLeft, _ink, true);
+                return;
             }
 
             if (_progress == null || _progress.Reviews.Count == 0) return;
 
             PlayerProgress.Review last = _progress.Reviews[0];
-            Rect review = new Rect(body.x, body.y + U(0.525f), body.width, U(0.19f));
-            GuiKit.Fill(review, new Color(1f, 1f, 1f, 0.07f));
+            GuiKit.Fill(box, new Color(1f, 1f, 1f, 0.07f));
+            Stars(new Rect(box.x + U(0.02f), box.y + U(0.012f), box.width, U(0.03f)), last.Stars);
+            Label(new Rect(box.x + U(0.02f), box.y + U(0.05f), box.width - U(0.04f), box.height - U(0.08f)),
+                "\"" + last.Text + "\"", Font(0.019f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+            Label(new Rect(box.x + U(0.02f), box.yMax - U(0.032f), box.width - U(0.04f), U(0.028f)),
+                "— " + last.Client, Font(0.016f), FontStyle.Normal, TextAnchor.MiddleRight, new Color(1f, 1f, 1f, 0.4f));
+        }
 
-            Stars(new Rect(review.x + U(0.02f), review.y + U(0.015f), review.width, U(0.03f)), last.Stars);
+        private Color ReputationColor(int reputation)
+        {
+            if (reputation >= 55) return _good;
+            if (reputation >= 25) return _warn;
+            return _bad;
+        }
 
-            Label(new Rect(review.x + U(0.02f), review.y + U(0.055f), review.width - U(0.04f), U(0.10f)),
-                "\"" + last.Text + "\"", Font(0.021f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+        /// <summary>La photo de la dernière preuve envoyée (l'historique la garde sur le disque).</summary>
+        private Texture2D LatestProof()
+        {
+            if (_progress == null) return null;
 
-            Label(new Rect(review.x + U(0.02f), review.yMax - U(0.035f), review.width - U(0.04f), U(0.03f)),
-                "— " + last.Client, Font(0.018f), FontStyle.Normal, TextAnchor.MiddleRight,
-                new Color(1f, 1f, 1f, 0.4f));
+            IList<PlayerProgress.ContractRecord> history = _progress.History;
+            for (int i = 0; i < history.Count; i++)
+            {
+                if (history[i] == null || string.IsNullOrEmpty(history[i].photo)) continue;
+                Texture2D photo = PhotoArchive.Load(history[i].photo);
+                if (photo != null) return photo;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// L'historique : chaque course, réussie ou ratée, avec la photo-preuve, le lieu, le gain et
+        /// la consigne. Haut / bas pour choisir, Entrée pour ouvrir la photo en grand.
+        /// </summary>
+        private void DrawHistory(Rect body)
+        {
+            IList<PlayerProgress.ContractRecord> history = _progress != null ? _progress.History : null;
+            if (history == null || history.Count == 0)
+            {
+                Label(new Rect(body.x, body.y + U(0.2f), body.width, U(0.1f)), "Aucune course pour l'instant.\nTes K.O. apparaîtront ici, avec leur photo.",
+                    Font(0.021f), FontStyle.Normal, TextAnchor.UpperCenter, _dim, true);
+                return;
+            }
+
+            int selected = Mathf.Clamp(_os.HistorySelection, 0, history.Count - 1);
+            PlayerProgress.ContractRecord current = history[selected];
+
+            if (_os.HistoryZoom && current != null)
+            {
+                Texture2D big = PhotoArchive.Load(current.photo);
+                Rect frame = new Rect(body.x, body.y, body.width, body.width * 0.75f);
+                if (big != null) GUI.DrawTexture(frame, big, ScaleMode.ScaleAndCrop);
+                else
+                {
+                    GuiKit.Fill(frame, new Color(0.12f, 0.12f, 0.15f));
+                    Label(frame, "PAS DE PHOTO", Font(0.022f), FontStyle.Bold, TextAnchor.MiddleCenter, _dim);
+                }
+
+                GuiKit.Outline(frame, Mathf.Max(1f, U(0.003f)), current.success ? _good : _bad);
+                float y = frame.yMax + U(0.02f);
+                Label(new Rect(body.x, y, body.width, U(0.04f)), current.target, Font(0.030f), FontStyle.Bold, TextAnchor.UpperLeft, _ink);
+                Label(new Rect(body.x, y + U(0.045f), body.width, U(0.035f)), current.place + "  ·  jour " + current.day,
+                    Font(0.019f), FontStyle.Normal, TextAnchor.UpperLeft, _dim, true);
+                Label(new Rect(body.x, y + U(0.09f), body.width, U(0.10f)), "\"" + current.note + "\"",
+                    Font(0.019f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+                return;
+            }
+
+            float rowHeight = U(0.085f);
+            int visible = Mathf.Max(1, Mathf.FloorToInt(body.height / rowHeight));
+            int first = Mathf.Clamp(selected - visible / 2, 0, Mathf.Max(0, history.Count - visible));
+
+            for (int i = first; i < Mathf.Min(history.Count, first + visible); i++)
+            {
+                PlayerProgress.ContractRecord r = history[i];
+                if (r == null) continue;
+
+                Rect row = new Rect(body.x, body.y + (i - first) * rowHeight, body.width, rowHeight - U(0.008f));
+                GuiKit.Fill(row, new Color(1f, 1f, 1f, i == selected ? 0.14f : 0.05f));
+                GuiKit.Fill(new Rect(row.x, row.y, U(0.005f), row.height), r.success ? _good : _bad);
+
+                Rect thumb = new Rect(row.x + U(0.012f), row.y + U(0.006f), row.height * 1.25f - U(0.012f), row.height - U(0.012f));
+                Texture2D photo = PhotoArchive.Load(r.photo);
+                if (photo != null) GUI.DrawTexture(thumb, photo, ScaleMode.ScaleAndCrop);
+                else GuiKit.Fill(thumb, new Color(0.14f, 0.14f, 0.17f));
+
+                float tx = thumb.xMax + U(0.012f);
+                float tw = row.xMax - tx - U(0.01f);
+                Label(new Rect(tx, row.y + U(0.004f), tw, U(0.03f)), r.target, Font(0.019f), FontStyle.Bold, TextAnchor.UpperLeft, _ink);
+                Label(new Rect(tx, row.y + U(0.03f), tw, U(0.025f)), r.place, Font(0.015f), FontStyle.Normal, TextAnchor.UpperLeft, _dim);
+
+                string outcome = r.success
+                    ? "+" + r.reward + " €" + (string.IsNullOrEmpty(r.objective) ? "" : r.objectiveDone ? "  · consigne ✓" : "  · consigne ✗")
+                    : r.note;
+                Label(new Rect(tx, row.y + U(0.053f), tw, U(0.025f)), outcome, Font(0.015f), FontStyle.Bold, TextAnchor.UpperLeft,
+                    r.success ? _good : _bad);
+            }
+        }
+
+        /// <summary>Les avis des clients, du plus récent au plus ancien.</summary>
+        private void DrawReviews(Rect body)
+        {
+            IList<PlayerProgress.Review> reviews = _progress != null ? _progress.Reviews : null;
+            if (reviews == null || reviews.Count == 0)
+            {
+                Label(new Rect(body.x, body.y + U(0.2f), body.width, U(0.1f)), "Pas encore d'avis.",
+                    Font(0.021f), FontStyle.Normal, TextAnchor.UpperCenter, _dim, true);
+                return;
+            }
+
+            float rowHeight = U(0.11f);
+            int visible = Mathf.Max(1, Mathf.FloorToInt(body.height / rowHeight));
+            for (int i = 0; i < Mathf.Min(visible, reviews.Count); i++)
+            {
+                PlayerProgress.Review r = reviews[i];
+                Rect row = new Rect(body.x, body.y + i * rowHeight, body.width, rowHeight - U(0.01f));
+                GuiKit.Fill(row, new Color(1f, 1f, 1f, 0.06f));
+                Stars(new Rect(row.x + U(0.015f), row.y + U(0.01f), row.width, U(0.026f)), r.Stars);
+                Label(new Rect(row.x + U(0.015f), row.y + U(0.04f), row.width - U(0.03f), U(0.05f)), "\"" + r.Text + "\"",
+                    Font(0.016f), FontStyle.Italic, TextAnchor.UpperLeft, _dim, true);
+                Label(new Rect(row.x + U(0.015f), row.yMax - U(0.026f), row.width - U(0.03f), U(0.024f)), "— " + r.Client,
+                    Font(0.014f), FontStyle.Normal, TextAnchor.MiddleRight, new Color(1f, 1f, 1f, 0.4f));
+            }
         }
 
         private string ReputationLine()
         {
             if (_progress == null || _progress.Contracts == 0) return "Reputation : aucune — 0 course";
 
-            return "Reputation : " + _progress.Reputation.ToString("0.0") + " — " + _progress.Contracts +
+            return "Note : " + _progress.Rating.ToString("0.0") + " — " + _progress.Contracts +
                    (_progress.Contracts > 1 ? " courses" : " course");
         }
 

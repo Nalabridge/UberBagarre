@@ -252,7 +252,11 @@ namespace UberBagarre.Phone
             if (_audio != null && _shutter != null) _audio.PlayOneShot(_shutter, 0.7f);
 
             _lastCapture = Capture();
-            if (_lastCapture != null) PhoneGallery.Add(_lastCapture);
+            if (_lastCapture != null)
+            {
+                PhoneGallery.Add(_lastCapture);
+                PhotoArchive.Save(_lastCapture, _device.Current == PhoneDevice.Screen.Photo ? "preuve" : "photo");
+            }
 
             // La preuve n'est envoyee que quand l'histoire la demande : une photo de la rue pour
             // le plaisir ne doit pas passer pour un envoi au client.

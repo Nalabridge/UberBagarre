@@ -259,6 +259,9 @@ namespace UberBagarre.UI
 
         private bool CanPause()
         {
+            // Un écran plein (armoire, ordinateur) : Échap le referme, lui.
+            if (FullScreenPanel.AnyOpen) return false;
+
             // Le menu de developpement ouvert : Echap le referme, c'est tout.
             if (_devMenu != null && _devMenu.IsOpen)
             {

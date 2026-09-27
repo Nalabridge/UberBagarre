@@ -24,7 +24,7 @@ namespace UberBagarre.EditorTools
     /// passants, la circulation (CityBuilder). Le joueur, son téléphone, ses coups, le menu, le
     /// menu de triche : les mêmes que dans l'histoire.
     /// </summary>
-    public static class OpenWorldSceneBuilder
+    public static partial class OpenWorldSceneBuilder
     {
         public const string ScenePath = SandboxSceneBuilder.ScenesFolder + "/MondeOuvert.unity";
 
@@ -84,6 +84,14 @@ namespace UberBagarre.EditorTools
 
         public static void Build()
         {
+            // La ville convertie (Assets/Schedule1) est là : le monde ouvert se construit dessus.
+            MapPack.Data carte = MapPack.Load();
+            if (carte != null)
+            {
+                BuildOnMap(carte);
+                return;
+            }
+
             EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.ScenesFolder);
             EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.SettingsFolder);
             ProceduralMeshFactory.EnsureLibrary();
@@ -190,8 +198,8 @@ namespace UberBagarre.EditorTools
             // --- cibles, badauds, passants, circulation
             List<OpenWorldDirector.Profile> profiles = BuildTargets(materials, attacks, night);
             FightCrowd crowd = SandboxSceneBuilder.BuildFightCrowd(world.transform, night, materials, 8, 71, "Badauds (monde ouvert)");
-            GameObject walkers = BuildPedestrians(city, night, materials);
-            GameObject traffic = BuildTraffic(city, night);
+            GameObject walkers = BuildPedestrians(city.WalkLoops, night, materials, 3, 4);
+            GameObject traffic = BuildTraffic(city.DriveLoops, night, new[] { 3, 3, 4 });
 
             // --- le directeur des courses
             OpenWorldDirector director = systems.AddComponent<OpenWorldDirector>();
@@ -475,8 +483,12 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ passants
 
-        private static GameObject BuildPedestrians(CityBuilder.Result city, NightMaterialFactory.Palette night,
-            BuildMaterials materials)
+        /// <summary>
+        /// Les passants, répartis sur les boucles de trottoir : <paramref name="perLoop"/> par
+        /// boucle, <paramref name="onLast"/> sur la dernière (la plus longue).
+        /// </summary>
+        private static GameObject BuildPedestrians(List<Vector3[]> loops, NightMaterialFactory.Palette night,
+            BuildMaterials materials, int perLoop, int onLast)
         {
             GameObject root = new GameObject("=== Passants ===");
             MocapLibrary library = MocapLibraryBuilder.Build();
@@ -491,10 +503,10 @@ namespace UberBagarre.EditorTools
             CorpsImporter.Top[] cuts = { CorpsImporter.Top.Veste, CorpsImporter.Top.TShirt, CorpsImporter.Top.Veste, CorpsImporter.Top.Debardeur };
 
             int n = 0;
-            for (int l = 0; l < city.WalkLoops.Count; l++)
+            for (int l = 0; l < loops.Count; l++)
             {
-                Vector3[] loop = city.WalkLoops[l];
-                int count = l == city.WalkLoops.Count - 1 ? 4 : 3;
+                Vector3[] loop = loops[l];
+                int count = l == loops.Count - 1 ? onLast : perLoop;
 
                 for (int k = 0; k < count; k++, n++)
                 {
@@ -543,18 +555,16 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ circulation
 
-        private static GameObject BuildTraffic(CityBuilder.Result city, NightMaterialFactory.Palette night)
+        private static GameObject BuildTraffic(List<Vector3[]> loops, NightMaterialFactory.Palette night, int[] perLoop)
         {
             GameObject root = new GameObject("=== Circulation ===");
             GameObject template = CityBuilder.CarTemplate(root.transform, night, false, "VoitureCirculation");
 
-            // Avec les feux, des files se forment aux carrefours : un peu plus de monde sur les boucles.
-            int[] perLoop = { 3, 3, 4 };
             int n = 0;
 
-            for (int l = 0; l < city.DriveLoops.Count; l++)
+            for (int l = 0; l < loops.Count; l++)
             {
-                Vector3[] loop = city.DriveLoops[l];
+                Vector3[] loop = loops[l];
                 int count = l < perLoop.Length ? perLoop[l] : 2;
 
                 for (int k = 0; k < count; k++, n++)
