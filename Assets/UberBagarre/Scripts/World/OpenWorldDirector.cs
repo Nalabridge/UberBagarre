@@ -74,6 +74,9 @@ namespace UberBagarre.World
             public int Experience = 250;
             public ContractGoal Goal = ContractGoal.Aucune;
             public string Intro;
+
+            /// <summary>Ce qui se dit au moment où la cible se retourne (à la place de sa réaction).</summary>
+            public DialogueLine[] Lines;
         }
 
         private enum Stage
@@ -221,6 +224,25 @@ namespace UberBagarre.World
         {
             _story = contract;
             if (_stage == Stage.Waiting) _timer = Mathf.Min(_timer, 4f);
+        }
+
+        /// <summary>Oublie la course d'histoire en attente (la partie a été rechargée).</summary>
+        public void ClearStoryContract()
+        {
+            _story = null;
+            if (_stage == Stage.Offered && _running != null)
+            {
+                _running = null;
+                if (_phone != null && _phone.Current == PhoneDevice.Screen.Accueil) _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                _stage = Stage.Waiting;
+                _timer = 4f;
+            }
+        }
+
+        /// <summary>La course d'histoire en attente ou en cours (son étiquette), sinon null.</summary>
+        public string PendingStoryTag
+        {
+            get { return _running != null ? _running.Tag : _story != null ? _story.Tag : null; }
         }
 
         // ------------------------------------------------------------------ cycle
@@ -610,9 +632,10 @@ namespace UberBagarre.World
 
             if (_objective != null) _objective.Begin(_target, _player);
 
-            Say(_profile.name, TargetActivity.Reaction(kind));
+            if (_running != null && _running.Lines != null && _running.Lines.Length > 0 && _subtitles != null) _subtitles.Play(_running.Lines);
+            else Say(_profile.name, TargetActivity.Reaction(kind));
 
-            string stars = new string('★', Mathf.Clamp(_profile.stars, 1, 3));
+            string stars = new string('★', Mathf.Clamp(_profile.stars, 1, 5));
             if (_intro != null) _intro.Play(_target, _profile.name, "COURSE " + stars + "  ·  " + _reward + " EUR", null);
         }
 
@@ -899,6 +922,12 @@ namespace UberBagarre.World
             BruiseSystem bruises = _player.GetComponentInChildren<BruiseSystem>(true);
             if (bruises != null) bruises.Clear();
 
+            if (_home != null) Teleport(_home);
+        }
+
+        /// <summary>Ramène le joueur chez lui (début de partie, partie rechargée).</summary>
+        public void ReturnHome()
+        {
             if (_home != null) Teleport(_home);
         }
 

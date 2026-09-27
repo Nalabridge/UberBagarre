@@ -75,8 +75,18 @@ namespace UberBagarre.UI
         [Tooltip("Le menu de developpement (Tab), referme quand la pause s'ouvre.")]
         private Sandbox.SandboxMenu _devMenu;
 
+        [SerializeField]
+        [Tooltip("L'histoire du monde ouvert (la ville) : écran titre avec CONTINUER, NOUVELLE PARTIE, CHAPITRES.")]
+        private World.OpenWorldStory _openWorld;
+
         [Header("Ecran titre")]
         [SerializeField] private bool _titleOnStart;
+
+        [SerializeField]
+        [Tooltip("Survol de la ville : des triplets (depart, arrivee, visee), un plan chacun, enchaines en fondu.")]
+        private Transform[] _tour = new Transform[0];
+
+        [SerializeField, Min(4f)] private float _tourShot = 13f;
         [SerializeField] private Transform _shotFrom;
         [SerializeField] private Transform _shotTo;
         [SerializeField] private Transform _shotTarget;
@@ -195,7 +205,7 @@ namespace UberBagarre.UI
         {
             ApplyFov();
 
-            if (_titleOnStart && _prologue != null) Open(Page.Title);
+            if (_titleOnStart && (_prologue != null || _openWorld != null)) Open(Page.Title);
         }
 
         private void OnDisable()
@@ -383,7 +393,7 @@ namespace UberBagarre.UI
 
         private void StartStory(string beat)
         {
-            if (_prologue == null)
+            if (_prologue == null && _openWorld == null)
             {
                 LoadStoryScene();
                 return;
@@ -418,6 +428,15 @@ namespace UberBagarre.UI
 
         private void Launch(string beat)
         {
+            if (_openWorld != null)
+            {
+                // « continuer », ou « chapitre:N » (0 = nouvelle partie).
+                if (beat == "continuer") _openWorld.Continue();
+                else if (beat != null && beat.StartsWith("chapitre:")) _openWorld.StartChapter(int.Parse(beat.Substring(9)));
+                else _openWorld.NewGame();
+                return;
+            }
+
             if (_prologue == null) return;
 
             if (string.IsNullOrEmpty(beat)) _prologue.Begin();
@@ -456,7 +475,7 @@ namespace UberBagarre.UI
             Play(_confirm, 1f);
 
             // L'ecran titre vit dans la scene de l'histoire : on la recharge, proprement.
-            string scene = _prologue != null ? SceneManager.GetActiveScene().name : _storyScene;
+            string scene = _prologue != null || _openWorld != null ? SceneManager.GetActiveScene().name : _storyScene;
             if (!Application.CanStreamedLevelBeLoaded(scene)) return;
 
             CloseAll();
@@ -482,7 +501,7 @@ namespace UberBagarre.UI
             _zoomVelocity = 0f;
             _lastSweep = 6f;
 
-            if (_menuCamera == null || _shotFrom == null || _shotTo == null) return;
+            if (_menuCamera == null || !HasShot) return;
 
             if (_observer != null)
             {
@@ -515,19 +534,59 @@ namespace UberBagarre.UI
             if (_observer != null) _observer.enabled = true;
         }
 
+        private bool HasShot
+        {
+            get { return (_shotFrom != null && _shotTo != null) || TourShots > 0; }
+        }
+
+        private int TourShots
+        {
+            get { return _tour != null ? _tour.Length / 3 : 0; }
+        }
+
+        /// <summary>Le noir entre deux plans du survol (0 = image, 1 = noir).</summary>
+        private float TourBlack
+        {
+            get
+            {
+                if (TourShots < 2) return 0f;
+                float t = _shotTime % _tourShot;
+                float edge = Mathf.Min(t, _tourShot - t);
+                return 1f - Mathf.Clamp01(edge / 0.7f);
+            }
+        }
+
         private void UpdateShot(float dt)
         {
-            if (_menuCamera == null || _shotFrom == null || _shotTo == null) return;
+            if (_menuCamera == null || !HasShot) return;
 
             _shotTime += dt;
             _titleTime += dt;
 
-            // Un aller-retour tres lent, adouci aux extremites : un travelling, pas un manege.
-            float phase = Mathf.PingPong(_shotTime / _shotDuration, 1f);
-            float t = Mathf.SmoothStep(0f, 1f, phase);
+            Vector3 position;
+            Vector3 target;
 
-            Vector3 position = Vector3.Lerp(_shotFrom.position, _shotTo.position, t);
-            Vector3 target = _shotTarget != null ? _shotTarget.position : position + _shotFrom.forward;
+            if (TourShots > 0)
+            {
+                // Le survol : un plan après l'autre, chacun glisse doucement de son départ à son
+                // arrivée en regardant son point ; un fondu au noir les sépare.
+                int shot = Mathf.FloorToInt(_shotTime / _tourShot) % TourShots;
+                float k = Mathf.SmoothStep(0f, 1f, (_shotTime % _tourShot) / _tourShot);
+                Transform from = _tour[shot * 3];
+                Transform to = _tour[shot * 3 + 1];
+                Transform look = _tour[shot * 3 + 2];
+                position = from != null && to != null ? Vector3.Lerp(from.position, to.position, k) : _menuCamera.transform.position;
+                target = look != null ? look.position : position + Vector3.forward;
+            }
+            else
+            {
+                // Un aller-retour tres lent, adouci aux extremites : un travelling, pas un manege.
+                float phase = Mathf.PingPong(_shotTime / _shotDuration, 1f);
+                float t = Mathf.SmoothStep(0f, 1f, phase);
+
+                position = Vector3.Lerp(_shotFrom.position, _shotTo.position, t);
+                target = _shotTarget != null ? _shotTarget.position : position + _shotFrom.forward;
+            }
 
             // Chaque page a son cadre : la camera s'avance et tourne un peu quand on entre dans un
             // sous-menu, et recule en revenant au titre. C'est la transition entre les menus.
@@ -559,6 +618,12 @@ namespace UberBagarre.UI
             switch (page)
             {
                 case Page.Title:
+                    if (_openWorld != null)
+                    {
+                        BuildOpenWorldTitle();
+                        break;
+                    }
+
                     Add("NOUVELLE PARTIE", "Le prologue : la planque, le courrier, l'appel de Sami.", delegate { StartStory(null); });
                     Add("CHAPITRES", "Reprendre à un chapitre précis.", delegate { Go(Page.Chapters); });
                     if (Application.CanStreamedLevelBeLoaded(_openWorldScene))
@@ -579,9 +644,14 @@ namespace UberBagarre.UI
                 case Page.Pause:
                     Add("REPRENDRE", null, delegate { Play(_confirm, 0.7f); CloseAll(); });
                     if (story) Add("CHAPITRES", "Rejouer un chapitre depuis son début.", delegate { Go(Page.Chapters); });
+
                     Add("GRAPHISMES", "Image, qualité, affichage, souris et son.", delegate { Go(Page.Graphics); });
                     Add("COMMANDES", "Toutes les touches.", delegate { Go(Page.Controls); });
-                    if (story || Application.CanStreamedLevelBeLoaded(_storyScene))
+                    if (_openWorld != null)
+                    {
+                        Add("MENU PRINCIPAL", "Revenir à l'écran titre. Ce qui compte est gardé à la dernière nuit passée au lit.", BackToTitle);
+                    }
+                    else if (story || Application.CanStreamedLevelBeLoaded(_storyScene))
                     {
                         Add("MENU PRINCIPAL", story ? "Revenir à l'écran titre (la partie en cours est perdue)." : "Quitter le bac à sable.",
                             BackToTitle);
@@ -590,6 +660,21 @@ namespace UberBagarre.UI
                     break;
 
                 case Page.Chapters:
+                    if (_openWorld != null)
+                    {
+                        for (int i = 0; i < World.OpenWorldStory.ChapterTitles.Length; i++)
+                        {
+                            int chapter = i;
+                            Add(World.OpenWorldStory.ChapterTitles[i], World.OpenWorldStory.ChapterPitches[i] +
+                                (PlayerProgress.HasSave ? "  (Ta sauvegarde sera remplacée à la prochaine nuit.)" : ""),
+                                delegate { StartStory("chapitre:" + chapter); });
+                        }
+
+                        Separator();
+                        Add("RETOUR", null, Back);
+                        break;
+                    }
+
                     Add("PROLOGUE  —  LA PLANQUE", "Une étoile. Bruno Moretti, devant le Vertigo.", delegate { StartStory(null); });
                     Add("CHAPITRE 1  —  DEUX ÉTOILES", "Les frères Kovac, au parking.", delegate { StartStory("chapitre-1"); });
                     Add("CHAPITRE 2  —  TROIS ÉTOILES", "Le Taureau, dans la fosse du club.", delegate { StartStory("chapitre-2"); });
@@ -605,6 +690,31 @@ namespace UberBagarre.UI
                     Add("RETOUR", null, Back);
                     break;
             }
+        }
+
+        /// <summary>L'écran titre de la ville : reprendre, recommencer, choisir un chapitre.</summary>
+        private void BuildOpenWorldTitle()
+        {
+            if (PlayerProgress.HasSave)
+            {
+                int chapter = PlayerProgress.SavedChapter();
+                Add("CONTINUER", World.OpenWorldStory.ChapterName(chapter) + "  ·  " + PlayerProgress.SaveDescription(),
+                    delegate { StartStory("continuer"); });
+            }
+
+            Add("NOUVELLE PARTIE", "Motel Hyland, chambre 3. Le courrier, l'appel de Sami, une appli qui n'existe pas." +
+                                   (PlayerProgress.HasSave ? "  (La sauvegarde sera remplacée à la première nuit.)" : ""),
+                delegate { StartStory("chapitre:0"); });
+            Add("CHAPITRES", "Commencer à un chapitre précis.", delegate { Go(Page.Chapters); });
+
+            if (Application.CanStreamedLevelBeLoaded(_sandboxScene))
+            {
+                Add("BAC À SABLE", "L'arène d'entraînement : adversaires, réglages, triche.", LoadSandbox);
+            }
+
+            Add("GRAPHISMES", "Image, qualité, affichage, souris et son.", delegate { Go(Page.Graphics); });
+            Add("COMMANDES", "Toutes les touches.", delegate { Go(Page.Controls); });
+            Add("QUITTER", null, Quit);
         }
 
         private void BuildGraphics()
@@ -906,6 +1016,22 @@ namespace UberBagarre.UI
                 GUI.color = new Color(0f, 0f, 0f, 0.92f * _open);
                 GUI.DrawTexture(new Rect(0f, 0f, sw * 0.62f, sh), _gradient);
                 GUI.color = color;
+
+                // Entre deux plans du survol, un noir bref.
+                float black = TourBlack;
+
+                // La ville se charge encore : du noir, et le dire (quelques secondes).
+                bool loading = _openWorld != null && !World.MapStreamer.Ready && _titleTime < 30f;
+                if (loading) black = 1f;
+                if (black > 0.001f) GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0f, 0f, 0f, black));
+
+                if (loading)
+                {
+                    GUIStyle small = GuiKit.Style(Mathf.RoundToInt(18f * u), FontStyle.Bold, TextAnchor.MiddleRight);
+                    string dots = new string('.', 1 + Mathf.FloorToInt(Time.unscaledTime * 2f) % 3);
+                    GuiKit.OutlinedLabel(new Rect(0f, sh - 90f * u, sw - 60f * u, 30f * u), "CHARGEMENT DE LA VILLE" + dots, small,
+                        new Color(1f, 1f, 1f, 0.7f), new Color(0f, 0f, 0f, 0.9f), 1f);
+                }
 
                 // Les bandes de cinema, qui s'ouvrent a l'arrivee de l'ecran titre.
                 float bars = Mathf.Lerp(0.5f, 0.07f, Ease(Mathf.Clamp01(_titleTime / 1.2f)));

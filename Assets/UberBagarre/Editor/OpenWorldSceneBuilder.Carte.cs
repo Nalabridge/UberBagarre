@@ -5,6 +5,7 @@ using UberBagarre.Combat;
 using UberBagarre.Phone;
 using UberBagarre.Player;
 using UberBagarre.Story;
+using UberBagarre.UI;
 using UberBagarre.View;
 using UberBagarre.World;
 using UnityEditor;
@@ -33,17 +34,6 @@ namespace UberBagarre.EditorTools
     {
         private const string NightFolder = "Assets/UberBagarre/Art/Ville/Generes/Nuit";
 
-        /// <summary>Ce que la planque offre : là où l'on se réveille, et ses meubles utiles.</summary>
-        private sealed class MotelHome
-        {
-            public Transform Root;
-            public Transform Arrival;
-            public Interactable Bed;
-            public Interactable Computer;
-            public Interactable Wardrobe;
-            public Interactable Letters;
-        }
-
         private static void BuildOnMap(MapPack.Data map)
         {
             EditorBuildUtility.EnsureFolder(SandboxSceneBuilder.ScenesFolder);
@@ -69,7 +59,8 @@ namespace UberBagarre.EditorTools
             // lampes, que MapStreamer allume.
             NightStreetBuilder.Result street = new NightStreetBuilder.Result { Root = world.transform, CityRoot = world.transform };
 
-            MotelHome home = BuildMotelRoom(map, night, world.transform);
+            List<HomeKit> homes = BuildHomes(map, night, world.transform);
+            HomeKit home = homes[0];
             ClubInteriorBuilder.Result club = ClubInteriorBuilder.Build(night, materials, ClubInteriorOrigin);
 
             // --- le joueur
@@ -101,6 +92,9 @@ namespace UberBagarre.EditorTools
             if (display != null) SerializedWiring.SetObject(display, "_progress", progress);
             PhoneOS os = phone.GetComponent<PhoneOS>();
             if (os != null) SerializedWiring.SetObject(os, "_progress", progress);
+
+            // Entraînement (voies de progression) et tenue (coupes, couleurs).
+            WirePlayerProgression(player, materials, progress);
 
             PlayerInputReader input = player.GetComponent<PlayerInputReader>();
             InteractionSystem interaction = player.AddComponent<InteractionSystem>();
@@ -165,9 +159,21 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(director, "_subtitles", subtitles);
             SerializedWiring.SetObject(director, "_home", home.Arrival);
             SerializedWiring.SetObject(director, "_targetsRoot", world.transform);
+            SerializedWiring.SetObject(director, "_kit", BuildActivityKit(systems));
             SerializedWiring.SetFloat(director, "_minimumDistance", 60f);
             director.Configure(Spots(map), profiles.ToArray());
             EditorUtility.SetDirty(director);
+
+            // --- les logements : vestiaire et ordinateur dans chacun, lit = dormir
+            WardrobeScreen wardrobeScreen = BuildWardrobeScreen(systems, player, progress);
+            ComputerScreen computerScreen = BuildComputerScreen(systems, player, progress);
+            HomeRegistry registry = BuildHomeRegistry(systems, homes, progress, director, wardrobeScreen, computerScreen);
+            SerializedWiring.SetObject(computerScreen, "_homes", registry);
+
+            // --- l'histoire : ses personnages, ses lieux, ses chapitres
+            OpenWorldStory.Character[] characters = BuildStoryCharacters(map, materials, attacks, night, club);
+            OpenWorldStory story = BuildStory(systems, characters, map, club, director, progress, subtitles, fader, phone, cityMap,
+                registry, computerScreen);
 
             // --- les lumières loin du joueur s'éteignent ; la ville y ajoute les siennes au chargement
             DistanceCuller culler = systems.AddComponent<DistanceCuller>();
@@ -183,12 +189,13 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(streamer, "_subtitles", subtitles);
             SerializedWiring.SetObject(streamer, "_culler", culler);
             SandboxSceneBuilder.SetComponentArray(streamer, "_holdUntilLoaded", player.GetComponent<PlayerMotor>());
-            streamer.Configure(MapPack.SceneName, map.water, SafePoints(walkLoops), new[] { map.home.door }, NightSwaps());
+            streamer.Configure(MapPack.SceneName, map.water, SafePoints(walkLoops), CityDoors(map, homes), NightSwaps());
             EditorUtility.SetDirty(streamer);
 
             // --- menu du jeu, menu de triche
             BuildTestTools(player, graphics, progress, subtitles);
-            SandboxSceneBuilder.BuildGameMenu(player, graphics, gameCamera, observerCamera);
+            GameMenu menu = SandboxSceneBuilder.BuildGameMenu(player, graphics, gameCamera, observerCamera);
+            WireTitle(menu, story, BuildTitleTour(map, driveLoops, world.transform), fader);
 
             club.Root.gameObject.SetActive(false);
             cars.Dispose();
@@ -208,8 +215,10 @@ namespace UberBagarre.EditorTools
             Selection.activeGameObject = player;
 
             Debug.Log("[UberBagarre] Monde ouvert genere SUR LA VILLE (Assets/Schedule1) : " + ScenePath + "\n" +
-                      "  La planque    : la chambre du motel (lit, bureau et ordinateur, armoire, courrier)\n" +
+                      "  Logements     : " + homes.Count + " (le motel au départ ; bungalow et manoir à l'achat, sur l'ordinateur)\n" +
                       "  Le Vertigo    : la porte du club desaffecte, ville nord (E pour entrer)\n" +
+                      "  L'histoire    : prologue + 4 chapitres (Moretti, les Kovac, le Taureau, le Comptable, Sami)\n" +
+                      "  Ecran titre   : survol de la ville, CONTINUER / NOUVELLE PARTIE / CHAPITRES\n" +
                       "  Les courses   : " + map.spots.Length + " coins de la ville, chacun avec ce que la cible y fait\n" +
                       "  Passants      : " + walkers.transform.childCount + ", voitures : " + traffic.transform.childCount +
                       ", garees : " + parked.transform.childCount + "\n" +
@@ -269,98 +278,6 @@ namespace UberBagarre.EditorTools
         }
 
         // ------------------------------------------------------------------ la planque
-
-        private static MotelHome BuildMotelRoom(MapPack.Data map, NightMaterialFactory.Palette night, Transform parent)
-        {
-            MapPack.Home data = map.home;
-            HouseBuilder.Palette house = HouseBuilder.CreatePalette();
-
-            MotelHome home = new MotelHome();
-            GameObject root = EditorBuildUtility.CreateEmpty("Planque (chambre du motel)", parent, Vector3.zero);
-            home.Root = root.transform;
-
-            GameObject arrival = EditorBuildUtility.CreateEmpty("Reveil", root.transform, MapPack.Position(data.inside));
-            arrival.transform.rotation = Quaternion.Euler(0f, MapPack.Yaw(data.inside), 0f);
-            home.Arrival = arrival.transform;
-
-            // --- le lit
-            GameObject bed = Anchor("Lit", root.transform, data.bed);
-            Box(bed.transform, "Cadre", new Vector3(0f, 0.16f, 0f), new Vector3(1.45f, 0.32f, 2.05f), night.Wood, true);
-            Box(bed.transform, "Matelas", new Vector3(0f, 0.4f, 0f), new Vector3(1.35f, 0.18f, 1.95f), house.Mattress, false);
-            Box(bed.transform, "Couverture", new Vector3(0.03f, 0.5f, -0.3f), new Vector3(1.38f, 0.06f, 1.3f), house.Blanket, false)
-                .transform.localRotation = Quaternion.Euler(0f, 3f, 0f);
-            Box(bed.transform, "Oreiller", new Vector3(0f, 0.55f, 0.74f), new Vector3(0.62f, 0.13f, 0.34f), house.Mattress, false);
-            Box(bed.transform, "Tete de lit", new Vector3(0f, 0.55f, 1.02f), new Vector3(1.45f, 0.8f, 0.06f), night.Wood, true);
-            home.Bed = MakeInteractable(bed, "Dormir", "Sauvegarder, soigner les blessures", new Vector3(1.45f, 0.7f, 2.05f),
-                new Vector3(0f, 0.35f, 0f), 2.4f);
-
-            // --- le bureau et l'ordinateur
-            GameObject desk = Anchor("Bureau", root.transform, data.desk);
-            Box(desk.transform, "Plateau", new Vector3(0f, 0.74f, 0f), new Vector3(1.25f, 0.04f, 0.6f), house.Laminate, true);
-            for (int i = 0; i < 4; i++)
-            {
-                float x = i % 2 == 0 ? -0.58f : 0.58f;
-                float z = i < 2 ? -0.26f : 0.26f;
-                Box(desk.transform, "Pied", new Vector3(x, 0.36f, z), new Vector3(0.04f, 0.72f, 0.04f), night.DarkMetal, false);
-            }
-
-            // La chaise, tirée : on s'y assoit en face de l'écran.
-            GameObject chair = EditorBuildUtility.CreateEmpty("Chaise", desk.transform, new Vector3(0.05f, 0f, -0.62f));
-            chair.transform.localRotation = Quaternion.Euler(0f, 8f, 0f);
-            Box(chair.transform, "Assise", new Vector3(0f, 0.46f, 0f), new Vector3(0.44f, 0.05f, 0.44f), night.Plastic, true);
-            Box(chair.transform, "Dossier", new Vector3(0f, 0.76f, -0.2f), new Vector3(0.44f, 0.5f, 0.04f), night.Plastic, false);
-            for (int i = 0; i < 4; i++)
-            {
-                Box(chair.transform, "Pied", new Vector3(i % 2 == 0 ? -0.19f : 0.19f, 0.22f, i < 2 ? -0.19f : 0.19f),
-                    new Vector3(0.03f, 0.44f, 0.03f), night.DarkMetal, false);
-            }
-
-            // Le bureau est adossé au mur (son +z local) : l'écran regarde la chaise (-z).
-            GameObject laptop = EditorBuildUtility.CreateEmpty("Ordinateur portable", desk.transform, new Vector3(0.05f, 0.76f, 0.02f));
-            Box(laptop.transform, "Base", new Vector3(0f, 0.012f, 0f), new Vector3(0.36f, 0.024f, 0.25f), night.DarkMetal, false);
-            GameObject lid = EditorBuildUtility.CreateEmpty("Couvercle", laptop.transform, new Vector3(0f, 0.024f, 0.12f));
-            lid.transform.localRotation = Quaternion.Euler(-75f, 0f, 0f);
-            Box(lid.transform, "Coque", new Vector3(0f, 0f, 0.12f), new Vector3(0.36f, 0.012f, 0.24f), night.DarkMetal, false);
-            Material screen = NightMaterialFactory.CreateEmissive(NightMaterialFactory.MaterialsFolder, "M_EcranOrdinateur",
-                new Color(0.05f, 0.08f, 0.12f), null, Vector2.one, new Color(0.35f, 0.62f, 1f) * 1.6f, null, 0.8f, 0f);
-            Box(lid.transform, "Ecran", new Vector3(0f, 0.007f, 0.12f), new Vector3(0.33f, 0.002f, 0.21f), screen, false);
-            NightStreetBuilder.AddLight(laptop.transform, "Lueur de l'ecran", new Vector3(0f, 0.25f, -0.25f),
-                new Color(0.45f, 0.65f, 1f), 0.5f, 2.6f, false, false);
-            home.Computer = MakeInteractable(laptop, "Allumer l'ordinateur", "Jeux en ligne, paris, boutique, immobilier",
-                new Vector3(0.45f, 0.35f, 0.4f), new Vector3(0f, 0.12f, 0f), 2.2f);
-
-            // La lampe de bureau : la chambre a une lumière même quand la ville dort.
-            GameObject lamp = EditorBuildUtility.CreateEmpty("Lampe de bureau", desk.transform, new Vector3(0.5f, 0.76f, 0.16f));
-            Cylinder(lamp.transform, "Pied", new Vector3(0f, 0.01f, 0f), new Vector3(0.14f, 0.01f, 0.14f), night.DarkMetal, false);
-            Cylinder(lamp.transform, "Tige", new Vector3(0f, 0.22f, 0f), new Vector3(0.02f, 0.22f, 0.02f), night.Chrome, false);
-            Cylinder(lamp.transform, "Abat-jour", new Vector3(0f, 0.44f, 0f), new Vector3(0.18f, 0.07f, 0.18f), night.NeonWarm, false);
-            NightStreetBuilder.AddLight(lamp.transform, "Lumiere", new Vector3(0f, 0.38f, 0f), new Color(1f, 0.78f, 0.52f),
-                1.25f, 6f, true, false);
-
-            // --- le courrier, sur le bureau
-            GameObject letters = EditorBuildUtility.CreateEmpty("Courrier", root.transform, MapPack.Position(data.letters));
-            letters.transform.rotation = Quaternion.Euler(0f, MapPack.Yaw(data.letters), 0f);
-            float[] yaws = { 4f, -13f, 9f };
-            for (int i = 0; i < 3; i++)
-            {
-                GameObject envelope = Box(letters.transform, "Enveloppe", new Vector3(i * 0.045f, i * 0.006f, i * 0.02f),
-                    new Vector3(0.23f, 0.004f, 0.115f), house.Paper, false);
-                envelope.transform.localRotation = Quaternion.Euler(0f, yaws[i], 0f);
-            }
-
-            home.Letters = MakeInteractable(letters, "Lire le courrier", "Des relances, encore", new Vector3(0.44f, 0.12f, 0.24f),
-                new Vector3(0.05f, 0.02f, 0.02f), 2.2f);
-
-            // --- l'armoire et son miroir
-            GameObject wardrobe = Anchor("Armoire", root.transform, data.wardrobe);
-            Box(wardrobe.transform, "Caisson", new Vector3(0f, 1f, 0f), new Vector3(1.15f, 2f, 0.55f), night.Wood, true);
-            Box(wardrobe.transform, "Miroir", new Vector3(0.28f, 1.1f, 0.281f), new Vector3(0.48f, 1.5f, 0.01f), night.Chrome, false);
-            Box(wardrobe.transform, "Poignee", new Vector3(-0.05f, 1.05f, 0.29f), new Vector3(0.02f, 0.18f, 0.02f), night.Chrome, false);
-            home.Wardrobe = MakeInteractable(wardrobe, "Se changer", "Tenue, couleurs, entraînement", new Vector3(1.2f, 2f, 0.7f),
-                new Vector3(0f, 1f, 0.1f), 2.4f);
-
-            return home;
-        }
 
         private static GameObject Anchor(string name, Transform parent, float[] data)
         {

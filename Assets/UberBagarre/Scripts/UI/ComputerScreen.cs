@@ -109,7 +109,7 @@ namespace UberBagarre.UI
             base.Awake();
             Instance = this;
             AddMail("Über Bagarre", "Bienvenue", "Ton compte est actif. Accepte les courses depuis ton téléphone.\nUne course ratée fait baisser ta réputation. Trop bas, ton compte est suspendu.\nLes clients paient mieux les bagarreurs réputés.", false);
-            AddMail("Motel Hyland", "Loyer de la chambre 3", "Rappel : le loyer de la semaine (640 €) est dû. Merci de régler à l'accueil.\nSans règlement, nous serons contraints de récupérer la chambre.", true);
+            AddMail("Motel Hyland", "Loyer de la chambre 3", "Rappel : le loyer de la semaine (450 €) est prélevé tous les sept jours.\nSans règlement, nous serons contraints de récupérer la chambre.", true);
         }
 
         protected override void OnDestroy()
@@ -127,6 +127,11 @@ namespace UberBagarre.UI
         /// <summary>Un mail dans la boîte (l'histoire en envoie).</summary>
         public void AddMail(string from, string subject, string body, bool unread)
         {
+            for (int i = 0; i < _mails.Count; i++)
+            {
+                if (_mails[i].From == from && _mails[i].Subject == subject) return;
+            }
+
             _mails.Insert(0, new Mail { From = from, Subject = subject, Body = body, Unread = unread });
             if (_mails.Count > 20) _mails.RemoveAt(_mails.Count - 1);
         }

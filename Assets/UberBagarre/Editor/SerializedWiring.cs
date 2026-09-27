@@ -73,6 +73,16 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        public static void SetVector2(Object target, string fieldName, Vector2 value)
+        {
+            SerializedObject so = new SerializedObject(target);
+            SerializedProperty property = Find(so, target, fieldName);
+            if (property == null) return;
+
+            property.vector2Value = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         public static void SetEnum(Object target, string fieldName, int enumIndex)
         {
             SerializedObject so = new SerializedObject(target);

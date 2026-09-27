@@ -482,6 +482,21 @@ namespace UberBagarre.Story
             get { return File.Exists(SavePath); }
         }
 
+        /// <summary>Le chapitre de la sauvegarde (-1 sans sauvegarde lisible).</summary>
+        public static int SavedChapter()
+        {
+            try
+            {
+                if (!HasSave) return -1;
+                SaveData data = JsonUtility.FromJson<SaveData>(File.ReadAllText(SavePath));
+                return data != null ? data.chapter : -1;
+            }
+            catch (Exception)
+            {
+                return -1;
+            }
+        }
+
         /// <summary>Quand la sauvegarde a été écrite (texte), vide s'il n'y en a pas.</summary>
         public static string SaveDescription()
         {

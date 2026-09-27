@@ -41,6 +41,11 @@ namespace UberBagarre.EditorTools
             public float[] letters;
         }
 
+        /// <summary>
+        /// Un logement à vendre. Mêmes meubles que la planque (lit, bureau, armoire, courrier),
+        /// posés dans la pièce choisie ; ses portes (chemins dans la ville) restent fermées à clé
+        /// tant qu'il n'est pas acheté, et <c>open</c> disparaît pour le propriétaire (portail).
+        /// </summary>
         [Serializable]
         public class Property
         {
@@ -48,6 +53,13 @@ namespace UberBagarre.EditorTools
             public int price;
             public float[] inside;
             public float[] outside;
+            public float[] bed;
+            public float[] desk;
+            public float[] wardrobe;
+            public float[] letters;
+            public string[] doors;
+            public string[] open;
+            public float bedWidth = 1.45f;
         }
 
         [Serializable]
@@ -108,6 +120,7 @@ namespace UberBagarre.EditorTools
             public Vec[] smoke;
             public Vec[] atm;
             public Vec[] vending;
+            public string[] doors;
         }
 
         /// <summary>La ville est-elle installée dans le projet ?</summary>

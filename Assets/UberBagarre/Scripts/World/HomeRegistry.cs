@@ -35,6 +35,9 @@ namespace UberBagarre.World
             public Interactable computer;
             public Interactable wardrobe;
 
+            [Tooltip("Le courrier sur le bureau : l'histoire y dépose ses lettres.")]
+            public Interactable letters;
+
             [Tooltip("Portes de la ville (chemins) : fermées à clé tant que le logement n'est pas à nous.")]
             public string[] doors = new string[0];
 
@@ -49,6 +52,9 @@ namespace UberBagarre.World
         [SerializeField] private Home[] _homes = new Home[0];
 
         private string _appliedSignature;
+
+        /// <summary>Le joueur a lu le courrier d'un logement.</summary>
+        public event Action<Home> LettersRead;
 
         public Home Current
         {
@@ -83,6 +89,7 @@ namespace UberBagarre.World
                 Home home = _homes[i];
                 if (home == null) continue;
                 if (home.bed != null) home.bed.Activated += OnBed;
+                if (home.letters != null) home.letters.Activated += OnLetters;
                 if (_wardrobeScreen != null) _wardrobeScreen.Attach(home.wardrobe);
                 if (_computerScreen != null) _computerScreen.Attach(home.computer);
             }
@@ -95,7 +102,9 @@ namespace UberBagarre.World
         {
             for (int i = 0; i < _homes.Length; i++)
             {
-                if (_homes[i] != null && _homes[i].bed != null) _homes[i].bed.Activated -= OnBed;
+                if (_homes[i] == null) continue;
+                if (_homes[i].bed != null) _homes[i].bed.Activated -= OnBed;
+                if (_homes[i].letters != null) _homes[i].letters.Activated -= OnLetters;
             }
 
             MapStreamer.Loaded -= OnCityLoaded;
@@ -110,6 +119,21 @@ namespace UberBagarre.World
         private void OnBed(Interactable source)
         {
             if (_director != null) _director.Sleep();
+        }
+
+        private void OnLetters(Interactable source)
+        {
+            Action<Home> handler = LettersRead;
+            if (handler == null) return;
+
+            for (int i = 0; i < _homes.Length; i++)
+            {
+                if (_homes[i] != null && _homes[i].letters == source)
+                {
+                    handler(_homes[i]);
+                    return;
+                }
+            }
         }
 
         private void OnCityLoaded()
