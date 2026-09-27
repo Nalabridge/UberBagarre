@@ -14,8 +14,14 @@ namespace UberBagarre.World
         /// <summary>Nom de l'objet que la préparation de l'éditeur laisse dans la ville.</summary>
         public const string PreparedMarker = "UberBagarre (ville preparee)";
 
+        /// <summary>Calque des petits objets de la ville (dessinés jusqu'à ~110 m).</summary>
+        public const int SmallDetailLayer = 26;
+
+        /// <summary>Calque des objets moyens (dessinés jusqu'à ~260 m).</summary>
+        public const int MediumDetailLayer = 27;
+
         /// <summary>Version de la préparation : l'augmenter la fait refaire.</summary>
-        public const int PreparedVersion = 1;
+        public const int PreparedVersion = 2;
 
         /// <summary>
         /// Les murs de la démo : la ville d'origine était fermée par des murs invisibles et des
@@ -131,6 +137,39 @@ namespace UberBagarre.World
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Certaines roues de la carte portent deux modèles allumés à la fois (la roue générique
+        /// « wheel » et celle du modèle, « Muscle Car Wheel », « Sports car wheel ») : le jeu
+        /// d'origine n'en gardait qu'une. On éteint la générique quand une autre est là.
+        /// Rend le nombre de modèles éteints.
+        /// </summary>
+        public static int DedupeWheelModels(Transform root)
+        {
+            int count = 0;
+            Transform[] all = root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < all.Length; i++)
+            {
+                Transform model = all[i];
+                if (model.name != "Model" || model.childCount < 2) continue;
+
+                Transform generic = null;
+                bool specific = false;
+                for (int c = 0; c < model.childCount; c++)
+                {
+                    Transform child = model.GetChild(c);
+                    if (!child.gameObject.activeSelf || child.GetComponentInChildren<Renderer>() == null) continue;
+                    if (string.Equals(child.name, "wheel", System.StringComparison.OrdinalIgnoreCase)) generic = child;
+                    else specific = true;
+                }
+
+                if (generic == null || !specific) continue;
+                generic.gameObject.SetActive(false);
+                count++;
+            }
+
+            return count;
         }
 
         /// <summary>« Sedan (1) » → « Sedan ».</summary>

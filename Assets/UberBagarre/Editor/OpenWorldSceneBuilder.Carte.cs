@@ -127,11 +127,11 @@ namespace UberBagarre.EditorTools
 
             // --- cibles, badauds, passants, circulation
             List<OpenWorldDirector.Profile> profiles = BuildTargets(materials, attacks, night);
-            FightCrowd crowd = SandboxSceneBuilder.BuildFightCrowd(world.transform, night, materials, 8, 71, "Badauds (monde ouvert)");
+            FightCrowd crowd = SandboxSceneBuilder.BuildFightCrowd(world.transform, night, materials, 14, 71, "Badauds (monde ouvert)");
 
             List<Vector3[]> walkLoops = MapPack.Loops(map.walk);
             List<Vector3[]> driveLoops = MapPack.Loops(map.drive);
-            GameObject walkers = BuildPedestrians(walkLoops, night, materials, 12, 14);
+            GameObject walkers = BuildPedestrians(walkLoops, night, materials, 9, 11);
             // --- les voitures : celles de la ville (compacte, berline, SUV, pick-up, coupé),
             // devenues conduisibles. La compacte devant le motel est à toi ; les véhicules garés
             // de la ville sont remplacés par des copies qu'on peut prendre ; la circulation roule
@@ -283,7 +283,14 @@ namespace UberBagarre.EditorTools
             }
 
             UberBagarre.Feedback.VisualQuality quality = graphics.GetComponent<UberBagarre.Feedback.VisualQuality>();
-            if (quality != null) SerializedWiring.SetFloat(quality, "_shadowDistance", 110f);
+            if (quality != null)
+            {
+                // Deux cascades et une résolution haute (pas « très haute ») : la moitié du coût
+                // des ombres, pour une différence qu'on ne voit qu'au pied des murs lointains.
+                SerializedWiring.SetFloat(quality, "_shadowDistance", 85f);
+                SerializedWiring.SetInt(quality, "_shadowCascades", 2);
+                SerializedWiring.SetEnum(quality, "_shadowResolution", (int)UnityEngine.ShadowResolution.High);
+            }
             EditorUtility.SetDirty(graphics);
         }
 

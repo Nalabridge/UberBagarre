@@ -299,6 +299,8 @@ namespace UberBagarre.World
                       " rendus, " + lights.Count + " lampes, " + Doors.Count + " portes, " + _entrances.Count +
                       " facades fermees, " + blockers + " murs de la demo retires.");
 
+            TuneForPerformance(scene);
+
             // L'heure du moment (l'horloge l'a peut-être fixée avant que la ville n'arrive).
             float night = _night;
             _swappedOn = true;
@@ -320,6 +322,51 @@ namespace UberBagarre.World
 
             Action handler = Loaded;
             if (handler != null) handler();
+        }
+
+        // ------------------------------------------------------------------ performances
+
+        [Header("Performances")]
+        [SerializeField, Min(20f)] private float _smallDetailDistance = 110f;
+        [SerializeField, Min(40f)] private float _mediumDetailDistance = 260f;
+        [SerializeField, Min(10f)] private float _grassDistance = 70f;
+        [SerializeField, Range(0f, 1f)] private float _grassDensity = 0.7f;
+        [SerializeField, Range(0.3f, 2f)] private float _lodBias = 0.85f;
+
+        /// <summary>
+        /// Les petits objets de la ville (rangés dans leurs calques par la préparation) ne sont
+        /// dessinés que de près ; l'herbe du terrain s'arrête plus tôt ; les niveaux de détail
+        /// passent un peu plus vite au modèle simplifié.
+        /// </summary>
+        private void TuneForPerformance(Scene scene)
+        {
+            float[] distances = new float[32];
+            distances[CityRules.SmallDetailLayer] = _smallDetailDistance;
+            distances[CityRules.MediumDetailLayer] = _mediumDetailDistance;
+
+            Camera[] cameras = Resources.FindObjectsOfTypeAll<Camera>();
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                Camera camera = cameras[i];
+                if (camera == null || !camera.gameObject.scene.IsValid()) continue;
+                camera.layerCullDistances = distances;
+                camera.layerCullSpherical = true;
+            }
+
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int r = 0; r < roots.Length; r++)
+            {
+                Terrain[] terrains = roots[r].GetComponentsInChildren<Terrain>(true);
+                for (int i = 0; i < terrains.Length; i++)
+                {
+                    terrains[i].detailObjectDistance = _grassDistance;
+                    terrains[i].detailObjectDensity = _grassDensity;
+                    terrains[i].treeDistance = Mathf.Min(terrains[i].treeDistance, 400f);
+                    terrains[i].heightmapPixelError = Mathf.Max(terrains[i].heightmapPixelError, 6f);
+                }
+            }
+
+            QualitySettings.lodBias = _lodBias;
         }
 
         private static bool IsPrepared(GameObject[] roots)

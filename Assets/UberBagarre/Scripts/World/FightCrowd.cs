@@ -77,6 +77,31 @@ namespace UberBagarre.World
             if (_audio != null) _audio.enabled = false;
         }
 
+        /// <summary>
+        /// À quel point un endroit est abrité (0 = en plein découvert, 1 = cerné de murs) : seize
+        /// rayons horizontaux à hauteur d'homme, sur quinze mètres ; la part qui touche un mur.
+        /// Une bagarre dans une ruelle, un parking, un hangar attire du monde ; au milieu d'une
+        /// grande place en plein jour, les gens passent leur chemin.
+        /// </summary>
+        public static float Enclosure(Vector3 center)
+        {
+            int hits = 0;
+            const int rays = 16;
+            Vector3 origin = center + Vector3.up * 1.3f;
+            for (int i = 0; i < rays; i++)
+            {
+                float a = i * Mathf.PI * 2f / rays;
+                Vector3 dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+                RaycastHit hit;
+                if (!Physics.Raycast(origin, dir, out hit, 15f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                if (hit.rigidbody != null && !hit.rigidbody.isKinematic) continue;
+                if (hit.collider is CharacterController || hit.collider.GetComponentInParent<Combat.Combatant>() != null) continue;
+                hits++;
+            }
+
+            return hits / (float)rays;
+        }
+
         /// <summary>Fait venir les badauds autour de <paramref name="center"/>.</summary>
         public void Gather(Vector3 center)
         {
@@ -110,7 +135,8 @@ namespace UberBagarre.World
                 walker.Speed = Random.Range(_speed.x, _speed.y);
                 walker.StartAt = Random.Range(_delay.x, _delay.y);
 
-                member.enabled = false;
+                member.enabled = true;
+                member.Walking = true;
                 member.Focus = _center;
                 member.gameObject.SetActive(false);
 
@@ -183,6 +209,7 @@ namespace UberBagarre.World
             if (walker.Locomotion != null) walker.Locomotion.SetState(Vector3.zero, true, 0f, 0f);
             if (walker.Body != null) walker.Body.enabled = true;
 
+            walker.Spectator.Walking = false;
             walker.Spectator.enabled = true;
             walker.Spectator.Cheer(0.35f, 0.8f);
 

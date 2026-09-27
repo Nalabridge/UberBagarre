@@ -415,6 +415,7 @@ namespace UberBagarre.EditorTools
                     if (any)
                     {
                         wheel.SetParent(spins[i], true);
+                        CityRules.DedupeWheelModels(wheel);
                         drawn = true;
                     }
                 }

@@ -73,6 +73,13 @@ namespace UberBagarre.World
         private Quaternion _neckRest;
         private bool _captured;
 
+        /// <summary>
+        /// En route vers la bagarre (la foule le fait marcher) : bras le long du corps qui
+        /// balancent au rythme des pas, pas de réaction. Sans ça, les bras restaient dans la pose
+        /// de repos du squelette — les badauds arrivaient en T.
+        /// </summary>
+        public bool Walking { get; set; }
+
         public Mood Behaviour
         {
             get { return _mood; }
@@ -158,6 +165,12 @@ namespace UberBagarre.World
             {
                 if (_rig.Neck != null) _neckRest = _rig.Neck.localRotation;
                 _captured = true;
+            }
+
+            if (Walking)
+            {
+                PoseWalkingArms();
+                return;
             }
 
             ResolvePending();
@@ -263,6 +276,26 @@ namespace UberBagarre.World
 
             _locomotion.ExtraPelvisDrop = bounce;
             _locomotion.CombatBodyEuler = new Vector3(lean, 0f, Mathf.Sin(Time.time * 0.6f + _seed) * 2f);
+        }
+
+        private void PoseWalkingArms()
+        {
+            for (int s = 0; s < 2; s++)
+            {
+                HandSide side = s == 0 ? HandSide.Left : HandSide.Right;
+                float sign = s == 0 ? -1f : 1f;
+                IkLimb arm = _rig.Arm(side);
+                if (arm == null) continue;
+
+                Vector3 shoulder = arm.RootPosition;
+                Vector3 forward = transform.forward;
+                // Balancement opposé des deux bras, au rythme d'une marche (~1,8 pas par seconde).
+                float swing = Mathf.Sin(Time.time * 5.6f + _seed + (s == 0 ? 0f : Mathf.PI)) * 0.13f;
+                Vector3 target = shoulder - Vector3.up * 0.52f + forward * (0.05f + swing) + transform.right * (sign * 0.09f);
+                arm.ApplyWorldPose(target, Quaternion.LookRotation(forward, Vector3.up));
+            }
+
+            if (_rig.Neck != null) _rig.Neck.localRotation = _neckRest;
         }
 
         private void PoseArms()

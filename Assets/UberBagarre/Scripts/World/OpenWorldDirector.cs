@@ -574,10 +574,30 @@ namespace UberBagarre.World
             // Il vit sa soirée, ne se doute de rien : pas de cerveau, une activité.
             _targetBrain = _targetGo.GetComponent<EnemyBrain>();
             if (_targetBrain != null) _targetBrain.enabled = false;
+            Toughen(_profile.stars);
 
             _activity = TargetActivity.Begin(_targetGo, TargetActivity.Parse(_spot.activity), _spot.lookAt, _kit);
 
             if (_target != null) _target.Damaged += OnTargetDamaged;
+        }
+
+        /// <summary>
+        /// Plus la course a d'étoiles, plus la cible est coriace : plus de vie, des coups plus
+        /// lourds, une meilleure défense, un cerveau plus vif. Même une course à une étoile n'est
+        /// plus une promenade.
+        /// </summary>
+        private void Toughen(int stars)
+        {
+            float d = Mathf.Clamp01((stars - 1) / 4f);
+            if (_targetBrain != null) _targetBrain.ApplyDifficulty(0.3f + 0.7f * d);
+            if (_target == null || _target.Stats == null) return;
+
+            const string source = "Difficulte";
+            _target.Stats.RemoveBySource(source);
+            _target.Stats.AddModifier(new StatModifier { stat = StatType.MaxHealth, percent = true, value = 0.25f + 0.75f * d, source = source });
+            _target.Stats.AddModifier(new StatModifier { stat = StatType.Strength, percent = true, value = 0.15f + 0.45f * d, source = source });
+            _target.Stats.AddModifier(new StatModifier { stat = StatType.Defense, percent = false, value = 3f + 9f * d, source = source });
+            _target.ApplyStats();
         }
 
         // ------------------------------------------------------------------ sur place
@@ -749,9 +769,12 @@ namespace UberBagarre.World
             _stage = Stage.Fighting;
             if (_targetBrain != null) _targetBrain.enabled = true;
 
+            // La foule ne se forme que dans les coins abrités (ruelle, parking, hangar) : en plein
+            // découvert, les gens passent leur chemin.
             if (_crowd != null && _player != null)
             {
-                _crowd.Gather((_target.transform.position + _player.transform.position) * 0.5f);
+                Vector3 center = (_target.transform.position + _player.transform.position) * 0.5f;
+                if (FightCrowd.Enclosure(center) >= 0.4f) _crowd.Gather(center);
             }
 
             if (_objective != null) _objective.Begin(_target, _player);

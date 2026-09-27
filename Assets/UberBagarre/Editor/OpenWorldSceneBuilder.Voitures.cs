@@ -52,24 +52,44 @@ namespace UberBagarre.EditorTools
 
             DrivableCar personal = null;
             Transform spot = null;
+            List<Vector3> taken = new List<Vector3>();
+            int mineIndex = -1;
+
             if (map.car != null && map.car.Length >= 3)
             {
                 Vector3 p = MapPack.Position(map.car);
                 float yaw = MapPack.Yaw(map.car);
+
+                // La place devant le motel est déjà occupée par la compacte de la carte : ta
+                // voiture PREND sa place (au lieu de s'emboîter dans une copie à 3 m de là).
+                float best = 7f;
+                for (int i = 0; i < vehicles.CityParked.Count; i++)
+                {
+                    float d = Vector3.Distance(vehicles.CityParked[i].position, p);
+                    if (d >= best) continue;
+                    best = d;
+                    mineIndex = i;
+                }
+
+                if (mineIndex >= 0)
+                {
+                    p = vehicles.CityParked[mineIndex].position;
+                    yaw = vehicles.CityParked[mineIndex].yaw;
+                }
+
                 spot = EditorBuildUtility.CreateEmpty("Place de ta voiture", parked.transform, p).transform;
                 spot.rotation = Quaternion.Euler(0f, yaw, 0f);
 
                 GameObject mine = vehicles.Spawn("Shitbox", parked.transform, p, yaw, "Ta caisse");
                 if (mine != null) personal = mine.GetComponent<DrivableCar>();
+                taken.Add(p);
             }
-
-            List<Vector3> taken = new List<Vector3>();
-            if (spot != null) taken.Add(spot.position);
 
             for (int i = 0; i < vehicles.CityParked.Count; i++)
             {
+                if (i == mineIndex) continue;
                 CityVehicles.Parked c = vehicles.CityParked[i];
-                if (Near(taken, c.position, 3.5f)) continue;
+                if (Near(taken, c.position, 6.5f)) continue;
                 vehicles.Spawn(c.model, parked.transform, c.position, c.yaw, "Voiture");
                 taken.Add(c.position);
             }
@@ -80,7 +100,7 @@ namespace UberBagarre.EditorTools
                 {
                     if (map.cars[i] == null || map.cars[i].v == null || map.cars[i].v.Length < 3) continue;
                     Vector3 p = MapPack.Position(map.cars[i].v);
-                    if (Near(taken, p, 3.5f)) continue;
+                    if (Near(taken, p, 6.5f)) continue;
                     vehicles.Spawn(ParkedMix[i % ParkedMix.Length], parked.transform, p, MapPack.Yaw(map.cars[i].v), "Voiture");
                     taken.Add(p);
                 }

@@ -200,6 +200,24 @@ namespace UberBagarre.Enemy
         /// </summary>
         public static bool HoldAll { get; set; }
 
+        /// <summary>
+        /// Rend l'adversaire plus dur (0 = tel que construit, 1 = le haut du panier) : il frappe
+        /// plus souvent, se repose moins entre deux coups, esquive et garde plus, réagit plus
+        /// vite. Relatif à ses propres réglages : un bagarreur lent reste plus lent qu'un rapide.
+        /// </summary>
+        public void ApplyDifficulty(float level)
+        {
+            float k = Mathf.Clamp01(level);
+            _attackDelayMin *= Mathf.Lerp(1f, 0.5f, k);
+            _attackDelayMax *= Mathf.Lerp(1f, 0.55f, k);
+            _postAttackPause *= Mathf.Lerp(1f, 0.5f, k);
+            _dodgeChance = Mathf.Clamp01(_dodgeChance + 0.3f * k);
+            _guardChance = Mathf.Clamp01(_guardChance + 0.3f * k);
+            _dodgeReactionTime *= Mathf.Lerp(1f, 0.7f, k);
+            _guardReactionTime *= Mathf.Lerp(1f, 0.7f, k);
+            _strafeTendency = Mathf.Clamp01(_strafeTendency + 0.2f * k);
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
         {

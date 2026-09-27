@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UberBagarre.Combat;
 using UberBagarre.Core;
@@ -226,10 +227,90 @@ namespace UberBagarre.World
             if (_phone != null) _phone.Available = _phoneWasAvailable;
             if (_interaction != null) _interaction.Active = _interactionWasActive;
 
-            if (_gameCamera != null) _gameCamera.enabled = true;
-            if (_chaseCamera != null) _chaseCamera.enabled = false;
+            // Descendre se voit : la portière claque, la caméra quitte l'arrière de la voiture et
+            // glisse jusqu'aux yeux du joueur, debout à côté de la portière.
+            if (place && _gameCamera != null && _chaseCamera != null && _chaseCamera.enabled)
+            {
+                StartCoroutine(StepOut(car));
+            }
+            else
+            {
+                if (_gameCamera != null) _gameCamera.enabled = true;
+                if (_chaseCamera != null) _chaseCamera.enabled = false;
+            }
 
             _exiting = false;
+        }
+
+        [SerializeField, Min(0.1f)] private float _stepOutDuration = 0.75f;
+        private AudioSource _doorSource;
+        private AudioClip _doorClip;
+
+        private IEnumerator StepOut(DrivableCar car)
+        {
+            if (_input != null) _input.SetGameplayLock(this, true);
+            PlayDoor(car != null ? car.transform.position : transform.position);
+
+            Transform cam = _chaseCamera.transform;
+            Vector3 fromPosition = cam.position;
+            Quaternion fromRotation = cam.rotation;
+            float fromFov = _chaseCamera.fieldOfView;
+
+            float t = 0f;
+            while (t < 1f)
+            {
+                t = Mathf.Min(1f, t + Time.deltaTime / _stepOutDuration);
+                float e = t * t * (3f - 2f * t);
+
+                // La cible bouge avec la tête (léger balancement du pas) : on la relit à chaque image.
+                Transform eye = _gameCamera.transform;
+                cam.position = Vector3.Lerp(fromPosition, eye.position, e);
+                cam.rotation = Quaternion.Slerp(fromRotation, eye.rotation, e);
+                _chaseCamera.fieldOfView = Mathf.Lerp(fromFov, _gameCamera.fieldOfView, e);
+                yield return null;
+            }
+
+            _gameCamera.enabled = true;
+            _chaseCamera.enabled = false;
+            if (_input != null) _input.SetGameplayLock(this, false);
+        }
+
+        /// <summary>La portière : le déclic de la poignée, puis le claquement sourd.</summary>
+        private void PlayDoor(Vector3 at)
+        {
+            if (_doorSource == null)
+            {
+                // Sa propre source, sur un objet à part : on la place à la portière sans déplacer le joueur.
+                GameObject holder = new GameObject("Son de portiere");
+                holder.transform.SetParent(transform, false);
+                _doorSource = holder.AddComponent<AudioSource>();
+                _doorSource.playOnAwake = false;
+                _doorSource.spatialBlend = 0.6f;
+            }
+
+            if (_doorClip == null)
+            {
+                const int rate = 22050;
+                float[] data = new float[(int)(rate * 0.55f)];
+                System.Random random = new System.Random(5);
+                for (int i = 0; i < data.Length; i++)
+                {
+                    float time = i / (float)rate;
+                    float click = time < 0.03f ? ((float)random.NextDouble() * 2f - 1f) * (1f - time / 0.03f) * 0.4f : 0f;
+                    float slamT = time - 0.32f;
+                    float slam = slamT > 0f
+                        ? (Mathf.Sin(2f * Mathf.PI * (85f - slamT * 60f) * slamT) * 0.9f + ((float)random.NextDouble() * 2f - 1f) * 0.35f) *
+                          Mathf.Exp(-slamT * 22f)
+                        : 0f;
+                    data[i] = Mathf.Clamp(click + slam, -1f, 1f) * 0.8f;
+                }
+
+                _doorClip = AudioClip.Create("Portiere", data.Length, 1, rate, false);
+                _doorClip.SetData(data, 0);
+            }
+
+            _doorSource.transform.position = at;
+            _doorSource.PlayOneShot(_doorClip, 0.8f);
         }
 
         public void OnSpawned(Vector3 position, Quaternion rotation)
