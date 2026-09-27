@@ -49,7 +49,13 @@ namespace UberBagarre.World
 
         public string Label { get { return _label; } set { _label = value; } }
         public string Hint { get { return _hint; } set { _hint = value; } }
-        public float Range { get { return _range; } }
+        public float Range { get { return _range; } set { _range = Mathf.Max(0.2f, value); } }
+
+        /// <summary>Le point visé (posé à l'exécution sur les portes de la ville).</summary>
+        public void SetFocus(Transform focus)
+        {
+            _focus = focus;
+        }
 
         public Vector3 FocusPoint
         {

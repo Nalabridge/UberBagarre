@@ -20,8 +20,12 @@ namespace UberBagarre.EditorTools
     /// </summary>
     public static class FighterBuilder
     {
-        /// <summary>Hauteur des yeux du joueur : celle de la caméra.</summary>
-        public const float EyeHeight = 1.62f;
+        /// <summary>
+        /// Hauteur des yeux du joueur : celle de la caméra. Celle d'un homme d'1,70 m : à 1,62 m
+        /// (et avec un champ de vision très large), la ville de la carte — à l'échelle réelle,
+        /// portes de 2,10 m — donnait l'impression d'être un géant.
+        /// </summary>
+        public const float EyeHeight = 1.57f;
 
         /// <summary>Ce que la construction rend au reste du générateur.</summary>
         public class Result
@@ -140,13 +144,17 @@ namespace UberBagarre.EditorTools
 
             Vector3 eyes = data.BonePosition("Yeux");
 
-            // Joueur : les yeux du corps sur la caméra (0, EyeHeight, 0).
+            // Joueur : les yeux du corps sur la caméra (0, EyeHeight, 0). Le corps est mis à la
+            // taille de la caméra (quelques pour cent) : les pieds restent posés au sol.
+            float scale = 1f;
             if (!withHead)
             {
-                result.Body.transform.localPosition = new Vector3(0f, EyeHeight - eyes.y, -eyes.z);
+                scale = eyes.y > 0.5f ? EyeHeight / eyes.y : 1f;
+                result.Body.transform.localScale = Vector3.one * scale;
+                result.Body.transform.localPosition = new Vector3(0f, 0f, -eyes.z * scale);
             }
 
-            result.EyeLocal = result.Body.transform.localPosition + eyes;
+            result.EyeLocal = result.Body.transform.localPosition + eyes * scale;
 
             System.Collections.Generic.List<string> slots;
             Mesh mesh = CorpsImporter.BuildMesh(data, skin.Top, withHead, out slots);

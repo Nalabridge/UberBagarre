@@ -89,6 +89,7 @@ namespace UberBagarre.Story
             public Outfit outfit = new Outfit();
             public List<string> unlocked = new List<string>();
             public string home = "Motel";
+            public string car = "Shitbox";
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -341,6 +342,15 @@ namespace UberBagarre.Story
             return false;
         }
 
+        /// <summary>Un soin payé (pharmacie, médecin) : une blessure de moins, ou toutes.</summary>
+        public bool HealInjuries(bool all)
+        {
+            if (_data.injuries <= 0) return false;
+            _data.injuries = all ? 0 : _data.injuries - 1;
+            RaiseChanged();
+            return true;
+        }
+
         /// <summary>Une nuit de sommeil : les blessures guérissent, un jour passe.</summary>
         public void Sleep()
         {
@@ -445,6 +455,16 @@ namespace UberBagarre.Story
         public void Acquire(string property)
         {
             if (!_data.owned.Contains(property)) _data.owned.Add(property);
+            RaiseChanged();
+        }
+
+        /// <summary>Le modèle de la voiture du joueur (« Shitbox » au départ, puis ce qu'il achète).</summary>
+        public string Car { get { return string.IsNullOrEmpty(_data.car) ? "Shitbox" : _data.car; } }
+
+        public void SetCar(string model)
+        {
+            if (string.IsNullOrEmpty(model)) return;
+            _data.car = model;
             RaiseChanged();
         }
 

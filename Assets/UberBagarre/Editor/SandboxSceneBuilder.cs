@@ -35,7 +35,10 @@ namespace UberBagarre.EditorTools
         /// <summary>Sert au tiling des matériaux de sol, pas à une dimension d'arène.</summary>
         private const float ArenaSize = 26f;
 
-        private const float PlayerHeight = 1.8f;
+        private const float PlayerHeight = 1.75f;
+
+        // Les adversaires gardent leur capsule d'origine : leurs corps font de 1,72 à 1,90 m.
+        private const float FighterHeight = 1.8f;
         private const float PlayerRadius = 0.28f;
         private const float SpawnDistance = 5f;
 
@@ -436,7 +439,9 @@ namespace UberBagarre.EditorTools
             cameraGo.tag = "MainCamera";
 
             Camera camera = cameraGo.AddComponent<Camera>();
-            camera.fieldOfView = 75f;
+            // 64° en vertical (≈ 97° en horizontal sur un écran 16/9) : au-delà, la ville
+            // paraît miniature et le joueur se sent géant.
+            camera.fieldOfView = 64f;
             camera.nearClipPlane = 0.04f;
             camera.farClipPlane = 300f;
             cameraGo.AddComponent<AudioListener>();
@@ -727,9 +732,9 @@ namespace UberBagarre.EditorTools
             enemyGo.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             CharacterController controller = enemyGo.AddComponent<CharacterController>();
-            controller.height = PlayerHeight;
+            controller.height = FighterHeight;
             controller.radius = 0.30f;
-            controller.center = new Vector3(0f, PlayerHeight * 0.5f, 0f);
+            controller.center = new Vector3(0f, FighterHeight * 0.5f, 0f);
             controller.stepOffset = 0.3f;
             controller.skinWidth = 0.02f;
 
@@ -1088,7 +1093,7 @@ namespace UberBagarre.EditorTools
             if (body.Head == null || body.Chest == null || body.Pelvis == null)
             {
                 Object.DestroyImmediate(root);
-                return AddHurtboxes(parent, combatant, guard, faction, PlayerHeight);
+                return AddHurtboxes(parent, combatant, guard, faction, FighterHeight);
             }
 
             Transform bodyRoot = body.Body.transform;

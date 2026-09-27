@@ -2558,3 +2558,99 @@ Vérifiés avant usage : les archives de PuppetMaster et de Punch Swing Hit Soun
 intégrées. Le pack de voitures « TrafficManiac » est un mod pour Euro Truck Simulator (`.scs`), pas un
 asset Unity. Avec les `.unitypackage` officiels (Package Manager → My Assets), PuppetMaster se
 brancherait sur les adversaires (ils ont déjà un Animator humanoïde) pour les réactions aux coups.
+
+## 30. Des portes qui s'ouvrent, des voitures qui conduisent, des magasins où l'on entre
+
+### 30.1 Pourquoi les portes « ne s'ouvraient pas »
+
+Le convertisseur de la carte a posé `StaticEditorFlags = 86` (occluder, batching, occludee, sondes)
+sur **les 76 290 objets** de la ville. Unity fusionne alors en Play tous les maillages marqués
+« batching static » : le Transform d'une porte tourne encore, son collider aussi (on pouvait passer),
+mais ce qu'on voit est déjà cuit dans un gros maillage — la porte restait dessinée fermée.
+
+`CityPreparation` (éditeur) défige une fois pour toutes les sous-arbres qui doivent bouger : les gonds
+(`Container` sous un objet « … Door … »), les battants coulissants (repères `Closed` / `Open`), les
+véhicules. Elle retire aussi les murs de la démo (`DemoBoundaries` : 28 murs au matériau invisible
+autour du quartier jouable de la démo ; `Demo Barrier` : 99 barrières de béton ; `Demo blocker`,
+`PlayerBlocker`). Un repère versionné (`UberBagarre (ville preparee) vN`) signe la préparation : elle
+se relance d'elle-même quand la version change, à l'ouverture de la ville dans l'éditeur et à chaque
+construction du monde ouvert. `MapStreamer` avertit si la ville chargée n'est pas préparée.
+
+`CityRules` porte les règles de reconnaissance (par les noms), partagées par l'éditeur et le jeu.
+
+### 30.2 Les portes au chargement
+
+`MapStreamer.PrepareDoors` fait un seul passage sur la ville :
+- chaque gond devient une `SwingDoor` (corps cinématique : un collider qui bouge sans corps rigide
+  force la physique à reconstruire la scène statique). Elle s'ouvre **loin du joueur** : l'axe est
+  celui des axes de l'objet le plus proche de la verticale ; le bord libre, mesuré sur les rendus,
+  tourne selon `haut × bras de levier` — si ce sens va vers le joueur, on tourne dans l'autre ;
+- les battants coulissants deviennent des `SlidingDoor` (proximité, courbe douce) ;
+- les **façades figées** (« … Door (Static) », `StaticDoor`) : celles qui doublent une vraie porte
+  *active* (le décor « fermé » que le jeu d'origine montrait à sa place) sont cachées ; une vraie
+  porte éteinte laisse sa façade (sinon il resterait un trou dans le mur). Les autres sont recensées
+  (`MapStreamer.Entrances`, avec leur bâtiment) : `ShopDirectory` les branche.
+
+### 30.3 Les voitures de la ville
+
+`CityVehicles` (éditeur) lit les véhicules de la carte et fait de chaque modèle une `DrivableCar` :
+repère mesuré sur les roues (avant = +Z, sol = 0), roues sous un pivot et un enfant qui tourne,
+deux boîtes de collision mesurées sur la carrosserie (les colliders d'origine sont des maillages
+concaves, interdits sur un corps rigide), les lampes du modèle en phares et feu stop. La compacte et
+le SUV n'ont pas de jantes dans la carte (elles étaient instanciées par le jeu d'origine) : ils
+empruntent celles du pick-up, au bon coin et à leur rayon (mesuré au sol par un rayon vers le bas).
+La carte a une coquille (« SportsCarWhee_FR ») : la recherche des roues tolère « whee ».
+
+Les modèles restent inactifs dans la scène : `VehicleCatalog` en tire la voiture achetée à la
+concession (sauvegardée : `PlayerProgress.Car`).
+
+**La circulation** (`TrafficDriver`) ne déplace plus la voiture le long d'un chemin : elle tient le
+volant et les pédales d'une `DrivableCar` en `Autopilot`.
+- Volant : poursuite pure. Point visé à `L = 4,5 + 0,75·v` m sur la route, angle
+  `atan(2·empattement·sin α / L)`, divisé par le braquage maximal du moment.
+- Vitesse : pour chaque changement de cap sur la distance de freinage, une vitesse de virage selon
+  l'angle, et ce qu'on peut perdre d'ici là (`√(v² + 2·a·d)`) ; pour l'obstacle mobile le plus proche
+  (balayage sphérique vers la route à venir), `√(2·a·(d − 2))`.
+- Pédales : un régulateur ; arrêtée, elle tient le frein (la même retenue qu'une voiture garée).
+- Coincée (vitesse voulue > 2 m/s, vitesse réelle nulle, rien devant) : marche arrière en
+  contrebraquant. Perdue (> 9 m de sa route, ou sur le toit) : replacée quand personne ne regarde.
+- Au-delà de 150 m du joueur, la physique s'endort (`DrivableCar.Sleeping`) et la voiture glisse sur
+  sa route ; elle reprend ses roues en revenant à portée.
+
+Le conducteur est un corps du jeu posé assis (chaque os tourné pour que son enfant parte dans la
+direction voulue : indépendant de la pose de repos) puis **cuit** en maillage (`BakeMesh`) : il ne
+coûte pas plus qu'un siège.
+
+### 30.4 Les magasins
+
+`ShopCatalog` : 25 métiers, chacun avec ses articles (effets : soin, boost de quelques minutes via
+`PlayerBuffs` — modificateurs de `CombatantStats` à source propre, retirés à l'échéance —,
+réputation, blessures soignées, expérience, colis quotidien, rumeurs, vente). `ShopScreen` (un
+`FullScreenPanel`) ajoute les écrans particuliers : vêtements (le catalogue de `PlayerWardrobe`),
+concession (`VehicleCatalog`), agence immobilière (les biens de l'ordinateur), casino (machine à sous
+et roulette), salle de boxe (points d'entraînement).
+
+Placement (`OpenWorldSceneBuilder.Magasins`, ville ouverte dans l'éditeur) :
+- magasin meublé par la carte : le vendeur se tient sur le repère d'employé (`StandPoint`), sinon
+  derrière la caisse (à l'opposé de la porte la plus proche), sinon trois pas dans l'entrée (côté
+  intérieur donné par `InteriorIntObj` / `ExteriorIntObj`, place libre vérifiée par une capsule) ;
+- façade seule : `ShopInteriorBuilder` construit la pièce du métier (rayons en allées, frigos,
+  tables, bar et billard, machines à sous et roulette, bornes d'arcade, couloirs de tir, ring et
+  sacs, portants, vitrines…), loin de la ville (x ≥ 1000 m, au-dessus de l'eau : sous l'eau, le
+  repêchage de `MapStreamer` s'en mêlerait), allumée seulement quand on y est ;
+- `ShopDirectory` branche au chargement chaque façade recensée : entrée du magasin (retour devant la
+  porte par laquelle on est entré), porte de service d'un magasin qui a sa vraie entrée, maison (on
+  frappe), bâtiment public (fermé). La façade du Vertigo garde sa propre porte.
+
+### 30.5 L'heure, la lumière, les proportions
+
+`WorldClock` : une minute de jeu par seconde. Elle pilote le curseur jour / nuit (`GraphicsDirector`),
+la course du soleil (`TimeOfDay.SunAngles` : levé à l'est, 60° à midi, jamais sous 6°) et les
+lampadaires et fenêtres de la ville (`MapStreamer.SetNight` : intensité des lampes, matériaux de nuit
+remis ou retirés). Une nuit de sommeil remet 7 h 30. Le rendu de la ville (préréglage `Ville`) :
+bloom discret, contraste neutre, saturation +14 %, vignette légère, brume claire et bleutée.
+
+Proportions : la carte est à l'échelle réelle (portes 2,10 m, berline 4,85 × 1,53 m — vérifié par
+un rendu à hauteur d'yeux). Ce qui faisait « géant » : 75° de champ vertical (≈ 106° en horizontal)
+et des yeux à 1,62 m. Désormais 64° et 1,57 m (capsule 1,75 m) ; le corps du joueur est mis à la
+taille de la caméra pour que ses pieds restent au sol.

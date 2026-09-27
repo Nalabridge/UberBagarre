@@ -16,7 +16,9 @@ namespace UberBagarre.World
     /// cylindres, un grain de bruit, et le régime qui monte et retombe à chaque rapport.
     ///
     /// Qui conduit n'est pas son affaire : <see cref="SetInput"/> vient du joueur
-    /// (voir <c>PlayerDriving</c>). Garée, elle serre son frein à main et coupe ses phares.
+    /// (voir <c>PlayerDriving</c>) ou d'un conducteur de la circulation (<c>TrafficDriver</c>,
+    /// qui passe la voiture en <see cref="Autopilot"/>) : la même voiture, la même physique.
+    /// Garée, elle serre son frein à main et coupe ses phares.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class DrivableCar : MonoBehaviour
@@ -94,6 +96,7 @@ namespace UberBagarre.World
         private int _gear = 1;
         private float _shiftDip;
         private bool _occupied;
+        private bool _autopilot;
         private float _upsideDownFor;
         private Vector3 _lastSafePosition;
         private Quaternion _lastSafeRotation;
@@ -117,12 +120,94 @@ namespace UberBagarre.World
 
         public Transform Seat { get { return _seat != null ? _seat : transform; } }
         public string DisplayName { get { return _displayName; } }
+
+        /// <summary>Renomme la voiture (« Ta caisse ») et son invite.</summary>
+        public void Rename(string displayName)
+        {
+            _displayName = displayName;
+            Interactable door = GetComponent<Interactable>();
+            if (door != null) door.Hint = displayName;
+        }
         public Rigidbody Body { get { return _body; } }
 
         /// <summary>Vitesse le long de l'avant de la voiture (négative en marche arrière).</summary>
         public float ForwardSpeed { get { return _body != null ? Vector3.Dot(_body.linearVelocity, transform.forward) : 0f; } }
 
         public float SpeedKmh { get { return _body != null ? _body.linearVelocity.magnitude * 3.6f : 0f; } }
+
+        /// <summary>Braquage maximal (degrés) à la vitesse actuelle : un volant à fond donne ça.</summary>
+        public float SteerLimit
+        {
+            get
+            {
+                float speed01 = Mathf.Clamp01(Mathf.Abs(ForwardSpeed) / _maxSpeed);
+                return Mathf.Lerp(_maxSteer, _highSpeedSteer, speed01);
+            }
+        }
+
+        public float MaxSpeed { get { return _maxSpeed; } }
+
+        /// <summary>Distance entre les essieux (mètres), mesurée sur les roues.</summary>
+        public float Wheelbase
+        {
+            get
+            {
+                float front = 0f, rear = 0f;
+                int nf = 0, nr = 0;
+                for (int i = 0; i < _wheels.Length; i++)
+                {
+                    if (_wheels[i] == null || _wheels[i].pivot == null) continue;
+                    float z = transform.InverseTransformPoint(_wheels[i].pivot.position).z;
+                    if (_wheels[i].front) { front += z; nf++; }
+                    else { rear += z; nr++; }
+                }
+
+                return nf > 0 && nr > 0 ? Mathf.Max(1.5f, front / nf - rear / nr) : 2.7f;
+            }
+        }
+
+        /// <summary>
+        /// Conduite par la circulation : la voiture roule (phares, moteur, pas de frein de
+        /// parking), mais le joueur peut toujours la prendre — elle n'est pas « la sienne ».
+        /// </summary>
+        public bool Autopilot
+        {
+            get { return _autopilot; }
+            set
+            {
+                if (_autopilot == value) return;
+                _autopilot = value;
+                if (_occupied) return;
+
+                for (int i = 0; i < _headlights.Length; i++)
+                {
+                    if (_headlights[i] != null) _headlights[i].enabled = value;
+                }
+
+                if (_engine != null)
+                {
+                    if (value && !_engine.isPlaying) _engine.Play();
+                    if (!value) _engine.Stop();
+                }
+
+                if (value && _body != null)
+                {
+                    _body.isKinematic = false;
+                    _body.WakeUp();
+                }
+
+                if (!value) SetInput(0f, 0f, true);
+            }
+        }
+
+        /// <summary>
+        /// Endormie par son conducteur (loin du joueur) : plus aucune force, c'est lui qui la
+        /// fait glisser le long de sa route.
+        /// </summary>
+        public bool Sleeping { get; set; }
+
+        /// <summary>Quelqu'un (joueur ou circulation) tient le volant.</summary>
+        private bool Driving { get { return _occupied || _autopilot; } }
 
         /// <summary>Régime affiché (0 à 1) et rapport engagé (0 = marche arrière).</summary>
         public float Rpm { get { return _rpm; } }
@@ -134,6 +219,7 @@ namespace UberBagarre.World
             set
             {
                 _occupied = value;
+                if (value) _autopilot = false;
                 if (value) Driven = this;
                 else if (Driven == this) Driven = null;
                 if (_interactable != null) _interactable.SetAvailable(!value);
@@ -294,6 +380,7 @@ namespace UberBagarre.World
         private void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
+            if (Sleeping && !_occupied) return;
             if (Park(dt)) return;
 
             float speed = ForwardSpeed;
@@ -377,7 +464,8 @@ namespace UberBagarre.World
                 if (braking) along -= Mathf.Sign(longitudinal) * _brakeForce / _wheels.Length;
                 if (_handbrake && !w.front) along -= Mathf.Sign(longitudinal) * Mathf.Min(_brakeForce * 0.3f, Mathf.Abs(longitudinal) * share / dt);
                 along -= longitudinal * _rollingResistance / _wheels.Length;
-                if (!_occupied) along -= Mathf.Clamp(longitudinal * share / dt, -limit, limit);
+                // Garée, ou arrêtée par son conducteur (feu, bouchon) : elle ne roule pas toute seule.
+                if (!Driving || (_autopilot && _handbrake)) along -= Mathf.Clamp(longitudinal * share / dt, -limit, limit);
                 along = Mathf.Clamp(along, -limit * 1.1f, limit * 1.1f);
 
                 _body.AddForceAtPosition(right * side + forward * along, hit.point);
@@ -424,7 +512,7 @@ namespace UberBagarre.World
         /// </summary>
         private bool Park(float dt)
         {
-            if (_occupied)
+            if (Driving)
             {
                 _settledFor = 0f;
                 if (_body.isKinematic) _body.isKinematic = false;
@@ -492,7 +580,8 @@ namespace UberBagarre.World
             if (dt <= 0f) return;
 
             // Garée et endormie : ses roues sont déjà posées, rien à recalculer.
-            if (!_occupied && _body.isKinematic) return;
+            if (!Driving && _body.isKinematic) return;
+            if (Sleeping && !_occupied) return;
 
             float speed = ForwardSpeed;
             UpdateWheels(speed, dt);
@@ -502,7 +591,7 @@ namespace UberBagarre.World
             if (_brakeLight != null)
             {
                 bool braking = _handbrake || (_throttle > 0.05f && speed < -0.6f) || (_throttle < -0.05f && speed > 0.6f);
-                float target = !_occupied ? 0f : braking ? _brakeLightIntensity : _brakeLightIntensity * 0.25f;
+                float target = !Driving ? 0f : braking ? _brakeLightIntensity : _brakeLightIntensity * 0.25f;
                 _brakeLight.intensity = Mathf.MoveTowards(_brakeLight.intensity, target, dt * 12f);
                 _brakeLight.enabled = _brakeLight.intensity > 0.01f;
             }
@@ -563,7 +652,7 @@ namespace UberBagarre.World
             float idle = 0.12f;
             float load = Mathf.Abs(_throttle);
             float target = Mathf.Lerp(idle, 1f, within) * (0.8f + 0.2f * load);
-            if (_occupied && load > 0.1f && s < 1f) target = Mathf.Max(target, 0.3f + 0.3f * load);
+            if (Driving && load > 0.1f && s < 1f) target = Mathf.Max(target, 0.3f + 0.3f * load);
 
             _rpm = Mathf.Lerp(_rpm, target, 1f - Mathf.Exp(-8f * dt));
             _shiftDip = Mathf.MoveTowards(_shiftDip, 0f, dt * 4f);
@@ -571,10 +660,11 @@ namespace UberBagarre.World
 
         private void UpdateAudio(float speed)
         {
-            if (_engine != null && _occupied)
+            if (_engine != null && Driving)
             {
                 _engine.pitch = Mathf.Lerp(0.55f, 1.9f, _rpm) * (1f - _shiftDip * 0.12f);
-                _engine.volume = Mathf.Lerp(0.28f, 0.62f, Mathf.Abs(_throttle)) * (0.75f + 0.25f * _rpm);
+                _engine.volume = Mathf.Lerp(0.28f, 0.62f, Mathf.Abs(_throttle)) * (0.75f + 0.25f * _rpm) *
+                                 (_occupied ? 1f : 0.55f);
             }
 
             if (_tires != null)

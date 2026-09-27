@@ -8,10 +8,18 @@ namespace UberBagarre.World
     ///
     /// Les portes de la ville convertie ont perdu leur script d'origine : fermées, elles
     /// muraient les pièces. Ce composant leur est posé au chargement de la ville.
+    ///
+    /// Elle s'ouvre du côté opposé au joueur, comme on pousse une porte : jamais dans la
+    /// figure de celui qui l'ouvre. L'axe du gond est celui des axes de l'objet qui pointe le
+    /// plus vers le ciel (les modèles importés ne sont pas tous orientés pareil).
     /// </summary>
     public class SwingDoor : MonoBehaviour
     {
         [SerializeField] private float _openAngle = -100f;
+
+        [SerializeField]
+        [Tooltip("S'ouvre du cote oppose au joueur (sinon toujours du cote de _openAngle).")]
+        private bool _awayFromViewer = true;
         [SerializeField, Min(10f)] private float _speed = 240f;
         [SerializeField] private string _openLabel = "Ouvrir la porte";
         [SerializeField] private string _closeLabel = "Fermer la porte";
@@ -27,6 +35,12 @@ namespace UberBagarre.World
         private AudioSource _source;
         private AudioClip _rattle;
         private bool _ownsSound;
+        private Vector3 _axis = Vector3.up;
+        private Vector3 _leaf;
+        private float _openTarget;
+
+        /// <summary>Celui qui pousse les portes (le joueur) : elles s'ouvrent loin de lui.</summary>
+        public static Transform Viewer { get; set; }
 
         public bool IsOpen { get { return _open; } }
 
@@ -54,7 +68,20 @@ namespace UberBagarre.World
             if (hinge == null) return null;
 
             SwingDoor door = hinge.GetComponent<SwingDoor>();
-            if (door == null) door = hinge.gameObject.AddComponent<SwingDoor>();
+            if (door == null)
+            {
+                // Un collider qui bouge sans corps rigide oblige la physique à reconstruire la
+                // scène statique à chaque image : le battant devient un corps cinématique.
+                if (hinge.GetComponent<Rigidbody>() == null)
+                {
+                    Rigidbody body = hinge.gameObject.AddComponent<Rigidbody>();
+                    body.isKinematic = true;
+                    body.useGravity = false;
+                }
+
+                door = hinge.gameObject.AddComponent<SwingDoor>();
+            }
+
             door._openAngle = openAngle;
             door.Prepare();
             if (startOpen) door.SetOpen(true, true);
@@ -71,6 +98,13 @@ namespace UberBagarre.World
             if (_interactable != null) return;
 
             _closed = transform.localRotation;
+            _axis = UpAxis(transform);
+            _openTarget = _openAngle;
+
+            // Le battant : là où sont ses rendus (le gond est sur un bord).
+            bool any;
+            Bounds leaf = CityRules.RendererBounds(transform, out any);
+            _leaf = any ? transform.InverseTransformPoint(leaf.center) : Vector3.forward * 0.45f;
 
             _interactable = GetComponent<Interactable>();
             if (_interactable == null) _interactable = gameObject.AddComponent<Interactable>();
@@ -117,13 +151,14 @@ namespace UberBagarre.World
         public void SetOpen(bool open, bool instant)
         {
             Prepare();
+            if (open && !_open && _awayFromViewer) _openTarget = AwayAngle();
             _open = open;
             RefreshLabel();
 
             if (instant)
             {
-                _angle = open ? _openAngle : 0f;
-                transform.localRotation = _closed * Quaternion.Euler(0f, _angle, 0f);
+                _angle = open ? _openTarget : 0f;
+                transform.localRotation = _closed * Quaternion.AngleAxis(_angle, _axis);
                 return;
             }
 
@@ -132,11 +167,46 @@ namespace UberBagarre.World
 
         private void Update()
         {
-            float target = _open ? _openAngle : 0f;
+            float target = _open ? _openTarget : 0f;
             if (Mathf.Approximately(_angle, target)) return;
 
             _angle = Mathf.MoveTowards(_angle, target, _speed * Time.deltaTime);
-            transform.localRotation = _closed * Quaternion.Euler(0f, _angle, 0f);
+            transform.localRotation = _closed * Quaternion.AngleAxis(_angle, _axis);
+        }
+
+        /// <summary>
+        /// L'angle d'ouverture qui éloigne le battant du joueur. Tourner d'un angle positif
+        /// autour de la verticale déplace le bord libre suivant (haut × bras de levier) : si ce
+        /// sens va vers le joueur, on tourne dans l'autre.
+        /// </summary>
+        private float AwayAngle()
+        {
+            float magnitude = Mathf.Abs(_openAngle);
+            Transform viewer = Viewer;
+            if (viewer == null && Camera.main != null) viewer = Camera.main.transform;
+            if (viewer == null) return _openAngle;
+
+            Quaternion closedWorld = transform.parent != null ? transform.parent.rotation * _closed : _closed;
+            Vector3 up = closedWorld * _axis;
+            Vector3 arm = closedWorld * Vector3.Scale(_leaf, transform.lossyScale);
+            arm -= up * Vector3.Dot(arm, up);
+            if (arm.sqrMagnitude < 1e-4f) return _openAngle;
+
+            Vector3 sweep = Vector3.Cross(up, arm);
+            Vector3 toViewer = viewer.position - transform.position;
+            return Vector3.Dot(sweep, toViewer) > 0f ? -magnitude : magnitude;
+        }
+
+        /// <summary>L'axe local de l'objet le plus proche de la verticale, orienté vers le haut.</summary>
+        private static Vector3 UpAxis(Transform t)
+        {
+            float y = Vector3.Dot(t.up, Vector3.up);
+            float x = Vector3.Dot(t.right, Vector3.up);
+            float z = Vector3.Dot(t.forward, Vector3.up);
+
+            if (Mathf.Abs(y) >= Mathf.Abs(x) && Mathf.Abs(y) >= Mathf.Abs(z)) return y >= 0f ? Vector3.up : Vector3.down;
+            if (Mathf.Abs(x) >= Mathf.Abs(z)) return x >= 0f ? Vector3.right : Vector3.left;
+            return z >= 0f ? Vector3.forward : Vector3.back;
         }
 
         /// <summary>Un grincement de gond, synthétisé une fois.</summary>

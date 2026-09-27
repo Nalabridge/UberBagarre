@@ -48,6 +48,12 @@ namespace UberBagarre.EditorTools
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
+            // La ville, ouverte à côté le temps de la construction : on y lit ses véhicules et ses
+            // magasins. D'abord préparée (portes et véhicules défigés, murs de la démo retirés).
+            Scene city = EditorSceneManager.OpenScene(MapPack.ScenePath, OpenSceneMode.Additive);
+            SceneManager.SetActiveScene(scene);
+            CityPreparation.Prepare(false);
+
             Light sun;
             Light moon;
             SandboxSceneBuilder.BuildLighting(out sun, out moon);
@@ -74,6 +80,7 @@ namespace UberBagarre.EditorTools
             observerCamera.farClipPlane = 1000f;
 
             GraphicsDirector graphics = SandboxSceneBuilder.BuildRendering(sun, moon, street, gameCamera, observerCamera);
+            TuneCityRendering(graphics, sun);
 
             // --- téléphone, histoire minimale, interactions
             GameObject systems = new GameObject("=== Monde ouvert ===");
@@ -125,25 +132,15 @@ namespace UberBagarre.EditorTools
             List<Vector3[]> walkLoops = MapPack.Loops(map.walk);
             List<Vector3[]> driveLoops = MapPack.Loops(map.drive);
             GameObject walkers = BuildPedestrians(walkLoops, night, materials, 12, 14);
-            GameObject traffic = BuildTraffic(driveLoops, night, new[] { 9, 6, 6 });
-
-            // --- voitures conduisibles : la vieille caisse devant le motel, d'autres garées en ville
+            // --- les voitures : celles de la ville (compacte, berline, SUV, pick-up, coupé),
+            // devenues conduisibles. La compacte devant le motel est à toi ; les véhicules garés
+            // de la ville sont remplacés par des copies qu'on peut prendre ; la circulation roule
+            // pour de vrai (volant, pédales), un conducteur assis au volant.
+            GameObject garage = new GameObject("=== Modeles de voitures ===");
+            CityVehicles vehicles = CityVehicles.Load(garage.transform, night);
+            GameObject traffic = BuildCityTraffic(vehicles, driveLoops, new[] { 7, 5, 5 });
             GameObject parked = new GameObject("=== Voitures garees ===");
-            CityBuilder.CarFactory cars = new CityBuilder.CarFactory(night, parked.transform);
-            if (map.car != null && map.car.Length >= 3)
-            {
-                cars.Spawn(parked.transform, CityBuilder.CarFactory.Rusty, MapPack.Position(map.car), MapPack.Yaw(map.car), "Ta caisse");
-            }
-
-            if (map.cars != null)
-            {
-                for (int i = 0; i < map.cars.Length; i++)
-                {
-                    if (map.cars[i] == null || map.cars[i].v == null) continue;
-                    cars.Spawn(parked.transform, i * 3 + 1, MapPack.Position(map.cars[i].v), MapPack.Yaw(map.cars[i].v), "Voiture");
-                }
-            }
-
+            VehicleCatalog catalog = BuildParkedCars(vehicles, map, parked, progress);
             // --- le directeur des courses
             OpenWorldDirector director = systems.AddComponent<OpenWorldDirector>();
             SerializedWiring.SetObject(director, "_phone", phone);
@@ -171,6 +168,10 @@ namespace UberBagarre.EditorTools
             HomeRegistry registry = BuildHomeRegistry(systems, homes, progress, director, wardrobeScreen, computerScreen);
             SerializedWiring.SetObject(computerScreen, "_homes", registry);
 
+            // --- les magasins : chacun son vendeur, son comptoir, son usage
+            ShopDirectory shops = BuildShops(systems, player, progress, night, materials, subtitles, fader, catalog, registry,
+                computerScreen, club, cityMap);
+
             // --- l'histoire : ses personnages, ses lieux, ses chapitres
             OpenWorldStory.Character[] characters = BuildStoryCharacters(map, materials, attacks, night, club);
             OpenWorldStory story = BuildStory(systems, characters, map, club, director, progress, subtitles, fader, phone, cityMap,
@@ -182,6 +183,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetFloat(culler, "_lightRadius", 70f);
             SandboxSceneBuilder.SetComponentArray(culler, "_lightRoots", world.transform, traffic.transform, parked.transform);
 
+            // --- l'heure de la ville : le jour se lève, le soleil tourne, la nuit tombe
+            WorldClock clock = systems.AddComponent<WorldClock>();
+            clock.Configure(graphics, graphics.GetComponent<TimeOfDay>(), director, 8f);
+            EditorUtility.SetDirty(clock);
+
             // --- la ville, chargée par-dessus au lancement
             MapStreamer streamer = systems.AddComponent<MapStreamer>();
             SerializedWiring.SetObject(streamer, "_player", player.transform);
@@ -191,6 +197,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(streamer, "_culler", culler);
             SandboxSceneBuilder.SetComponentArray(streamer, "_holdUntilLoaded", player.GetComponent<PlayerMotor>());
             streamer.Configure(MapPack.SceneName, map.water, SafePoints(walkLoops), CityDoors(map, homes), NightSwaps());
+            if (vehicles.Available) streamer.HideInCity(vehicles.HiddenInCity);
             EditorUtility.SetDirty(streamer);
 
             // --- menu du jeu, menu de triche
@@ -199,7 +206,9 @@ namespace UberBagarre.EditorTools
             WireTitle(menu, story, BuildTitleTour(map, driveLoops, world.transform), fader);
 
             club.Root.gameObject.SetActive(false);
-            cars.Dispose();
+
+            // La ville a fini de servir : on ne sauvegarde que la scène du jeu.
+            if (city.IsValid() && city.isLoaded) EditorSceneManager.CloseScene(city, true);
 
             EditorSceneManager.MarkSceneDirty(scene);
             bool saved = EditorSceneManager.SaveScene(scene, ScenePath);
@@ -227,8 +236,55 @@ namespace UberBagarre.EditorTools
                       "  Les courses   : " + map.spots.Length + " coins de la ville, chacun avec ce que la cible y fait\n" +
                       "  Passants      : " + walkers.transform.childCount + ", voitures : " + traffic.transform.childCount +
                       ", garees : " + parked.transform.childCount + "\n" +
+                      "  Magasins      : " + shops.Shops.Count + " (chacun son vendeur et son usage)\n" +
                       "  La ville est ouverte par-dessus dans l'editeur, et se charge seule en Play.\n" +
                       "  Appuie sur Play.");
+        }
+
+        // ------------------------------------------------------------------ rendu de la ville
+
+        /// <summary>
+        /// Le rendu de la ville en plein jour, au plus près de Schedule I : couleurs franches et
+        /// un peu saturées, contraste doux, presque pas de vignette, bloom discret ; un soleil
+        /// chaud aux ombres douces, une ambiante claire, une brume légère et bleutée au loin.
+        /// La nuit garde ses lampadaires, mais sans la brume épaisse des ruelles du prologue.
+        /// </summary>
+        private static void TuneCityRendering(GraphicsDirector graphics, Light sun)
+        {
+            SerializedWiring.SetFloat(graphics, "_bloom", 0.6f);
+            SerializedWiring.SetFloat(graphics, "_threshold", 1.2f);
+            SerializedWiring.SetFloat(graphics, "_exposure", 1.05f);
+            SerializedWiring.SetFloat(graphics, "_saturation", 1.14f);
+            SerializedWiring.SetFloat(graphics, "_contrast", 1.0f);
+            SerializedWiring.SetFloat(graphics, "_vignette", 0.16f);
+            SerializedWiring.SetFloat(graphics, "_volumetric", 0.55f);
+            SerializedWiring.SetBool(graphics, "_restoreDay", false);
+            SerializedWiring.SetFloat(graphics, "_day", 1f);
+
+            TimeOfDay time = graphics.GetComponent<TimeOfDay>();
+            if (time != null)
+            {
+                SerializedWiring.SetFloat(time, "_sunIntensity", 1.25f);
+                SerializedWiring.SetColor(time, "_sunColor", new Color(1f, 0.94f, 0.84f));
+                SerializedWiring.SetFloat(time, "_ambientDay", 1.2f);
+                SerializedWiring.SetColor(time, "_fogDay", new Color(0.72f, 0.8f, 0.9f));
+                SerializedWiring.SetFloat(time, "_fogDensityDay", 0.0035f);
+                SerializedWiring.SetFloat(time, "_fogDensityNight", 0.009f);
+                SerializedWiring.SetFloat(time, "_ambientNight", 0.34f);
+                SerializedWiring.SetColor(time, "_skyTintDay", new Color(0.5f, 0.66f, 0.92f));
+                SerializedWiring.SetFloat(time, "_skyExposureDay", 1.3f);
+                EditorUtility.SetDirty(time);
+            }
+
+            if (sun != null)
+            {
+                sun.shadowStrength = 0.65f;
+                sun.shadows = LightShadows.Soft;
+            }
+
+            UberBagarre.Feedback.VisualQuality quality = graphics.GetComponent<UberBagarre.Feedback.VisualQuality>();
+            if (quality != null) SerializedWiring.SetFloat(quality, "_shadowDistance", 110f);
+            EditorUtility.SetDirty(graphics);
         }
 
         // ------------------------------------------------------------------ lieux

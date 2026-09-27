@@ -53,6 +53,16 @@ namespace UberBagarre.EditorTools
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
+        public static void SetColor(Object target, string fieldName, Color value)
+        {
+            SerializedObject so = new SerializedObject(target);
+            SerializedProperty property = Find(so, target, fieldName);
+            if (property == null) return;
+
+            property.colorValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         public static void SetInt(Object target, string fieldName, int value)
         {
             SerializedObject so = new SerializedObject(target);

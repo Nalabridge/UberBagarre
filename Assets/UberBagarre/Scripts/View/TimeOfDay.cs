@@ -93,6 +93,17 @@ namespace UberBagarre.View
             }
         }
 
+        /// <summary>La position du soleil (l'horloge de la ville le fait tourner).</summary>
+        public Vector3 SunAngles
+        {
+            get { return _sunAngles; }
+            set
+            {
+                _sunAngles = value;
+                if (_sun != null && _sun.enabled) _sun.transform.rotation = Quaternion.Euler(_sunAngles);
+            }
+        }
+
         private void OnEnable()
         {
             Collect();

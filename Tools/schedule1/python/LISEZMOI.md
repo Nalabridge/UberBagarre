@@ -46,3 +46,7 @@ Copier `out/Schedule1` dans `Assets/Schedule1` du projet, laisser Unity importer
 le monde ouvert dessus (sinon il retombe sur la ville procédurale).
 
 Les shaders de la carte (`../shaders`) sont copiés dans le pack par `pack.py`.
+
+À la première ouverture dans l'éditeur, la ville est **préparée** (`CityPreparation`) : portes et
+véhicules défigés (sinon Unity les fusionne au lancement et ils ne bougent plus à l'écran), murs de
+la démo retirés. La scène du pack est modifiée et sauvegardée sur place ; rien à retélécharger.

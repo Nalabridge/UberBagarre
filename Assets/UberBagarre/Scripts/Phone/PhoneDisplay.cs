@@ -61,6 +61,12 @@ namespace UberBagarre.Phone
 
         [Header("Horloge")]
         [SerializeField] private string _clock = "02:47";
+
+        /// <summary>L'heure affichée : celle de la ville quand il y a une horloge, sinon l'heure fixe de la scène.</summary>
+        private string Clock
+        {
+            get { return World.WorldClock.Instance != null ? World.WorldClock.Instance.Label : _clock; }
+        }
         [SerializeField] private string _date = "SAM. 14 MARS";
         [SerializeField, Range(0, 100)] private int _battery = 12;
 
@@ -330,7 +336,7 @@ namespace UberBagarre.Phone
 
         private void DrawStatusBar(Rect safe)
         {
-            Label(new Rect(safe.x, safe.y, safe.width * 0.5f, U(0.032f)), _clock,
+            Label(new Rect(safe.x, safe.y, safe.width * 0.5f, U(0.032f)), Clock,
                 Font(0.026f), FontStyle.Bold, TextAnchor.MiddleLeft, _ink);
 
             // Reseau : trois barres, dont une eteinte. Un signal plein dans une maison
@@ -378,7 +384,7 @@ namespace UberBagarre.Phone
 
         private void DrawHomeScreen(Rect body)
         {
-            Label(new Rect(body.x, body.y + U(0.02f), body.width, U(0.085f)), _clock,
+            Label(new Rect(body.x, body.y + U(0.02f), body.width, U(0.085f)), Clock,
                 Font(0.075f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
 
             Label(new Rect(body.x, body.y + U(0.105f), body.width, U(0.035f)), _date,
@@ -979,7 +985,7 @@ namespace UberBagarre.Phone
 
         private void DrawLock(Rect body)
         {
-            Label(new Rect(body.x, body.y + U(0.16f), body.width, U(0.11f)), _clock,
+            Label(new Rect(body.x, body.y + U(0.16f), body.width, U(0.11f)), Clock,
                 Font(0.088f), FontStyle.Bold, TextAnchor.MiddleCenter, _ink);
 
             Label(new Rect(body.x, body.y + U(0.275f), body.width, U(0.04f)), _date,

@@ -46,7 +46,7 @@ namespace UberBagarre.Player
         [SerializeField] private float _groundStickVelocity = -2f;
 
         [Header("Hauteurs de capsule (metres)")]
-        [SerializeField, Min(0.5f)] private float _standHeight = 1.8f;
+        [SerializeField, Min(0.5f)] private float _standHeight = 1.75f;
         [SerializeField, Min(0.4f)] private float _crouchHeight = 1.18f;
         [SerializeField, Min(0.3f)] private float _slideHeight = 0.95f;
 

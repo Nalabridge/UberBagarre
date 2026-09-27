@@ -409,9 +409,42 @@ le logement choisi.
   Technique), cinq paliers nommés chacune, payés en points (deux par niveau, ou achetés à la salle) ;
   **TENUE** — t-shirt, veste ou débardeur, couleurs du haut, du pantalon, des chaussures, chaque
   article débloqué par le niveau et acheté une fois.
-- **L'ordinateur** (E) : le CASINO ROYAL (roulette européenne, blackjack, machine à sous), les
-  PARIS de combat (trois combats clandestins, des cotes), la SALLE DE SPORT, l'IMMOBILIER, la
-  BANQUE, les MAILS (l'histoire y écrit).
+- **L'ordinateur** (E) : un vrai navigateur (onglets, adresse, précédent) — le moteur « Gogol », le
+  CASINO ROYAL (roulette européenne, blackjack, machine à sous), les PARIS de combat, la SALLE DE
+  SPORT, l'IMMOBILIER, le WEBMAIL (l'histoire y écrit). Plus d'appli Banque.
+
+**Les portes et les murs** : la ville d'origine est préparée une fois dans l'éditeur
+(`CityPreparation`, automatique à l'ouverture de la ville et à chaque construction ; aussi au menu
+**Uber Bagarre → Préparer la ville**). Le convertisseur avait marqué tout le décor « statique » :
+Unity fusionne alors les maillages et une porte fusionnée ne bouge plus à l'écran — c'est pour ça
+que la porte de la maison « ne s'ouvrait pas ». Portes et véhicules sont défigés, et les murs de la
+démo (murs invisibles, barrières de béton, bloqueurs devant certaines portes) sont retirés : toute
+la ville est ouverte. En jeu, **toutes** les portes de la ville s'ouvrent (E), du côté opposé au
+joueur ; les portes vitrées de la concession et des stations coulissent seules.
+
+**Les voitures** sont celles de la ville : la compacte (ta caisse, devant le motel), la berline, le
+SUV, le pick-up, le coupé de la concession. Les véhicules garés de la carte sont remplacés par des
+copies qu'on peut conduire. **La circulation conduit pour de vrai** : chaque voiture a un conducteur
+assis au volant qui tient le volant et les pédales de la même voiture que la tienne (poursuite pure
+sur sa voie, freinage avant les virages et pour ce qui est devant, marche arrière s'il est coincé) ;
+on peut lui prendre sa voiture quand elle est arrêtée. On achète une autre voiture à la concession
+(Hyland Auto) : elle remplace la tienne devant le motel.
+
+**Les magasins** : chaque commerce a un vendeur, un comptoir (E) et un usage — manger et se soigner
+(supérette, stations, diner, restaurants, café, pharmacie, médecin), boire pour se donner du courage
+(bars, cave, bar du Vertigo), s'équiper (quincailleries, marché noir), s'habiller (vêtements), la
+réputation (barbier, tatoueur, avocat, laverie), jouer (casino, arcade), s'entraîner (salle de boxe,
+stand de tir), le courrier et les colis (poste), acheter une maison (agence) ou une voiture
+(concession). Ceux que la carte a meublés s'ouvrent par leur vraie porte ; ceux dont la carte n'a
+que la façade mènent (fondu au noir) à un intérieur construit pour eux. Les boosts achetés durent
+quelques minutes et s'affichent en haut à droite. Les magasins sont sur la carte (M), en jaune ; les
+portes des maisons, on y frappe.
+
+**L'heure** : une minute de jeu par seconde (une journée en 24 minutes). On se réveille le matin ;
+le soleil tourne, les lampadaires et les fenêtres s'allument le soir. Le rendu de la ville est clair
+et doux (préréglage **VILLE** dans Graphismes), façon Schedule I. Le champ de vision par défaut est
+de 64° et les yeux du joueur à 1,57 m : à l'échelle de la carte (portes de 2,10 m), on ne se sent
+plus géant.
 
 ## Le monde ouvert
 

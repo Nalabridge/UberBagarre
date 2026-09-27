@@ -86,6 +86,16 @@ namespace UberBagarre.World
         }
 
         /// <summary>Une image de la ville vue de dessus, couvrant <paramref name="bounds"/> (x, z monde).</summary>
+        /// <summary>Ajoute des repères (les magasins) à ceux de la ville.</summary>
+        public void AddLandmarks(Landmark[] extra)
+        {
+            if (extra == null || extra.Length == 0) return;
+            Landmark[] all = new Landmark[_landmarks.Length + extra.Length];
+            _landmarks.CopyTo(all, 0);
+            extra.CopyTo(all, _landmarks.Length);
+            _landmarks = all;
+        }
+
         public void SetBackground(Texture2D background, Rect bounds)
         {
             _background = background;

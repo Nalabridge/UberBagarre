@@ -21,13 +21,18 @@ namespace UberBagarre.View
         // Le suffixe de version change quand les valeurs par defaut changent de nature : les
         // anciens reglages sauvegardes (grain et aberration a fond) ne doivent pas ressusciter
         // le bruit qu'on vient justement de retirer.
-        private const string PrefsPrefix = "UberBagarre.Gfx4.";
+        // Gfx5 : la ville passe à un rendu clair et doux (façon Schedule I) ; les réglages
+        // sauvegardés de l'ancien rendu nocturne ne doivent pas l'écraser.
+        private const string PrefsPrefix = "UberBagarre.Gfx5.";
 
         public enum Preset
         {
             Sobre = 0,
             Cinema = 1,
-            Batard = 2
+            Batard = 2,
+
+            /// <summary>La ville en plein jour : couleurs franches, peu de contraste, presque pas de vignette.</summary>
+            Ville = 3
         }
 
         [Header("Cibles")]
@@ -171,6 +176,18 @@ namespace UberBagarre.View
                     _grain = 0f;
                     _aberration = 0f;
                     _volumetric = 0.7f;
+                    break;
+
+                case Preset.Ville:
+                    _bloom = 0.6f;
+                    _threshold = 1.2f;
+                    _exposure = 1.05f;
+                    _saturation = 1.14f;
+                    _contrast = 1.0f;
+                    _vignette = 0.16f;
+                    _grain = 0f;
+                    _aberration = 0f;
+                    _volumetric = 0.55f;
                     break;
 
                 case Preset.Batard:

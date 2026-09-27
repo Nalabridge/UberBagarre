@@ -723,9 +723,9 @@ namespace UberBagarre.UI
 
             if (g != null)
             {
-                Add("PRÉRÉGLAGE", "Sobre, Cinéma ou Bâtard : bloom, contraste, vignette, lumière dans l'air.",
+                Add("PRÉRÉGLAGE", "Ville (clair, façon Schedule I), Sobre, Cinéma ou Bâtard : bloom, contraste, vignette, lumière dans l'air.",
                     delegate { return PresetName(_preset); },
-                    delegate(int d) { _preset = (GraphicsDirector.Preset)Wrap((int)_preset + d, 3); g.ApplyPreset(_preset); });
+                    delegate(int d) { _preset = (GraphicsDirector.Preset)Wrap((int)_preset + d, 4); g.ApplyPreset(_preset); });
             }
 
             Add("QUALITÉ", "Ombres, textures et détails selon les niveaux du projet.",
@@ -814,7 +814,7 @@ namespace UberBagarre.UI
             Add("RÉINITIALISER", "Revenir aux réglages d'origine.", delegate
             {
                 Play(_confirm, 0.8f);
-                _preset = GraphicsDirector.Preset.Cinema;
+                _preset = GraphicsDirector.Preset.Ville;
                 if (g != null)
                 {
                     g.ApplyPreset(_preset);
@@ -836,7 +836,7 @@ namespace UberBagarre.UI
             Add("RETOUR", null, Back);
         }
 
-        private GraphicsDirector.Preset _preset = GraphicsDirector.Preset.Cinema;
+        private GraphicsDirector.Preset _preset = GraphicsDirector.Preset.Ville;
 
         private static string PresetName(GraphicsDirector.Preset preset)
         {
@@ -844,6 +844,7 @@ namespace UberBagarre.UI
             {
                 case GraphicsDirector.Preset.Sobre: return "SOBRE";
                 case GraphicsDirector.Preset.Batard: return "BÂTARD";
+                case GraphicsDirector.Preset.Ville: return "VILLE";
                 default: return "CINÉMA";
             }
         }

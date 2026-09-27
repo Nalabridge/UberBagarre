@@ -45,9 +45,10 @@ namespace UberBagarre.EditorTools
             if (Application.isPlaying || !MapPack.Available) return;
 
             Scene city = SceneManager.GetSceneByPath(MapPack.ScenePath);
-            if (city.IsValid() && city.isLoaded) return;
+            if (!city.IsValid() || !city.isLoaded) EditorSceneManager.OpenScene(MapPack.ScenePath, OpenSceneMode.Additive);
 
-            EditorSceneManager.OpenScene(MapPack.ScenePath, OpenSceneMode.Additive);
+            // Portes mobiles, murs de la démo retirés : fait une fois, puis à chaque nouvelle version.
+            CityPreparation.Prepare(false);
 
             // La scène du jeu reste la scène active : c'est elle qu'on modifie et sauvegarde.
             Scene game = SceneManager.GetSceneByPath(OpenWorldSceneBuilder.ScenePath);

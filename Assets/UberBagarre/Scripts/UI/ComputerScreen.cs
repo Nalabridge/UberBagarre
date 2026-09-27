@@ -58,6 +58,9 @@ namespace UberBagarre.UI
 
         private static readonly int[] Stakes = { 10, 20, 50, 100, 200, 500, 1000 };
 
+        /// <summary>Les biens en vente (l'agence immobilière de la ville vend les mêmes).</summary>
+        public Property[] Listings { get { return _properties; } }
+
         private AppId _app;
         private int _stake = 2;
         private readonly Dictionary<int, int> _rows = new Dictionary<int, int>();
