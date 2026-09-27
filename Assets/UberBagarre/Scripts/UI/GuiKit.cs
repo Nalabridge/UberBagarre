@@ -200,8 +200,188 @@ namespace UberBagarre.UI
             style.wordWrap = wordWrap;
             style.padding = new RectOffset(0, 0, 0, 0);
 
+            // La police du jeu (Roboto) : le gras a son propre fichier, plus net qu'un gras
+            // synthétisé ; l'italique, lui, reste synthétisé.
+            bool bold = fontStyle == FontStyle.Bold || fontStyle == FontStyle.BoldAndItalic;
+            Font font = FontOf(bold ? Weight.Bold : Weight.Regular);
+            if (font != null)
+            {
+                style.font = font;
+                style.fontStyle = fontStyle == FontStyle.BoldAndItalic || fontStyle == FontStyle.Italic ? FontStyle.Italic : FontStyle.Normal;
+            }
+
             Styles[key] = style;
             return style;
+        }
+
+        // ------------------------------------------------------------------ police
+
+        /// <summary>Les graisses de la police du jeu.</summary>
+        public enum Weight
+        {
+            Regular,
+            Medium,
+            Bold,
+            Black
+        }
+
+        private static readonly Font[] Fonts = new Font[4];
+        private static bool _fontsLoaded;
+
+        /// <summary>La police du jeu (Roboto, Resources/Polices), ou null si elle manque.</summary>
+        public static Font FontOf(Weight weight)
+        {
+            if (!_fontsLoaded)
+            {
+                _fontsLoaded = true;
+                string[] files = { "Roboto-Regular", "Roboto-Medium", "Roboto-Bold", "Roboto-Black" };
+                for (int i = 0; i < files.Length; i++) Fonts[i] = Resources.Load<Font>("Polices/" + files[i]);
+            }
+
+            Font font = Fonts[(int)weight];
+            return font != null ? font : Fonts[(int)Weight.Bold];
+        }
+
+        /// <summary>Un style de texte dans une graisse précise de la police du jeu (partagé, lui aussi).</summary>
+        public static GUIStyle Text(int fontSize, Weight weight, TextAnchor anchor, bool wordWrap = false)
+        {
+            int key = (Mathf.Clamp(fontSize, 0, 4095))
+                      | ((int)weight << 12)
+                      | ((int)anchor << 16)
+                      | (wordWrap ? 1 << 24 : 0)
+                      | (1 << 26);
+
+            GUIStyle style;
+            if (Styles.TryGetValue(key, out style) && style != null) return style;
+
+            style = new GUIStyle(GUI.skin.label);
+            style.fontSize = fontSize;
+            style.alignment = anchor;
+            style.wordWrap = wordWrap;
+            style.padding = new RectOffset(0, 0, 0, 0);
+            style.richText = false;
+
+            Font font = FontOf(weight);
+            if (font != null) style.font = font;
+            else style.fontStyle = weight >= Weight.Bold ? FontStyle.Bold : FontStyle.Normal;
+
+            Styles[key] = style;
+            return style;
+        }
+
+        /// <summary>Texte avec une ombre portée douce (au lieu d'un contour) : le style des menus.</summary>
+        public static void ShadowLabel(Rect rect, string text, GUIStyle style, Color color, float shadow = 0.55f)
+        {
+            Color previous = GUI.contentColor;
+            float offset = Mathf.Max(1f, style.fontSize * 0.05f);
+
+            GUI.contentColor = new Color(0f, 0f, 0f, color.a * shadow * Alpha);
+            GUI.Label(new Rect(rect.x, rect.y + offset, rect.width, rect.height), text, style);
+
+            GUI.contentColor = new Color(color.r, color.g, color.b, color.a * Alpha);
+            GUI.Label(rect, text, style);
+            GUI.contentColor = previous;
+        }
+
+        // ------------------------------------------------------------------ formes arrondies
+
+        private static readonly System.Collections.Generic.Dictionary<int, GUIStyle> Shapes =
+            new System.Collections.Generic.Dictionary<int, GUIStyle>(32);
+
+        /// <summary>Un rectangle aux coins arrondis, plein.</summary>
+        public static void Rounded(Rect rect, Color color, float radius)
+        {
+            DrawShape(rect, color, radius, 0f, 0f);
+        }
+
+        /// <summary>Le contour d'un rectangle aux coins arrondis.</summary>
+        public static void RoundedOutline(Rect rect, Color color, float radius, float thickness)
+        {
+            DrawShape(rect, color, radius, Mathf.Max(1f, thickness), 0f);
+        }
+
+        /// <summary>
+        /// Un halo autour d'un rectangle arrondi (ombre portée en noir, lueur de néon en couleur) :
+        /// il déborde de <paramref name="spread"/> pixels.
+        /// </summary>
+        public static void Glow(Rect rect, Color color, float radius, float spread)
+        {
+            spread = Mathf.Max(2f, spread);
+            Rect outer = new Rect(rect.x - spread, rect.y - spread, rect.width + spread * 2f, rect.height + spread * 2f);
+            DrawShape(outer, color, radius + spread, 0f, spread);
+        }
+
+        private static void DrawShape(Rect rect, Color color, float radius, float thickness, float blur)
+        {
+            if (Event.current == null || Event.current.type != EventType.Repaint) return;
+            if (rect.width <= 0.5f || rect.height <= 0.5f) return;
+
+            int r = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(radius, rect.width * 0.5f, rect.height * 0.5f)), 1, 96);
+            int t = Mathf.Clamp(Mathf.RoundToInt(thickness), 0, 16);
+            int b = Mathf.Clamp(Mathf.RoundToInt(blur), 0, 96);
+            if (b > 0) r = Mathf.Max(r, b + 1);
+
+            int key = r | (t << 8) | (b << 16);
+            GUIStyle style;
+            if (!Shapes.TryGetValue(key, out style) || style == null || style.normal.background == null)
+            {
+                style = new GUIStyle();
+                style.normal.background = ShapeTexture(r, t, b);
+                style.border = new RectOffset(r + 1, r + 1, r + 1, r + 1);
+                Shapes[key] = style;
+            }
+
+            Color previous = GUI.color;
+            GUI.color = new Color(color.r, color.g, color.b, color.a * Alpha);
+            style.Draw(rect, GUIContent.none, false, false, false, false);
+            GUI.color = previous;
+        }
+
+        /// <summary>
+        /// La texture d'un coin (tranchée en neuf à l'affichage) : rectangle arrondi de rayon r,
+        /// anticrénelé ; évidé si t > 0 (contour), estompé sur b pixels si b > 0 (halo).
+        /// </summary>
+        private static Texture2D ShapeTexture(int r, int t, int b)
+        {
+            int size = r * 2 + 3;
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            texture.hideFlags = HideFlags.HideAndDontSave;
+
+            Color[] pixels = new Color[size * size];
+            float centre = size * 0.5f;
+            float half = centre - 0.5f;   // demi-côté de la texture
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    // Distance signée au bord d'un rectangle arrondi (négative dedans).
+                    float px = Mathf.Abs(x + 0.5f - centre) - (half - r);
+                    float py = Mathf.Abs(y + 0.5f - centre) - (half - r);
+                    float outside = new Vector2(Mathf.Max(px, 0f), Mathf.Max(py, 0f)).magnitude + Mathf.Min(Mathf.Max(px, py), 0f) - r;
+
+                    float alpha;
+                    if (b > 0)
+                    {
+                        // Halo : plein à l'intérieur du rectangle, puis décroissance douce.
+                        float d = outside + b;
+                        alpha = d <= 0f ? 1f : Mathf.Pow(1f - Mathf.Clamp01(d / b), 2.2f);
+                    }
+                    else
+                    {
+                        alpha = Mathf.Clamp01(0.5f - outside);
+                        if (t > 0) alpha *= Mathf.Clamp01(0.5f + outside + t);
+                    }
+
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+                }
+            }
+
+            texture.SetPixels(pixels);
+            texture.Apply();
+            return texture;
         }
 
         /// <summary>

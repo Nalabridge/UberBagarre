@@ -117,18 +117,15 @@ namespace UberBagarre.Story
 
             Color background = _panelColor;
             background.a *= alpha;
-            GuiKit.Fill(panel, background);
+            GuiKit.Rounded(panel, background, 10f);
 
-            // Le chevron : il dit « voici ce qu'il faut faire » sans un mot de plus.
+            // La pastille : elle dit « voici ce qu'il faut faire » sans un mot de plus.
             Color mark = new Color(color.r, color.g, color.b, alpha * pulse);
-            GuiKit.Fill(new Rect(x, y, 3f, height), mark);
-            GuiKit.Fill(new Rect(x + 12f, y + height * 0.5f - 4f, 8f, 8f), mark);
+            GuiKit.Rounded(new Rect(x + 10f, y + height * 0.5f - 5f, 10f, 10f), mark, 5f);
 
             Rect textRect = new Rect(x + 28f, y + 4f, textWidth, height - 8f);
 
-            GuiKit.OutlinedLabel(textRect, text, style,
-                new Color(color.r, color.g, color.b, alpha),
-                new Color(0f, 0f, 0f, 0.85f * alpha), 1.2f);
+            GuiKit.ShadowLabel(textRect, text, style, new Color(color.r, color.g, color.b, alpha), 0.6f);
 
             if (!struck) return;
 

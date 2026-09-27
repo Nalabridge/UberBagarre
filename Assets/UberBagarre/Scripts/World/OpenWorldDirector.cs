@@ -1225,10 +1225,11 @@ namespace UberBagarre.World
             if (text == null) return;
 
             float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 5f);
-            Rect band = new Rect(Screen.width * 0.5f - 330f * unit, 24f * unit, 660f * unit, 34f * unit);
-            GuiKit.Fill(band, new Color(0f, 0f, 0f, 0.6f));
-            GuiKit.OutlinedLabel(band, text, _banner,
-                new Color(1f, 0.85f, 0.4f, pulse), new Color(0f, 0f, 0f, 0.8f), 1f);
+            Rect band = new Rect(Screen.width * 0.5f - 340f * unit, 24f * unit, 680f * unit, 38f * unit);
+            GuiKit.Glow(band, new Color(0f, 0f, 0f, 0.45f), 19f * unit, 10f * unit);
+            GuiKit.Rounded(band, new Color(0.07f, 0.064f, 0.1f, 0.85f), 19f * unit);
+            GuiKit.RoundedOutline(band, new Color(1f, 0.85f, 0.4f, 0.35f * pulse), 19f * unit, 1f);
+            GuiKit.ShadowLabel(band, text, _banner, new Color(1f, 0.85f, 0.4f, 0.6f + 0.4f * pulse), 0.5f);
         }
 
         /// <summary>La course en cours, en haut à gauche : qui, où, le temps, la consigne.</summary>
@@ -1242,12 +1243,14 @@ namespace UberBagarre.World
             bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
             float h = (hasGoal ? 104f : 70f) * unit;
 
-            GuiKit.Fill(new Rect(x, y, w, h), new Color(0f, 0f, 0f, 0.55f));
-            GuiKit.Fill(new Rect(x, y, 4f * unit, h), new Color(1f, 0.2f, 0.62f, 0.95f));
+            Rect card = new Rect(x, y, w, h);
+            GuiKit.Glow(card, new Color(0f, 0f, 0f, 0.45f), 14f * unit, 12f * unit);
+            GuiKit.Rounded(card, new Color(0.07f, 0.064f, 0.1f, 0.82f), 14f * unit);
+            GuiKit.RoundedOutline(card, new Color(1f, 1f, 1f, 0.07f), 14f * unit, 1f);
+            GuiKit.Rounded(new Rect(x + 6f * unit, y + 12f * unit, 4f * unit, h - 24f * unit), new Color(1f, 0.2f, 0.62f, 0.95f), 2f * unit);
 
             string header = "COURSE " + new string('★', Mathf.Clamp(_profile.stars, 1, 3)) + "  ·  " + _profile.name;
-            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 6f * unit, w - 20f * unit, 24f * unit), header, _title,
-                Color.white, Color.black, 1f);
+            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 8f * unit, w - 28f * unit, 24f * unit), header, _title, Color.white, 0.5f);
 
             string line = _spot != null ? _spot.name : "";
             if (_stage == Stage.EnRoute && _deadline > 0f)
@@ -1263,19 +1266,19 @@ namespace UberBagarre.World
             Color lineColor = _stage == Stage.EnRoute && _deadline > 0f && _deadline < 20f
                 ? new Color(1f, 0.35f, 0.3f)
                 : new Color(0.85f, 0.85f, 0.9f);
-            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 34f * unit, w - 20f * unit, 22f * unit), line, _small, lineColor, Color.black, 1f);
+            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 36f * unit, w - 28f * unit, 22f * unit), line, _small, lineColor, 0.5f);
 
             if (!hasGoal) return;
 
             string goal = "CONSIGNE : " + _objective.Text + "  (+" + _objective.Bonus + " €)";
-            GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 58f * unit, w - 20f * unit, 20f * unit), goal, _small,
-                new Color(1f, 0.8f, 0.35f), Color.black, 1f);
+            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 58f * unit, w - 28f * unit, 20f * unit), goal, _small,
+                new Color(1f, 0.8f, 0.35f), 0.5f);
 
             string progress = _objective.Evaluated ? (_objective.Succeeded ? "Consigne tenue ✓" : "Consigne ratée ✗") : _objective.Progress;
             if (!string.IsNullOrEmpty(progress))
             {
-                GuiKit.OutlinedLabel(new Rect(x + 14f * unit, y + 78f * unit, w - 20f * unit, 20f * unit), progress, _small,
-                    new Color(0.7f, 1f, 0.75f), Color.black, 1f);
+                GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 78f * unit, w - 28f * unit, 20f * unit), progress, _small,
+                    new Color(0.7f, 1f, 0.75f), 0.5f);
             }
         }
 
@@ -1284,9 +1287,11 @@ namespace UberBagarre.World
             if (Time.unscaledTime > _repNoticeUntil || string.IsNullOrEmpty(_repNotice)) return;
 
             float a = Mathf.Clamp01((_repNoticeUntil - Time.unscaledTime) / 0.6f);
-            Rect r = new Rect(Screen.width * 0.5f - 260f * unit, 66f * unit, 520f * unit, 28f * unit);
-            GuiKit.OutlinedLabel(r, _repNotice, _banner,
-                _repGood ? new Color(0.45f, 1f, 0.55f, a) : new Color(1f, 0.4f, 0.35f, a), new Color(0f, 0f, 0f, 0.8f * a), 1f);
+            Rect r = new Rect(Screen.width * 0.5f - 270f * unit, 70f * unit, 540f * unit, 32f * unit);
+            Color tone = _repGood ? new Color(0.45f, 1f, 0.55f, a) : new Color(1f, 0.4f, 0.35f, a);
+            GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.8f * a), 16f * unit);
+            GuiKit.RoundedOutline(r, new Color(tone.r, tone.g, tone.b, 0.5f * a), 16f * unit, 1f);
+            GuiKit.ShadowLabel(r, _repNotice, _banner, tone, 0.5f);
         }
 
         private void EnsureStyles()

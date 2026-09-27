@@ -206,7 +206,21 @@ namespace UberBagarre.World
             }
 
             Hold(true);
-            SceneManager.LoadScene(_sceneName, LoadSceneMode.Additive);
+
+            // En asynchrone, derrière l'écran de chargement : le jeu continue de s'afficher (la
+            // barre avance) au lieu de se figer plusieurs secondes sur une image noire.
+            UI.LoadingScreen.Hold(this, "HYLAND POINT", "La ville se réveille");
+            UI.LoadingScreen.Report(0.02f, "Chargement de la ville");
+            _loading = SceneManager.LoadSceneAsync(_sceneName, LoadSceneMode.Additive);
+        }
+
+        private AsyncOperation _loading;
+
+        private void ReportLoading()
+        {
+            if (_loading == null) return;
+            if (_loading.isDone) _loading = null;
+            else UI.LoadingScreen.Report(_loading.progress / 0.9f * 0.85f, "Chargement de la ville");
         }
 
         private void OnDestroy()
@@ -271,6 +285,7 @@ namespace UberBagarre.World
                                  "(fusionnees avec le decor). Menu Uber Bagarre → Preparer la ville, ou reconstruis le monde ouvert.");
             }
 
+            UI.LoadingScreen.Report(0.88f, "Ouverture des portes");
             int blockers = PrepareDoors(roots);
 
             for (int i = 0; i < _hideInCity.Length; i++)
@@ -317,8 +332,10 @@ namespace UberBagarre.World
         private IEnumerator Release()
         {
             // Une image pour que la physique ait vu la ville, puis on relâche le joueur.
+            UI.LoadingScreen.Report(0.95f, "Réveil du quartier");
             yield return null;
             Hold(false);
+            UI.LoadingScreen.Release(this);
 
             Action handler = Loaded;
             if (handler != null) handler();
@@ -608,6 +625,7 @@ namespace UberBagarre.World
 
         private void Update()
         {
+            ReportLoading();
             if (!Ready || _player == null || _rescuing || _safePoints.Length == 0) return;
 
             bool under = _player.position.y < _waterLevel - 1.3f;

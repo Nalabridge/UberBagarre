@@ -260,6 +260,14 @@ namespace UberBagarre.World
             _scene = true;
             if (_fader != null) _fader.SetBlackImmediate();
 
+            // L'écran de chargement : où l'on se réveille, et quel jour. Pas de numéro de
+            // chapitre — l'histoire avance d'elle-même, au téléphone.
+            bool fresh = _progress != null && !_progress.HasFlag("p:reveil");
+            string heading = fresh || _progress == null ? "MOTEL HYLAND" : "JOUR " + _progress.Day;
+            string detail = fresh ? "Chambre 3  ·  14 h 00" :
+                _progress != null ? _progress.Money + " EUR  ·  dette : " + _progress.Debt + " EUR" : "";
+            LoadingScreen.Hold(this, heading, detail);
+
             // La ville se charge par-dessus : on attend qu'elle soit là.
             float waited = 0f;
             while (!MapStreamer.Ready && waited < 30f)
@@ -270,13 +278,20 @@ namespace UberBagarre.World
 
             if (_director != null) _director.ReturnHome();
 
-            int chapter = _progress != null ? _progress.Chapter : Prologue;
-            bool fresh = _progress != null && !_progress.HasFlag("p:reveil");
+            // Deux images pour que tout soit en place (physique, portes, voitures) derrière l'écran.
+            yield return null;
+            yield return null;
+            LoadingScreen.Release(this);
+
+            waited = 0f;
+            while (LoadingScreen.Visible && waited < 20f)
+            {
+                waited += Time.unscaledDeltaTime;
+                yield return null;
+            }
 
             if (_fader != null)
             {
-                _fader.ShowCard(fresh ? "ÜBER BAGARRE" : ChapterName(chapter) + (_progress != null ? "\nJour " + _progress.Day : ""));
-                yield return new WaitForSeconds(fresh ? 2.6f : 1.8f);
                 if (fresh)
                 {
                     _fader.ShowCard("Motel Hyland, chambre 3.\nDeux heures de l'après-midi.");

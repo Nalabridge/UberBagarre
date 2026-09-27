@@ -143,7 +143,6 @@ namespace UberBagarre.UI
         private readonly GUIContent _glyph = new GUIContent();
         private static readonly string[] LogoLetters = { "Ü", "B", "E", "R", " ", "B", "A", "G", "A", "R", "R", "E" };
 
-        private Texture2D _gradient;
         private AudioSource _music;
         private AudioSource _ui;
         private AudioClip _musicClip;
@@ -215,7 +214,6 @@ namespace UberBagarre.UI
 
         private void OnDestroy()
         {
-            if (_gradient != null) Destroy(_gradient);
             if (_musicClip != null) Destroy(_musicClip);
             if (_tick != null) Destroy(_tick);
             if (_confirm != null) Destroy(_confirm);
@@ -401,29 +399,35 @@ namespace UberBagarre.UI
 
             Play(_confirm, 1f);
 
-            // Depuis la pause, on relance tout de suite (la pause fige le fondu).
+            // L'écran de chargement couvre tout, puis la partie se met en place derrière lui
+            // (au lieu d'une coupe sèche du menu vers le jeu).
+            LoadingScreen.Hold(this, beat == "continuer" ? "REPRISE" : "NOUVELLE PARTIE", "");
+
+            // Depuis la pause, on relance tout de suite (la pause fige le temps).
             if (_home == Page.Pause)
             {
                 CloseAll();
                 Launch(beat);
+                LoadingScreen.Release(this);
                 return;
             }
 
             _starting = true;
             _startTimer = 0f;
             _startBeat = beat;
-            if (_fader != null) _fader.FadeOut(0.7f);
         }
 
         private void UpdateStart(float dt)
         {
             _startTimer += dt;
             if (_home == Page.Title) UpdateShot(dt);
-            if (_startTimer < 0.8f) return;
+            if (!LoadingScreen.Covering && _startTimer < 1.5f) return;
 
             _starting = false;
+            if (_fader != null) _fader.SetBlackImmediate();
             CloseAll();
             Launch(_startBeat);
+            LoadingScreen.Release(this);
         }
 
         private void Launch(string beat)
@@ -449,7 +453,7 @@ namespace UberBagarre.UI
 
             Play(_confirm, 1f);
             if (_page != Page.None) CloseAll();
-            SceneManager.LoadScene(_storyScene);
+            LoadingScreen.LoadScene(_storyScene, "LE PROLOGUE", "La planque, le courrier, l'appel de Sami");
         }
 
         private void LoadSandbox()
@@ -458,7 +462,7 @@ namespace UberBagarre.UI
 
             Play(_confirm, 1f);
             CloseAll();
-            SceneManager.LoadScene(_sandboxScene);
+            LoadingScreen.LoadScene(_sandboxScene, "BAC À SABLE", "L'arène d'entraînement");
         }
 
         private void LoadOpenWorld()
@@ -467,7 +471,7 @@ namespace UberBagarre.UI
 
             Play(_confirm, 1f);
             CloseAll();
-            SceneManager.LoadScene(_openWorldScene);
+            LoadingScreen.LoadScene(_openWorldScene, "HYLAND POINT", "La ville se réveille");
         }
 
         private void BackToTitle()
@@ -479,7 +483,7 @@ namespace UberBagarre.UI
             if (!Application.CanStreamedLevelBeLoaded(scene)) return;
 
             CloseAll();
-            SceneManager.LoadScene(scene);
+            LoadingScreen.LoadScene(scene, "ÜBER BAGARRE", "Retour au menu");
         }
 
         private static void Quit()
@@ -697,15 +701,14 @@ namespace UberBagarre.UI
         {
             if (PlayerProgress.HasSave)
             {
-                int chapter = PlayerProgress.SavedChapter();
-                Add("CONTINUER", World.OpenWorldStory.ChapterName(chapter) + "  ·  " + PlayerProgress.SaveDescription(),
+                Add("CONTINUER", PlayerProgress.SaveDescription(),
                     delegate { StartStory("continuer"); });
             }
 
-            Add("NOUVELLE PARTIE", "Motel Hyland, chambre 3. Le courrier, l'appel de Sami, une appli qui n'existe pas." +
+            Add("NOUVELLE PARTIE", "Motel Hyland, chambre 3. Douze mille euros de dettes, un téléphone, et une appli qui n'existe pas." +
                                    (PlayerProgress.HasSave ? "  (La sauvegarde sera remplacée à la première nuit.)" : ""),
                 delegate { StartStory("chapitre:0"); });
-            Add("CHAPITRES", "Commencer à un chapitre précis.", delegate { Go(Page.Chapters); });
+            // Pas de chapitres : l'histoire ne s'annonce pas, elle arrive au téléphone, jour après jour.
 
             if (Application.CanStreamedLevelBeLoaded(_sandboxScene))
             {
@@ -1003,103 +1006,156 @@ namespace UberBagarre.UI
             GuiKit.Alpha = _open;
 
             bool title = _home == Page.Title;
-            EnsureGradient();
 
-            // Fond : sur l'ecran titre, la pluie, une voiture qui passe de temps en temps, et un
-            // degrade qui laisse voir la scene a droite ; en pause, un voile sur l'image figee et
-            // un panneau qui glisse depuis la gauche.
+            // Fond : sur l'ecran titre, le survol de la ville, la pluie, une voiture qui passe de
+            // temps en temps, et un voile sombre en haut et en bas ; en pause, l'image figee
+            // assombrie, et un panneau au milieu.
             if (title)
             {
                 DrawRain(sw, sh, u);
                 DrawPassingCar(sw, sh);
+                DrawVignette(sw, sh);
 
-                Color color = GUI.color;
-                GUI.color = new Color(0f, 0f, 0f, 0.92f * _open);
-                GUI.DrawTexture(new Rect(0f, 0f, sw * 0.62f, sh), _gradient);
-                GUI.color = color;
-
-                // Entre deux plans du survol, un noir bref.
+                // Entre deux plans du survol, un noir bref ; tant que la ville se charge, du noir
+                // (l'ecran de chargement est par-dessus).
                 float black = TourBlack;
-
-                // La ville se charge encore : du noir, et le dire (quelques secondes).
-                bool loading = _openWorld != null && !World.MapStreamer.Ready && _titleTime < 30f;
-                if (loading) black = 1f;
+                if (_openWorld != null && !World.MapStreamer.Ready && _titleTime < 30f) black = 1f;
                 if (black > 0.001f) GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0f, 0f, 0f, black));
 
-                if (loading)
-                {
-                    GUIStyle small = GuiKit.Style(Mathf.RoundToInt(18f * u), FontStyle.Bold, TextAnchor.MiddleRight);
-                    string dots = new string('.', 1 + Mathf.FloorToInt(Time.unscaledTime * 2f) % 3);
-                    GuiKit.OutlinedLabel(new Rect(0f, sh - 90f * u, sw - 60f * u, 30f * u), "CHARGEMENT DE LA VILLE" + dots, small,
-                        new Color(1f, 1f, 1f, 0.7f), new Color(0f, 0f, 0f, 0.9f), 1f);
-                }
-
                 // Les bandes de cinema, qui s'ouvrent a l'arrivee de l'ecran titre.
-                float bars = Mathf.Lerp(0.5f, 0.07f, Ease(Mathf.Clamp01(_titleTime / 1.2f)));
+                float bars = Mathf.Lerp(0.5f, 0.055f, Ease(Mathf.Clamp01(_titleTime / 1.2f)));
                 GuiKit.Fill(new Rect(0f, 0f, sw, sh * bars), new Color(0f, 0f, 0f, 1f));
                 GuiKit.Fill(new Rect(0f, sh * (1f - bars), sw, sh * bars), new Color(0f, 0f, 0f, 1f));
             }
             else
             {
-                GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.02f, 0.02f, 0.04f, 0.55f));
-
-                float slide = (Ease(_open) - 1f) * sw * 0.62f;
-                Color color = GUI.color;
-                GUI.color = new Color(0f, 0f, 0f, 0.85f * _open);
-                GUI.DrawTexture(new Rect(slide, 0f, sw * 0.62f, sh), _gradient);
-                GUI.color = color;
-
-                GuiKit.Fill(new Rect(slide + sw * 0.62f - 2f, 0f, 2f, sh), new Color(Accent.r, Accent.g, Accent.b, 0.25f));
+                GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0.02f, 0.018f, 0.035f, 0.74f));
+                GuiKit.Disc(new Rect(sw * 0.15f, sh * 0.1f, sw * 0.7f, sh * 0.8f), new Color(Accent.r, Accent.g, Accent.b, 0.07f));
             }
 
-            float left = 110f * u;
-            float top = title ? sh * 0.14f : sh * 0.12f;
+            if (_page == Page.Title)
+            {
+                float glowPulse = 0.85f + Mathf.Sin(Time.unscaledTime * 2.1f) * 0.08f + Mathf.Sin(Time.unscaledTime * 13f) * 0.02f;
+                DrawNeonLogo(sw * 0.5f, sh * 0.13f, u, glowPulse);
 
-            DrawLogo(left, top, u, title);
+                float width = 470f * u;
+                Rect column = new Rect((sw - width) * 0.5f, sh * 0.4f, width, sh * 0.5f);
+                GuiKit.Disc(new Rect(column.x - 260f * u, column.y - 120f * u, column.width + 520f * u, column.height + 200f * u),
+                    new Color(0f, 0f, 0f, 0.45f));
+                DrawItems(column, true, u);
+            }
+            else
+            {
+                Rect panel = PanelRect(sw, sh, u);
+                Rect content = DrawPanel(panel, u);
 
-            float listTop = top + (title ? 230f : 150f) * u;
-            if (_page == Page.Controls) DrawControls(left, listTop, u, sw, sh);
-            DrawItems(left, _page == Page.Controls ? sh * 0.84f - 50f * u : listTop, u, sw, sh);
+                if (_page == Page.Controls)
+                {
+                    float list = 90f * u;
+                    DrawControls(new Rect(content.x, content.y, content.width, content.height - list), u);
+                    DrawItems(new Rect(content.x, content.yMax - list + 16f * u, content.width, list), false, u);
+                }
+                else
+                {
+                    DrawItems(content, _page == Page.Pause, u);
+                }
+            }
+
             DrawFooter(u, sw, sh);
 
             GuiKit.Alpha = previous;
         }
 
-        private void DrawLogo(float left, float top, float u, bool title)
+        /// <summary>Le voile de l'écran titre : sombre en haut (sous le logo) et en bas, clair au milieu.</summary>
+        private void DrawVignette(float sw, float sh)
         {
-            float glowPulse = 0.85f + Mathf.Sin(Time.unscaledTime * 2.1f) * 0.08f + Mathf.Sin(Time.unscaledTime * 13f) * 0.02f;
-
-            if (title && _page == Page.Title)
+            const int steps = 24;
+            for (int i = 0; i < steps; i++)
             {
-                DrawNeonLogo(left, top, u, glowPulse);
-                return;
+                float t = i / (float)steps;
+                float top = Mathf.Pow(1f - t, 2f) * 0.62f;
+                float bottom = Mathf.Pow(t, 2.2f) * 0.8f;
+                GuiKit.Fill(new Rect(0f, sh * t, sw, sh / steps + 1f), new Color(0f, 0f, 0f, Mathf.Max(top, bottom)));
+            }
+        }
+
+        /// <summary>La place du panneau d'une page (centré), selon ce qu'il contient.</summary>
+        private Rect PanelRect(float sw, float sh, float u)
+        {
+            Page shown = _page;
+            float width;
+            float height;
+
+            switch (shown)
+            {
+                case Page.Graphics:
+                    width = Mathf.Min(sw - 80f * u, 1060f * u);
+                    height = sh * 0.8f;
+                    break;
+                case Page.Controls:
+                    width = Mathf.Min(sw - 80f * u, 1400f * u);
+                    height = Mathf.Min(sh * 0.84f, 560f * u + 200f * u);
+                    break;
+                case Page.Chapters:
+                    width = Mathf.Min(sw - 80f * u, 720f * u);
+                    height = Mathf.Min(sh * 0.8f, (150f + _items.Count * 64f + 90f) * u);
+                    break;
+                default:
+                    width = Mathf.Min(sw - 80f * u, 560f * u);
+                    height = Mathf.Min(sh * 0.84f, (150f + _items.Count * 72f + 80f) * u);
+                    break;
             }
 
-            // Le titre de la page tombe d'en haut ; la barre d'accent s'etire derriere lui.
-            float appear = Ease(Mathf.Clamp01(_pageTime / 0.25f));
-            float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
-            float previous = GuiKit.Alpha;
-            GuiKit.Alpha = previous * appear * (1f - leave);
-
-            float y = top - (1f - appear) * 26f * u - leave * 14f * u;
-            string heading = PageName(_page);
-            GUIStyle big = GuiKit.Style(Mathf.RoundToInt(64f * u), FontStyle.Bold, TextAnchor.UpperLeft);
-            GuiKit.OutlinedLabel(new Rect(left, y, 1200f * u, 80f * u), heading, big, Ink, new Color(0f, 0f, 0f, 0.9f), 2f);
-
-            float grow = Ease(Mathf.Clamp01((_pageTime - 0.08f) / 0.3f));
-            GuiKit.Fill(new Rect(left + 3f * u, y + 82f * u, 110f * u * grow, 5f * u), Accent);
-
-            GuiKit.Alpha = previous;
+            return new Rect((sw - width) * 0.5f, (sh - height) * 0.5f, width, height);
         }
 
         /// <summary>
-        /// Le nom du jeu, allumé comme un néon : les lettres s'allument une à une en grésillant,
-        /// puis de temps en temps l'une d'elles clignote, et toutes les huit secondes l'enseigne
-        /// « saute » (décalage rouge et cyan) une fraction de seconde.
+        /// Le panneau d'une page : verre sombre aux coins arrondis, titre en haut à gauche et son
+        /// trait d'accent. Il monte un peu en apparaissant et s'efface en changeant de page.
+        /// Rend la zone intérieure.
         /// </summary>
-        private void DrawNeonLogo(float left, float top, float u, float glowPulse)
+        private Rect DrawPanel(Rect panel, float u)
         {
-            GUIStyle huge = GuiKit.Style(Mathf.RoundToInt(112f * u), FontStyle.Bold, TextAnchor.UpperLeft);
+            float appear = Ease(Mathf.Clamp01(_pageTime / 0.28f));
+            float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
+            panel.y += (1f - appear) * 24f * u - leave * 12f * u;
+
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * appear * (1f - leave);
+
+            float radius = 22f * u;
+            GuiKit.Glow(panel, new Color(0f, 0f, 0f, 0.6f), radius, 30f * u);
+            GuiKit.Rounded(panel, new Color(0.075f, 0.068f, 0.11f, 0.94f), radius);
+            GuiKit.RoundedOutline(panel, new Color(1f, 1f, 1f, 0.07f), radius, 1f);
+            GuiKit.Rounded(new Rect(panel.x + radius, panel.y, panel.width - radius * 2f, 3f * u), new Color(Accent.r, Accent.g, Accent.b, 0.8f), 1.5f * u);
+
+            GUIStyle heading = GuiKit.Text(Mathf.RoundToInt(40f * u), GuiKit.Weight.Black, TextAnchor.MiddleLeft);
+            GuiKit.ShadowLabel(new Rect(panel.x + 40f * u, panel.y + 26f * u, panel.width - 80f * u, 56f * u), PageName(_page), heading, Ink, 0.5f);
+
+            float grow = Ease(Mathf.Clamp01((_pageTime - 0.08f) / 0.3f));
+            GuiKit.Rounded(new Rect(panel.x + 42f * u, panel.y + 84f * u, 64f * u * grow, 4f * u), Accent, 2f * u);
+
+            GuiKit.Alpha = previous;
+            return new Rect(panel.x + 36f * u, panel.y + 112f * u, panel.width - 72f * u, panel.height - 140f * u);
+        }
+
+        /// <summary>
+        /// Le nom du jeu, allumé comme un néon, centré sur <paramref name="centre"/> : les lettres
+        /// s'allument une à une en grésillant, puis de temps en temps l'une d'elles clignote, et
+        /// toutes les huit secondes l'enseigne « saute » (décalage rouge et cyan).
+        /// </summary>
+        private void DrawNeonLogo(float centre, float top, float u, float glowPulse)
+        {
+            GUIStyle huge = GuiKit.Text(Mathf.RoundToInt(118f * u), GuiKit.Weight.Black, TextAnchor.UpperLeft);
+
+            float total = 0f;
+            for (int i = 0; i < LogoLetters.Length; i++)
+            {
+                _glyph.text = LogoLetters[i];
+                total += huge.CalcSize(_glyph).x * 0.96f;
+            }
+
+            float left = centre - total * 0.5f;
 
             int lit = 0;
             for (int i = 0; i < LogoLetters.Length; i++)
@@ -1108,8 +1164,8 @@ namespace UberBagarre.UI
             }
 
             float ignition = lit / (float)LogoLetters.Length;
-            GuiKit.Disc(new Rect(left - 120f * u, top - 90f * u, 900f * u, 330f * u),
-                new Color(Accent.r, Accent.g, Accent.b, 0.24f * glowPulse * ignition));
+            GuiKit.Disc(new Rect(centre - total * 0.5f - 200f * u, top - 90f * u, total + 400f * u, 330f * u),
+                new Color(Accent.r, Accent.g, Accent.b, 0.26f * glowPulse * ignition));
 
             bool glitch = _titleTime > 3f && (_titleTime % 8f) > 7.82f;
             if (glitch)
@@ -1121,15 +1177,15 @@ namespace UberBagarre.UI
             DrawLetters(huge, left, top, u, new Color(1f, 0.95f, 0.97f), true);
 
             float bar = Ease(Mathf.Clamp01((_titleTime - 1.3f) / 0.5f));
-            GuiKit.Fill(new Rect(left + 4f * u, top + 132f * u, 150f * u * bar, 6f * u), Accent);
+            GuiKit.Rounded(new Rect(centre - 90f * u * bar, top + 146f * u, 180f * u * bar, 5f * u), Accent, 2.5f * u);
 
             float tag = Mathf.Clamp01((_titleTime - 1.6f) / 0.6f);
             float previous = GuiKit.Alpha;
             GuiKit.Alpha = previous * tag;
 
-            GUIStyle tagline = GuiKit.Style(Mathf.RoundToInt(22f * u), FontStyle.Bold, TextAnchor.UpperLeft);
-            GuiKit.OutlinedLabel(new Rect(left + 4f * u + (1f - tag) * 20f * u, top + 150f * u, 900f * u, 30f * u),
-                "LIVRAISON DE BAGARRES À DOMICILE", tagline, new Color(1f, 0.82f, 0.35f), new Color(0f, 0f, 0f, 0.9f), 1.5f);
+            GUIStyle tagline = GuiKit.Text(Mathf.RoundToInt(21f * u), GuiKit.Weight.Bold, TextAnchor.UpperCenter);
+            GuiKit.ShadowLabel(new Rect(0f, top + 166f * u + (1f - tag) * 12f * u, Screen.width, 30f * u),
+                "LIVRAISON DE BAGARRES À DOMICILE", tagline, new Color(1f, 0.82f, 0.35f), 0.7f);
 
             GuiKit.Alpha = previous;
         }
@@ -1152,7 +1208,7 @@ namespace UberBagarre.UI
                     Color o = new Color(outline.r, outline.g, outline.b, outline.a * Mathf.Max(0.3f, light));
                     float drop = (1f - Mathf.Clamp01((_titleTime - LetterStart(i)) / 0.25f)) * -10f * u;
 
-                    GuiKit.OutlinedLabel(new Rect(x, top + drop, width + 20f * u, 130f * u), LogoLetters[i], style, c, o, 3f * u);
+                    GuiKit.OutlinedLabel(new Rect(x, top + drop, width + 20f * u, 140f * u), LogoLetters[i], style, c, o, 3f * u);
                 }
 
                 x += width * 0.96f;
@@ -1263,13 +1319,19 @@ namespace UberBagarre.UI
             }
         }
 
-        private void DrawItems(float left, float top, float u, float sw, float sh)
+        /// <summary>
+        /// Les lignes d'une page, dans <paramref name="area"/>. En « pilules » (écran titre,
+        /// pause) : de gros boutons arrondis, texte centré, celui choisi allumé en magenta. Sinon
+        /// (réglages, chapitres) : des lignes, libellé à gauche, valeur à droite.
+        /// </summary>
+        private void DrawItems(Rect area, bool pills, float u)
         {
             bool settings = _page == Page.Graphics;
-            float rowHeight = (settings ? 44f : 58f) * u;
-            float width = settings ? Mathf.Min(sw - left * 2f, 900f * u) : 620f * u;
-            float bottom = sh * 0.86f;
-            int visible = Mathf.Max(3, Mathf.FloorToInt((bottom - top) / rowHeight));
+            float rowHeight = (pills ? 60f : settings ? 46f : 58f) * u;
+            float gap = (pills ? 12f : 6f) * u;
+            float step = rowHeight + gap;
+            float hintSpace = 64f * u;
+            int visible = Mathf.Max(1, Mathf.FloorToInt((area.height - hintSpace + gap) / step));
 
             // Le defilement suit la selection au clavier ; la molette le deplace librement.
             if (_selected < _scroll) _scroll = _selected;
@@ -1280,30 +1342,35 @@ namespace UberBagarre.UI
             Event e = Event.current;
             Vector2 mouse = e.mousePosition;
 
-            GUIStyle label = GuiKit.Style(Mathf.RoundToInt((settings ? 21f : 30f) * u), FontStyle.Bold, TextAnchor.MiddleLeft);
-            GUIStyle value = GuiKit.Style(Mathf.RoundToInt(20f * u), FontStyle.Bold, TextAnchor.MiddleRight);
+            GUIStyle label = pills
+                ? GuiKit.Text(Mathf.RoundToInt(23f * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter)
+                : GuiKit.Text(Mathf.RoundToInt((settings ? 19f : 22f) * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            GUIStyle value = GuiKit.Text(Mathf.RoundToInt(18f * u), GuiKit.Weight.Bold, TextAnchor.MiddleRight);
+            GUIStyle centred = GuiKit.Text(Mathf.RoundToInt(18f * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
+            GUIStyle arrow = GuiKit.Text(Mathf.RoundToInt(26f * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
 
-            // Les lignes entrent l'une apres l'autre depuis la gauche, et sortent vers la droite.
+            // Les lignes montent l'une apres l'autre, et s'effacent en changeant de page.
             float baseAlpha = GuiKit.Alpha;
             float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
             bool interactive = !_leaving;
+            float listBottom = area.y;
 
             for (int row = 0; row < visible && first + row < _items.Count; row++)
             {
                 int index = first + row;
                 Item item = _items[index];
 
-                float appear = Ease(Mathf.Clamp01((_pageTime - row * 0.045f) / 0.24f));
+                float appear = Ease(Mathf.Clamp01((_pageTime - 0.05f - row * 0.04f) / 0.26f));
                 float rowAlpha = appear * (1f - leave);
+                Rect rect = new Rect(area.x, area.y + row * step + (1f - appear) * 18f * u - leave * 10f * u, area.width, rowHeight);
+                listBottom = Mathf.Max(listBottom, area.y + row * step + rowHeight);
                 if (rowAlpha <= 0.01f) continue;
 
                 GuiKit.Alpha = baseAlpha * rowAlpha;
-                float shift = (1f - appear) * -70f * u + leave * 110f * u;
-                Rect rect = new Rect(left + shift, top + row * rowHeight, width, rowHeight - 6f * u);
 
                 if (item.Separator)
                 {
-                    GuiKit.Fill(new Rect(rect.x, rect.center.y, rect.width, 1f), new Color(1f, 1f, 1f, 0.12f));
+                    GuiKit.Fill(new Rect(rect.x + 20f * u, rect.center.y, rect.width - 40f * u, 1f), new Color(1f, 1f, 1f, 0.1f));
                     continue;
                 }
 
@@ -1315,38 +1382,65 @@ namespace UberBagarre.UI
                 }
 
                 bool selected = index == _selected;
-                float slide = selected ? 14f * u : 0f;
+                float radius = (pills ? rowHeight * 0.5f : 12f * u);
 
-                if (selected)
+                if (pills)
                 {
-                    GuiKit.Fill(rect, new Color(1f, 1f, 1f, 0.07f));
-
-                    // La barre d'accent respire, et un reflet balaie la ligne choisie.
-                    float bar = (5f + Mathf.Sin(Time.unscaledTime * 5f) * 1.5f) * u;
-                    GuiKit.Fill(new Rect(rect.x, rect.y, bar, rect.height), Accent);
-
-                    float sweep = (Time.unscaledTime * 0.9f) % 1.8f;
-                    if (sweep < 1f)
+                    if (selected)
                     {
-                        float glintWidth = 34f * u;
-                        float x = rect.x + (rect.width - glintWidth) * sweep;
-                        GuiKit.Fill(new Rect(x, rect.y, glintWidth, rect.height), new Color(1f, 1f, 1f, 0.06f * (1f - sweep)));
+                        float breathe = 0.4f + Mathf.Sin(Time.unscaledTime * 4f) * 0.08f;
+                        Rect big = new Rect(rect.x - 6f * u, rect.y, rect.width + 12f * u, rect.height);
+                        GuiKit.Glow(big, new Color(Accent.r, Accent.g, Accent.b, breathe), radius, 20f * u);
+                        GuiKit.Rounded(big, Accent, radius);
+
+                        // Un reflet balaie le bouton choisi.
+                        float sweep = (Time.unscaledTime * 0.8f) % 1.8f;
+                        if (sweep < 1f)
+                        {
+                            float glint = 70f * u;
+                            GuiKit.Rounded(new Rect(big.x + (big.width - glint) * sweep, big.y, glint, big.height),
+                                new Color(1f, 1f, 1f, 0.12f * (1f - sweep)), radius);
+                        }
+
+                        rect = big;
                     }
+                    else
+                    {
+                        GuiKit.Rounded(rect, new Color(0.07f, 0.06f, 0.1f, 0.78f), radius);
+                        GuiKit.RoundedOutline(rect, new Color(1f, 1f, 1f, hover ? 0.22f : 0.1f), radius, 1f);
+                    }
+
+                    GuiKit.ShadowLabel(rect, item.Label, label, selected ? Color.white : new Color(0.84f, 0.84f, 0.88f), selected ? 0.35f : 0.5f);
+                }
+                else
+                {
+                    if (selected)
+                    {
+                        GuiKit.Rounded(rect, new Color(Accent.r, Accent.g, Accent.b, 0.16f), radius);
+                        GuiKit.RoundedOutline(rect, new Color(Accent.r, Accent.g, Accent.b, 0.75f), radius, 1.5f * u);
+                        GuiKit.Rounded(new Rect(rect.x + 8f * u, rect.y + rect.height * 0.25f, 4f * u, rect.height * 0.5f), Accent, 2f * u);
+                    }
+                    else
+                    {
+                        GuiKit.Rounded(rect, new Color(1f, 1f, 1f, hover ? 0.07f : 0.035f), radius);
+                    }
+
+                    GuiKit.ShadowLabel(new Rect(rect.x + 26f * u, rect.y, rect.width * 0.55f, rect.height), item.Label, label,
+                        selected ? Ink : Dim, 0.4f);
                 }
 
-                Color textColor = selected ? Ink : Dim;
-                GuiKit.OutlinedLabel(new Rect(rect.x + 18f * u + slide, rect.y, rect.width * 0.55f, rect.height), item.Label, label,
-                    textColor, new Color(0f, 0f, 0f, 0.85f), 1.5f);
-
-                Rect barRect = new Rect(rect.xMax - 330f * u, rect.center.y - 5f * u, 220f * u, 10f * u);
+                Rect barRect = new Rect(rect.xMax - 340f * u, rect.center.y - 3f * u, 220f * u, 6f * u);
 
                 if (item.Get01 != null)
                 {
                     // Barre de reglage : clic ou glisser pour choisir la valeur.
                     float t = Mathf.Clamp01(item.Get01());
-                    GuiKit.Fill(barRect, new Color(1f, 1f, 1f, 0.12f));
-                    GuiKit.Fill(new Rect(barRect.x, barRect.y, barRect.width * t, barRect.height), selected ? Accent : new Color(0.7f, 0.7f, 0.75f));
-                    GuiKit.Fill(new Rect(barRect.x + barRect.width * t - 3f * u, barRect.y - 5f * u, 6f * u, barRect.height + 10f * u), Ink);
+                    GuiKit.Rounded(barRect, new Color(1f, 1f, 1f, 0.12f), 3f * u);
+                    GuiKit.Rounded(new Rect(barRect.x, barRect.y, Mathf.Max(barRect.height, barRect.width * t), barRect.height),
+                        selected ? Accent : new Color(0.7f, 0.7f, 0.76f), 3f * u);
+                    float knob = 16f * u;
+                    GuiKit.Rounded(new Rect(barRect.x + barRect.width * t - knob * 0.5f, barRect.center.y - knob * 0.5f, knob, knob),
+                        selected ? Color.white : new Color(0.8f, 0.8f, 0.84f), knob * 0.5f);
 
                     Rect grab = new Rect(barRect.x - 8f * u, rect.y, barRect.width + 16f * u, rect.height);
                     if (interactive && e.type == EventType.MouseDown && e.button == 0 && grab.Contains(mouse)) _dragging = index;
@@ -1356,20 +1450,20 @@ namespace UberBagarre.UI
                         e.Use();
                     }
 
-                    GuiKit.OutlinedLabel(new Rect(rect.xMax - 100f * u, rect.y, 90f * u, rect.height), item.Value(), value,
-                        selected ? Ink : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
+                    GuiKit.ShadowLabel(new Rect(rect.xMax - 104f * u, rect.y, 84f * u, rect.height), item.Value(), value,
+                        selected ? Ink : Dim, 0.4f);
                 }
                 else if (item.Value != null)
                 {
-                    // Choix : fleches cliquables de part et d'autre de la valeur.
-                    Rect valueRect = new Rect(rect.xMax - 330f * u, rect.y, 300f * u, rect.height);
-                    GUIStyle centred = GuiKit.Style(Mathf.RoundToInt(20f * u), FontStyle.Bold, TextAnchor.MiddleCenter);
-                    GuiKit.OutlinedLabel(valueRect, item.Value(), centred, selected ? Ink : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
+                    // Choix : fleches cliquables de part et d'autre de la valeur, dans une pastille.
+                    Rect valueRect = new Rect(rect.xMax - 340f * u, rect.y + 6f * u, 320f * u, rect.height - 12f * u);
+                    GuiKit.Rounded(valueRect, new Color(0f, 0f, 0f, 0.28f), valueRect.height * 0.5f);
+                    GuiKit.ShadowLabel(valueRect, item.Value(), centred, selected ? Ink : Dim, 0.4f);
 
-                    Rect leftArrow = new Rect(valueRect.x, rect.y, 40f * u, rect.height);
-                    Rect rightArrow = new Rect(valueRect.xMax - 40f * u, rect.y, 40f * u, rect.height);
-                    GuiKit.OutlinedLabel(leftArrow, "‹", centred, selected ? Accent : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
-                    GuiKit.OutlinedLabel(rightArrow, "›", centred, selected ? Accent : Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
+                    Rect leftArrow = new Rect(valueRect.x, valueRect.y, 40f * u, valueRect.height);
+                    Rect rightArrow = new Rect(valueRect.xMax - 40f * u, valueRect.y, 40f * u, valueRect.height);
+                    GuiKit.ShadowLabel(leftArrow, "‹", arrow, selected ? Accent : Dim, 0.3f);
+                    GuiKit.ShadowLabel(rightArrow, "›", arrow, selected ? Accent : Dim, 0.3f);
 
                     if (interactive && e.type == EventType.MouseDown && e.button == 0)
                     {
@@ -1389,6 +1483,17 @@ namespace UberBagarre.UI
 
             GuiKit.Alpha = baseAlpha * (1f - leave);
 
+            // Plus de lignes que de place : une barre de defilement fine, a droite.
+            if (_items.Count > visible)
+            {
+                float trackHeight = visible * step - gap;
+                Rect track = new Rect(area.xMax + 12f * u, area.y, 4f * u, trackHeight);
+                GuiKit.Rounded(track, new Color(1f, 1f, 1f, 0.08f), 2f * u);
+                float thumb = trackHeight * visible / _items.Count;
+                float at = (trackHeight - thumb) * (_scroll / Mathf.Max(1f, _items.Count - visible));
+                GuiKit.Rounded(new Rect(track.x, track.y + at, track.width, thumb), new Color(1f, 1f, 1f, 0.35f), 2f * u);
+            }
+
             if (e.type == EventType.MouseUp) _dragging = -1;
 
             if (e.type == EventType.ScrollWheel)
@@ -1400,13 +1505,16 @@ namespace UberBagarre.UI
             // L'explication de la ligne choisie, sous la liste.
             if (_selected >= 0 && _selected < _items.Count && !string.IsNullOrEmpty(_items[_selected].Hint))
             {
-                GUIStyle hint = GuiKit.Style(Mathf.RoundToInt(18f * u), FontStyle.Normal, TextAnchor.UpperLeft, true);
-                GuiKit.OutlinedLabel(new Rect(left + 18f * u, Mathf.Min(bottom, top + visible * rowHeight) + 8f * u, width, 50f * u),
-                    _items[_selected].Hint, hint, new Color(0.85f, 0.86f, 0.9f), new Color(0f, 0f, 0f, 0.85f), 1f);
+                GUIStyle hint = GuiKit.Text(Mathf.RoundToInt(17f * u), GuiKit.Weight.Medium,
+                    pills ? TextAnchor.UpperCenter : TextAnchor.UpperLeft, true);
+                float width = pills ? Mathf.Max(area.width, 720f * u) : area.width;
+                float x = pills ? area.center.x - width * 0.5f : area.x + 8f * u;
+                GuiKit.ShadowLabel(new Rect(x, listBottom + 18f * u, width, 50f * u), _items[_selected].Hint, hint,
+                    new Color(0.86f, 0.87f, 0.91f), 0.7f);
             }
         }
 
-        private void DrawControls(float left, float top, float u, float sw, float sh)
+        private void DrawControls(Rect area, float u)
         {
             if (_input == null || _input.Bindings == null) return;
             var b = _input.Bindings;
@@ -1433,13 +1541,14 @@ namespace UberBagarre.UI
                 { "Menu du bac à sable, triche", b.toggleSandboxMenu.ToString() },
             };
 
-            float rowHeight = 33f * u;
             int count = rows.GetLength(0);
             int perColumn = Mathf.CeilToInt(count / 2f);
-            float columnWidth = Mathf.Min((sw - left * 2f) * 0.5f, 760f * u);
+            float columnGap = 28f * u;
+            float columnWidth = (area.width - columnGap) * 0.5f;
+            float rowHeight = Mathf.Min(40f * u, area.height / perColumn);
 
-            GUIStyle action = GuiKit.Style(Mathf.RoundToInt(19f * u), FontStyle.Normal, TextAnchor.MiddleLeft);
-            GUIStyle key = GuiKit.Style(Mathf.RoundToInt(19f * u), FontStyle.Bold, TextAnchor.MiddleRight);
+            GUIStyle action = GuiKit.Text(Mathf.RoundToInt(17f * u), GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            GUIStyle key = GuiKit.Text(Mathf.RoundToInt(15f * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
 
             float baseAlpha = GuiKit.Alpha;
             float leave = _leaving ? Ease(Mathf.Clamp01(_leaveTime / LeaveDuration)) : 0f;
@@ -1452,29 +1561,65 @@ namespace UberBagarre.UI
                 // Les deux colonnes se remplissent en cascade.
                 float appear = Ease(Mathf.Clamp01((_pageTime - (row + column * 0.5f) * 0.03f) / 0.22f));
                 GuiKit.Alpha = baseAlpha * appear * (1f - leave);
-                float shift = (1f - appear) * -50f * u + leave * 90f * u;
 
-                Rect rect = new Rect(left + shift + column * (columnWidth + 40f * u), top + row * rowHeight, columnWidth, rowHeight - 4f * u);
+                Rect rect = new Rect(area.x + column * (columnWidth + columnGap), area.y + row * rowHeight + (1f - appear) * 12f * u,
+                    columnWidth, rowHeight - 5f * u);
 
-                GuiKit.Fill(rect, new Color(1f, 1f, 1f, row % 2 == 0 ? 0.05f : 0.02f));
-                GuiKit.OutlinedLabel(new Rect(rect.x + 12f * u, rect.y, rect.width * 0.6f, rect.height), rows[i, 0], action,
-                    Dim, new Color(0f, 0f, 0f, 0.85f), 1f);
-                GuiKit.OutlinedLabel(new Rect(rect.x, rect.y, rect.width - 12f * u, rect.height), rows[i, 1].ToUpperInvariant(), key,
-                    Ink, new Color(0f, 0f, 0f, 0.85f), 1f);
+                GuiKit.Rounded(rect, new Color(1f, 1f, 1f, row % 2 == 0 ? 0.045f : 0.025f), 8f * u);
+                GuiKit.ShadowLabel(new Rect(rect.x + 14f * u, rect.y, rect.width * 0.6f, rect.height), rows[i, 0], action, Dim, 0.4f);
+
+                // La touche, dans une pastille façon touche de clavier.
+                string text = rows[i, 1].ToUpperInvariant();
+                _glyph.text = text;
+                float keyWidth = Mathf.Min(rect.width * 0.45f, key.CalcSize(_glyph).x + 22f * u);
+                Rect cap = new Rect(rect.xMax - keyWidth - 10f * u, rect.y + 5f * u, keyWidth, rect.height - 10f * u);
+                GuiKit.Rounded(cap, new Color(1f, 1f, 1f, 0.1f), 6f * u);
+                GuiKit.RoundedOutline(cap, new Color(1f, 1f, 1f, 0.16f), 6f * u, 1f);
+                GuiKit.ShadowLabel(cap, text, key, Ink, 0.3f);
             }
 
             GuiKit.Alpha = baseAlpha;
         }
 
+        /// <summary>En bas au centre : les touches du menu, dans des pastilles.</summary>
         private void DrawFooter(float u, float sw, float sh)
         {
-            GUIStyle style = GuiKit.Style(Mathf.RoundToInt(17f * u), FontStyle.Normal, TextAnchor.MiddleRight);
-            string text = _page == Page.Graphics
-                ? "↑ ↓  choisir     ← →  régler     clic : régler     ÉCHAP  retour"
-                : "↑ ↓  choisir     ENTRÉE  valider     ÉCHAP  retour";
+            string[] keys = _page == Page.Graphics
+                ? new[] { "↑ ↓", "choisir", "← →", "régler", "ÉCHAP", "retour" }
+                : _page == Page.Title
+                    ? new[] { "↑ ↓", "choisir", "ENTRÉE", "valider" }
+                    : new[] { "↑ ↓", "choisir", "ENTRÉE", "valider", "ÉCHAP", "retour" };
 
-            GuiKit.OutlinedLabel(new Rect(0f, sh - 44f * u, sw - 60f * u, 30f * u), text, style,
-                new Color(1f, 1f, 1f, 0.6f), new Color(0f, 0f, 0f, 0.9f), 1f);
+            GUIStyle key = GuiKit.Text(Mathf.RoundToInt(14f * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
+            GUIStyle word = GuiKit.Text(Mathf.RoundToInt(15f * u), GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+
+            float total = 0f;
+            float[] widths = new float[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                _glyph.text = keys[i];
+                widths[i] = (i % 2 == 0 ? key.CalcSize(_glyph).x + 20f * u : word.CalcSize(_glyph).x) + (i % 2 == 0 ? 10f * u : 30f * u);
+                total += widths[i];
+            }
+
+            float x = (sw - total) * 0.5f;
+            float y = sh - 52f * u;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    Rect cap = new Rect(x, y, widths[i] - 10f * u, 28f * u);
+                    GuiKit.Rounded(cap, new Color(1f, 1f, 1f, 0.12f), 6f * u);
+                    GuiKit.RoundedOutline(cap, new Color(1f, 1f, 1f, 0.2f), 6f * u, 1f);
+                    GuiKit.ShadowLabel(cap, keys[i], key, Ink, 0.3f);
+                }
+                else
+                {
+                    GuiKit.ShadowLabel(new Rect(x, y, widths[i], 28f * u), keys[i], word, new Color(1f, 1f, 1f, 0.7f), 0.6f);
+                }
+
+                x += widths[i];
+            }
         }
 
         private void DrawFps()
@@ -1485,24 +1630,6 @@ namespace UberBagarre.UI
             Color color = fps >= 55f || fps <= 0f ? new Color(0.6f, 1f, 0.6f) : fps >= 30f ? new Color(1f, 0.85f, 0.4f) : new Color(1f, 0.4f, 0.4f);
 
             GuiKit.OutlinedLabel(new Rect(12f, 8f, 200f, 22f), text, style, color, new Color(0f, 0f, 0f, 0.9f), 1f);
-        }
-
-        private void EnsureGradient()
-        {
-            if (_gradient != null) return;
-
-            _gradient = new Texture2D(256, 1, TextureFormat.RGBA32, false);
-            _gradient.wrapMode = TextureWrapMode.Clamp;
-            _gradient.hideFlags = HideFlags.HideAndDontSave;
-
-            for (int x = 0; x < 256; x++)
-            {
-                float t = x / 255f;
-                float alpha = 1f - Mathf.SmoothStep(0.25f, 1f, t);
-                _gradient.SetPixel(x, 0, new Color(1f, 1f, 1f, alpha));
-            }
-
-            _gradient.Apply();
         }
 
         // --------------------------------------------------------------- sons
