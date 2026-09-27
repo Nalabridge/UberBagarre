@@ -166,6 +166,12 @@ namespace UberBagarre.EditorTools
             WardrobeScreen wardrobeScreen = BuildWardrobeScreen(systems, player, progress);
             ComputerScreen computerScreen = BuildComputerScreen(systems, player, progress);
             HomeRegistry registry = BuildHomeRegistry(systems, homes, progress, director, wardrobeScreen, computerScreen);
+            SerializedWiring.SetObject(registry, "_subtitles", subtitles);
+
+            // --- l'état du joueur : la faim, les blessures (coups plus lents, courses refusées)
+            PlayerCondition condition = player.AddComponent<PlayerCondition>();
+            condition.Configure(player.GetComponent<Combatant>(), progress);
+            EditorUtility.SetDirty(condition);
             SerializedWiring.SetObject(computerScreen, "_homes", registry);
 
             // --- les magasins : chacun son vendeur, son comptoir, son usage

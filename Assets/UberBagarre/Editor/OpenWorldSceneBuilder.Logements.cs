@@ -30,6 +30,8 @@ namespace UberBagarre.EditorTools
             public Interactable Computer;
             public Interactable Wardrobe;
             public Interactable Letters;
+            public Interactable Fridge;
+            public Interactable Medkit;
             public string[] Doors = new string[0];
             public string[] OpenForOwner = new string[0];
         }
@@ -172,6 +174,24 @@ namespace UberBagarre.EditorTools
             NightStreetBuilder.AddLight(lamp.transform, "Lumiere", new Vector3(0f, 0.38f, 0f), new Color(1f, 0.78f, 0.52f),
                 1.25f, 6f, true, false);
 
+            // --- le mini-frigo à côté du bureau, et la trousse de soins au mur au-dessus
+            GameObject fridge = EditorBuildUtility.CreateEmpty("Mini-frigo", desk.transform, new Vector3(1.02f, 0f, 0.02f));
+            Box(fridge.transform, "Caisson", new Vector3(0f, 0.43f, 0f), new Vector3(0.52f, 0.86f, 0.52f), night.Metal, true);
+            Box(fridge.transform, "Porte", new Vector3(0f, 0.45f, -0.265f), new Vector3(0.5f, 0.78f, 0.02f), house.Porcelain, false);
+            Box(fridge.transform, "Poignee", new Vector3(0.19f, 0.55f, -0.285f), new Vector3(0.025f, 0.26f, 0.025f), night.Chrome, false);
+            Box(fridge.transform, "Magnet", new Vector3(-0.1f, 0.68f, -0.277f), new Vector3(0.08f, 0.1f, 0.006f), night.NeonWarm, false);
+            home.Fridge = MakeInteractable(fridge, "Manger (frigo)", "Les repas achetés à l'épicerie", new Vector3(0.6f, 0.9f, 0.6f),
+                new Vector3(0f, 0.45f, 0f), 2.2f);
+
+            GameObject kit = EditorBuildUtility.CreateEmpty("Trousse de soins", desk.transform, new Vector3(1.02f, 1.42f, 0.24f));
+            Material red = EditorBuildUtility.CreateOrUpdateMaterial(NightMaterialFactory.MaterialsFolder, "M_TrousseRouge",
+                new Color(0.72f, 0.06f, 0.06f), 0.45f, 0f);
+            Box(kit.transform, "Boite", Vector3.zero, new Vector3(0.36f, 0.28f, 0.1f), red, false);
+            Box(kit.transform, "Croix (verticale)", new Vector3(0f, 0f, -0.052f), new Vector3(0.05f, 0.17f, 0.004f), house.Paper, false);
+            Box(kit.transform, "Croix (horizontale)", new Vector3(0f, 0f, -0.052f), new Vector3(0.17f, 0.05f, 0.004f), house.Paper, false);
+            home.Medkit = MakeInteractable(kit, "Se soigner (trousse)", "Avec une trousse achetée à la pharmacie", new Vector3(0.45f, 0.4f, 0.4f),
+                new Vector3(0f, 0f, -0.1f), 2.2f);
+
             // --- le courrier, sur le bureau
             if (layout.Letters != null && layout.Letters.Length >= 3)
             {
@@ -230,6 +250,8 @@ namespace UberBagarre.EditorTools
                     computer = h.Computer,
                     wardrobe = h.Wardrobe,
                     letters = h.Letters,
+                    fridge = h.Fridge,
+                    medkit = h.Medkit,
                     doors = h.Doors,
                     openForOwner = h.OpenForOwner
                 };

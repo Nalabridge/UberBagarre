@@ -1485,9 +1485,10 @@ namespace UberBagarre.Phone
             Row(new Rect(body.x, y + U(0.084f), body.width, U(0.042f)), "CASSÉ", fractures, _dim);
 
             int injuries = _progress != null ? _progress.Injuries : 0;
-            Row(new Rect(body.x, y + U(0.126f), body.width, U(0.042f)), "BLESSURES",
-                injuries + " / " + PlayerProgress.MaxInjuries + (injuries >= PlayerProgress.MaxInjuries - 1 ? "  DANGER" : ""),
-                injuries >= PlayerProgress.MaxInjuries - 1 ? _bad : injuries > 0 ? _warn : _good);
+            int fed = _progress != null ? Mathf.RoundToInt(_progress.Satiety) : 100;
+            Row(new Rect(body.x, y + U(0.126f), body.width, U(0.042f)), "ÉTAT",
+                injuries + "/" + PlayerProgress.MaxInjuries + " blessure(s)  ·  ventre " + fed + " %",
+                injuries >= PlayerProgress.MaxInjuries - 1 || fed < 8 ? _bad : injuries > 0 || fed < 30 ? _warn : _good);
 
             // --- nouvelle capacité ou dernier avis
             Rect box = new Rect(body.x, y + U(0.18f), body.width, body.yMax - (y + U(0.18f)));

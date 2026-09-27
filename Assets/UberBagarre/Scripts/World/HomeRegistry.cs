@@ -38,6 +38,12 @@ namespace UberBagarre.World
             [Tooltip("Le courrier sur le bureau : l'histoire y dépose ses lettres.")]
             public Interactable letters;
 
+            [Tooltip("Le frigo : les repas achetés à l'épicerie.")]
+            public Interactable fridge;
+
+            [Tooltip("La trousse de soins, au mur : on s'y soigne avec une trousse achetée à la pharmacie.")]
+            public Interactable medkit;
+
             [Tooltip("Portes de la ville (chemins) : fermées à clé tant que le logement n'est pas à nous.")]
             public string[] doors = new string[0];
 
@@ -50,6 +56,7 @@ namespace UberBagarre.World
         [SerializeField] private WardrobeScreen _wardrobeScreen;
         [SerializeField] private ComputerScreen _computerScreen;
         [SerializeField] private Home[] _homes = new Home[0];
+        [SerializeField] private SubtitleDisplay _subtitles;
 
         private string _appliedSignature;
 
@@ -90,6 +97,8 @@ namespace UberBagarre.World
                 if (home == null) continue;
                 if (home.bed != null) home.bed.Activated += OnBed;
                 if (home.letters != null) home.letters.Activated += OnLetters;
+                if (home.fridge != null) home.fridge.Activated += OnFridge;
+                if (home.medkit != null) home.medkit.Activated += OnMedkit;
                 if (_wardrobeScreen != null) _wardrobeScreen.Attach(home.wardrobe);
                 if (_computerScreen != null) _computerScreen.Attach(home.computer);
             }
@@ -105,6 +114,8 @@ namespace UberBagarre.World
                 if (_homes[i] == null) continue;
                 if (_homes[i].bed != null) _homes[i].bed.Activated -= OnBed;
                 if (_homes[i].letters != null) _homes[i].letters.Activated -= OnLetters;
+                if (_homes[i].fridge != null) _homes[i].fridge.Activated -= OnFridge;
+                if (_homes[i].medkit != null) _homes[i].medkit.Activated -= OnMedkit;
             }
 
             MapStreamer.Loaded -= OnCityLoaded;
@@ -119,6 +130,60 @@ namespace UberBagarre.World
         private void OnBed(Interactable source)
         {
             if (_director != null) _director.Sleep();
+        }
+
+        /// <summary>Le frigo : un repas acheté à l'épicerie, mangé chez soi.</summary>
+        private void OnFridge(Interactable source)
+        {
+            if (_progress == null) return;
+
+            if (_progress.Satiety >= PlayerProgress.MaxSatiety - 5f)
+            {
+                Tell("Tu n'as pas faim.");
+                return;
+            }
+
+            if (!_progress.TakeMeal())
+            {
+                Tell("Le frigo est vide. Une bouteille de ketchup et un citron. L'épicerie vend des courses pour la semaine.");
+                return;
+            }
+
+            _progress.Eat(45f);
+            if (Player.PlayerBuffs.Instance != null) Player.PlayerBuffs.Instance.Heal(20f);
+            Tell("Tu réchauffes un plat et tu manges debout. Ça va mieux. (" + _progress.Meals + " repas au frigo)");
+        }
+
+        /// <summary>La trousse de soins : une blessure en moins, la vie au maximum.</summary>
+        private void OnMedkit(Interactable source)
+        {
+            if (_progress == null) return;
+
+            if (_progress.Medkits <= 0)
+            {
+                Tell("La boîte est vide. La pharmacie vend des trousses de soins.");
+                return;
+            }
+
+            bool hurt = _progress.Injuries > 0;
+            Player.PlayerCondition condition = Player.PlayerCondition.Instance;
+            if (!hurt && condition != null && condition.RegenCap >= 1f && Player.PlayerBuffs.Instance != null &&
+                Player.PlayerBuffs.Instance.HealthNormalized >= 0.98f)
+            {
+                Tell("Rien à soigner.");
+                return;
+            }
+
+            _progress.UseMedkit();
+            if (hurt) _progress.HealInjuries(false);
+            if (Player.PlayerBuffs.Instance != null) Player.PlayerBuffs.Instance.HealFull();
+            Tell(hurt ? "Désinfectant, points de suture, attelle. Une blessure en moins. (" + _progress.Medkits + " trousse(s))"
+                      : "Tu te recouds devant le miroir. Comme neuf, ou presque. (" + _progress.Medkits + " trousse(s))");
+        }
+
+        private void Tell(string text)
+        {
+            if (_subtitles != null) _subtitles.Play(DialogueLine.Say("", text));
         }
 
         private void OnLetters(Interactable source)

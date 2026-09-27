@@ -64,7 +64,13 @@ namespace UberBagarre.World
         Rumor,
 
         /// <summary>Vend un objet du joueur (amount = ce qu'on en tire).</summary>
-        Sell
+        Sell,
+
+        /// <summary>Des courses : amount repas qui attendent dans le frigo de la planque.</summary>
+        Groceries,
+
+        /// <summary>Une trousse de soins à ranger chez soi (on s'en sert à la maison).</summary>
+        Medkit
     }
 
     [Serializable]
@@ -77,6 +83,9 @@ namespace UberBagarre.World
         public float amount;
         public StatType stat;
         public float minutes;
+
+        /// <summary>Ce que ça remplit l'estomac (0 = ça ne se mange pas).</summary>
+        public float food;
 
         /// <summary>Une seule fois par jour (colis, lessive, tournée).</summary>
         public bool daily;
@@ -104,6 +113,13 @@ namespace UberBagarre.World
             this.stat = stat;
             amount = percent;
             this.minutes = minutes;
+            return this;
+        }
+
+        /// <summary>Ça se mange : la faim baisse d'autant.</summary>
+        public ShopItem Food(float satiety)
+        {
+            food = satiety;
             return this;
         }
 
@@ -201,12 +217,13 @@ namespace UberBagarre.World
                 case ShopKind.Epicerie:
                     return new[]
                     {
-                        new ShopItem("Sandwich jambon-beurre", 6, ShopEffect.Heal, 25f, "+25 PV. De quoi tenir jusqu'au prochain combat."),
+                        new ShopItem("Sandwich jambon-beurre", 6, ShopEffect.Heal, 25f, "+25 PV. De quoi tenir jusqu'au prochain combat.").Food(30f),
                         new ShopItem("Boisson énergisante", 5, ShopEffect.Buff, 0f, "+12 % de vitesse de frappe pendant 4 minutes.")
                             .Boost(StatType.AttackSpeed, 12f, 4f),
-                        new ShopItem("Barre protéinée", 4, ShopEffect.Buff, 0f, "+20 % d'endurance maximale pendant 5 minutes.")
+                        new ShopItem("Barre protéinée", 4, ShopEffect.Buff, 0f, "+20 % d'endurance maximale pendant 5 minutes.").Food(10f)
                             .Boost(StatType.MaxStamina, 20f, 5f),
                         new ShopItem("Pansements et désinfectant", 12, ShopEffect.Heal, 45f, "+45 PV. Ça pique, mais ça tient."),
+                        new ShopItem("Courses de la semaine", 32, ShopEffect.Groceries, 5f, "Cinq repas pour le frigo de la planque (on mange chez soi, gratuitement).").Food(8f),
                         new ShopItem("Paquet de clopes", 11, ShopEffect.Buff, 0f, "Ça calme les nerfs : +8 de défense pendant 3 minutes.")
                             .Boost(StatType.Defense, 8f, 3f)
                     };
@@ -225,10 +242,10 @@ namespace UberBagarre.World
                 case ShopKind.Restaurant:
                     return new[]
                     {
-                        new ShopItem("Plat du jour", 16, ShopEffect.Heal, 60f, "+60 PV. Un vrai repas, assis."),
-                        new ShopItem("Steak-frites", 24, ShopEffect.Buff, 0f, "+25 % d'endurance maximale pendant 8 minutes.")
+                        new ShopItem("Plat du jour", 16, ShopEffect.Heal, 60f, "+60 PV. Un vrai repas, assis.").Food(55f),
+                        new ShopItem("Steak-frites", 24, ShopEffect.Buff, 0f, "+25 % d'endurance maximale pendant 8 minutes.").Food(60f)
                             .Boost(StatType.MaxStamina, 25f, 8f),
-                        new ShopItem("Menu complet", 38, ShopEffect.HealFull, 0f, "Entrée, plat, dessert : vie et endurance au maximum."),
+                        new ShopItem("Menu complet", 38, ShopEffect.HealFull, 0f, "Entrée, plat, dessert : vie et endurance au maximum.").Food(85f),
                         new ShopItem("Café serré", 3, ShopEffect.Buff, 0f, "+8 % de vitesse de frappe pendant 3 minutes.")
                             .Boost(StatType.AttackSpeed, 8f, 3f)
                     };
@@ -238,8 +255,8 @@ namespace UberBagarre.World
                     {
                         new ShopItem("Double espresso", 3, ShopEffect.Buff, 0f, "+10 % de vitesse de frappe pendant 4 minutes.")
                             .Boost(StatType.AttackSpeed, 10f, 4f),
-                        new ShopItem("Croissant", 2, ShopEffect.Heal, 12f, "+12 PV."),
-                        new ShopItem("Petit-déjeuner complet", 14, ShopEffect.Heal, 45f, "+45 PV, et la journée commence mieux."),
+                        new ShopItem("Croissant", 2, ShopEffect.Heal, 12f, "+12 PV.").Food(12f),
+                        new ShopItem("Petit-déjeuner complet", 14, ShopEffect.Heal, 45f, "+45 PV, et la journée commence mieux.").Food(40f),
                         new ShopItem("Journal du jour", 2, ShopEffect.Rumor, 0f, "Les faits divers d'Hyland : on y apprend des choses.")
                     };
 
@@ -269,7 +286,8 @@ namespace UberBagarre.World
                     {
                         new ShopItem("Antidouleurs", 25, ShopEffect.Buff, 0f, "+12 de défense pendant 5 minutes : tu sens moins les coups.")
                             .Boost(StatType.Defense, 12f, 5f),
-                        new ShopItem("Trousse de soins", 40, ShopEffect.HealFull, 0f, "Vie et endurance au maximum."),
+                        new ShopItem("Trousse de soins", 45, ShopEffect.Medkit, 1f, "À ranger chez toi : on s'y soigne une blessure, et on se remet sur pied."),
+                        new ShopItem("Premiers secours", 30, ShopEffect.HealFull, 0f, "Sur place : vie et endurance au maximum."),
                         new ShopItem("Attelle et bandages", 120, ShopEffect.Injury, 1f, "Une blessure en moins (sans attendre une nuit)."),
                         new ShopItem("Vitamines", 15, ShopEffect.Buff, 0f, "+15 % d'endurance maximale pendant 10 minutes.")
                             .Boost(StatType.MaxStamina, 15f, 10f)

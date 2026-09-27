@@ -136,6 +136,8 @@ namespace UberBagarre.UI
                 return;
             }
 
+            if (item.food > 0f && item.effect != ShopEffect.Groceries) _progress.Eat(item.food);
+
             if (item.daily) _progress.SetFlag(key + ":j" + _progress.Day);
             if (item.once) _progress.Unlock(key);
             if (item.price > 0 || item.effect == ShopEffect.Sell) PlayCash();
@@ -193,6 +195,16 @@ namespace UberBagarre.UI
                 case ShopEffect.Sell:
                     _progress.AddMoney(Mathf.RoundToInt(item.amount), _shop.DisplayName + " — " + item.name);
                     Toast("Vendu : +" + Mathf.RoundToInt(item.amount) + " €.", false);
+                    return true;
+
+                case ShopEffect.Groceries:
+                    _progress.AddMeals(Mathf.RoundToInt(item.amount));
+                    Toast("+" + Mathf.RoundToInt(item.amount) + " repas dans le frigo (" + _progress.Meals + " en tout).", false);
+                    return true;
+
+                case ShopEffect.Medkit:
+                    _progress.AddMedkit();
+                    Toast("Trousse rangée pour la maison (" + _progress.Medkits + ").", false);
                     return true;
 
                 case ShopEffect.Rumor:

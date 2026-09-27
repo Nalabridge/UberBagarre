@@ -74,6 +74,12 @@ namespace UberBagarre.Player
             _flash = 1f;
         }
 
+        /// <summary>La vie du joueur (0 à 1).</summary>
+        public float HealthNormalized
+        {
+            get { return _combatant != null && _combatant.Health != null ? _combatant.Health.Normalized : 1f; }
+        }
+
         /// <summary>Rend des points de vie (sans dépasser le maximum).</summary>
         public void Heal(float amount)
         {
@@ -122,7 +128,8 @@ namespace UberBagarre.Player
             float w = 300f * u;
             float h = 30f * u;
             float x = Screen.width - w - 24f * u;
-            float y = 150f * u;
+            float y = 150f * u + PlayerCondition.ChipCount * (h + 6f * u);
+            Color green = new Color(0.36f, 0.95f, 0.52f);
 
             for (int i = 0; i < _active.Count; i++)
             {
@@ -131,12 +138,13 @@ namespace UberBagarre.Player
                 string time = Mathf.FloorToInt(left / 60f) + ":" + Mathf.FloorToInt(left % 60f).ToString("00");
                 Rect r = new Rect(x, y + i * (h + 6f * u), w, h);
 
-                GuiKit.Fill(r, new Color(0f, 0f, 0f, 0.55f + 0.2f * _flash));
-                GuiKit.Fill(new Rect(r.x, r.y, 4f * u, r.height), new Color(0.36f, 0.95f, 0.52f, 0.9f));
-                GuiKit.OutlinedLabel(new Rect(r.x + 12f * u, r.y, r.width - 80f * u, r.height), a.label,
-                    GuiKit.Style(Mathf.RoundToInt(14 * u), FontStyle.Bold, TextAnchor.MiddleLeft), Color.white, Color.black, 1f);
-                GuiKit.OutlinedLabel(new Rect(r.xMax - 70f * u, r.y, 60f * u, r.height), time,
-                    GuiKit.Style(Mathf.RoundToInt(14 * u), FontStyle.Normal, TextAnchor.MiddleRight), new Color(1f, 1f, 1f, 0.7f), Color.black, 1f);
+                GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.78f + 0.2f * _flash), h * 0.5f);
+                GuiKit.RoundedOutline(r, new Color(green.r, green.g, green.b, 0.45f), h * 0.5f, 1f);
+                GuiKit.Rounded(new Rect(r.x + 10f * u, r.center.y - 4f * u, 8f * u, 8f * u), green, 4f * u);
+                GuiKit.ShadowLabel(new Rect(r.x + 26f * u, r.y, r.width - 96f * u, r.height), a.label,
+                    GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft), Color.white, 0.5f);
+                GuiKit.ShadowLabel(new Rect(r.xMax - 74f * u, r.y, 60f * u, r.height), time,
+                    GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Medium, TextAnchor.MiddleRight), new Color(1f, 1f, 1f, 0.7f), 0.5f);
             }
         }
     }

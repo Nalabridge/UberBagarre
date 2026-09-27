@@ -400,6 +400,20 @@ namespace UberBagarre.World
                 return;
             }
 
+            // Pas de course proposée à un corps qui ne tient pas : l'appli prévient, une fois.
+            string unfit;
+            if (PlayerCondition.Instance != null && !PlayerCondition.Instance.CanFight(out unfit))
+            {
+                if (Time.time - _lastUnfitNotice > 90f)
+                {
+                    _lastUnfitNotice = Time.time;
+                    Say("APPLI", "Pas de course pour l'instant. " + unfit);
+                }
+
+                _timer = 15f;
+                return;
+            }
+
             if (_profiles.Length == 0 || _spots.Length == 0)
             {
                 _timer = 30f;
@@ -534,6 +548,14 @@ namespace UberBagarre.World
         private void OnConfirmed()
         {
             if (_stage != Stage.Offered || _phone == null || _phone.Current != PhoneDevice.Screen.Accueil) return;
+
+            // Trop blessé, trop affamé : l'appli ne t'envoie pas au casse-pipe.
+            string unfit;
+            if (PlayerCondition.Instance != null && !PlayerCondition.Instance.CanFight(out unfit))
+            {
+                Say("APPLI", "Course refusée. " + unfit);
+                return;
+            }
 
             SpawnTarget();
 
@@ -799,9 +821,12 @@ namespace UberBagarre.World
             return new string(chars);
         }
 
+        private float _lastUnfitNotice = -1000f;
+
         private void BeginProof()
         {
             _stage = Stage.Proof;
+            if (PlayerCondition.Instance != null) PlayerCondition.Instance.FoughtOnce();
             bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
             if (_objective != null) _objective.Knockout();
             bool open = hasGoal && _objective.StaysOpen && !_objective.AlreadyMet;
@@ -1205,6 +1230,14 @@ namespace UberBagarre.World
             if (_player == null || !_player.IsAlive || _player.Health == null) return;
             if (CombatPresence.Player != null && CombatPresence.Player.InCombat) return;
             if (_player.Health.Normalized >= 1f) return;
+
+            // Blessé ou affamé, on ne se remet pas en marchant : il faut manger, se soigner, dormir.
+            PlayerCondition condition = PlayerCondition.Instance;
+            if (condition != null)
+            {
+                if (_player.Health.Normalized >= condition.RegenCap) return;
+                dt *= condition.RegenFactor;
+            }
 
             _player.Health.Heal(_regenPerSecond * dt);
         }

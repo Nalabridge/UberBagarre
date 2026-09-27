@@ -109,6 +109,15 @@ namespace UberBagarre.Story
 
             /// <summary>Envoyé à maman, depuis le début.</summary>
             public int sentHome;
+
+            /// <summary>La faim : 100 = rassasié, 0 = le ventre vide. Trois jours sans rien de chaud, au début.</summary>
+            public float satiety = 35f;
+
+            /// <summary>Les repas qui attendent dans le frigo de la planque.</summary>
+            public int meals;
+
+            /// <summary>Les trousses de soins rangées à la maison.</summary>
+            public int medkits;
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -448,11 +457,67 @@ namespace UberBagarre.Story
             return true;
         }
 
+        // ------------------------------------------------------------------ faim, frigo, trousse
+
+        public const float MaxSatiety = 100f;
+
+        /// <summary>La faim : 100 = rassasié, 0 = le ventre vide.</summary>
+        public float Satiety { get { return _data.satiety; } }
+
+        /// <summary>Manger : la jauge remonte.</summary>
+        public void Eat(float amount)
+        {
+            _data.satiety = Mathf.Clamp(_data.satiety + amount, 0f, MaxSatiety);
+            RaiseChanged();
+        }
+
+        /// <summary>Le temps passe, les coups coûtent : la jauge descend (sans prévenir tout le monde).</summary>
+        public void Starve(float amount)
+        {
+            _data.satiety = Mathf.Clamp(_data.satiety - amount, 0f, MaxSatiety);
+        }
+
+        public int Meals { get { return _data.meals; } }
+
+        public void AddMeals(int count)
+        {
+            _data.meals = Mathf.Max(0, _data.meals + count);
+            RaiseChanged();
+        }
+
+        /// <summary>Un repas pris dans le frigo (faux s'il est vide).</summary>
+        public bool TakeMeal()
+        {
+            if (_data.meals <= 0) return false;
+            _data.meals--;
+            RaiseChanged();
+            return true;
+        }
+
+        public int Medkits { get { return _data.medkits; } }
+
+        public void AddMedkit()
+        {
+            _data.medkits++;
+            RaiseChanged();
+        }
+
+        /// <summary>Une trousse utilisée (faux s'il n'y en a plus).</summary>
+        public bool UseMedkit()
+        {
+            if (_data.medkits <= 0) return false;
+            _data.medkits--;
+            RaiseChanged();
+            return true;
+        }
+
         /// <summary>Une nuit de sommeil : les blessures guérissent, un jour passe.</summary>
         public void Sleep()
         {
             _data.injuries = 0;
             _data.day++;
+            // Une nuit creuse l'estomac.
+            _data.satiety = Mathf.Max(0f, _data.satiety - 18f);
             RaiseChanged();
         }
 
