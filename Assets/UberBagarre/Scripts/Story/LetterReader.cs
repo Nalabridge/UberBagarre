@@ -101,7 +101,7 @@ namespace UberBagarre.Story
         private void Awake()
         {
             _letters = BuildLetters();
-            if (_motel && _letters.Length > 0) _letters[0] = MotelLetter();
+            if (_motel) _letters = new[] { MotelLetter(), NestorLetter(), MotherPostcard() };
 
             _audio = gameObject.AddComponent<AudioSource>();
             _audio.playOnAwake = false;
@@ -683,6 +683,53 @@ namespace UberBagarre.Story
                 Amount = "450,00 €",
                 Stamp = "DERNIER AVIS",
                 Footer = "Motel Hyland — Route du Port — Paiement en espèces à l'accueil",
+            };
+        }
+
+        /// <summary>La lettre de Nestor : polie, et terrifiante.</summary>
+        private static Letter NestorLetter()
+        {
+            return new Letter
+            {
+                Sender = "NESTOR",
+                SenderLine = "Prêts entre amis  ·  Les Slums",
+                Brand = new Color(0.25f, 0.18f, 0.12f),
+                Reference = "Reconnaissance de dette  ·  Frais d'hôpital (Mme Marchal)",
+                Subject = "Objet : UN PETIT RAPPEL, ENTRE AMIS",
+                Body = "Cher Léo,\n\n" +
+                       "J'espère que tu vas bien, et ta maman aussi. Les hôpitaux coûtent si cher, de nos jours. " +
+                       "J'ai été heureux de t'aider quand personne d'autre ne le voulait.\n\n" +
+                       "Il est temps de parler du remboursement. Je passerai te voir très bientôt, au motel. Nous " +
+                       "conviendrons ensemble d'un calendrier raisonnable.\n\n" +
+                       "Je suis un homme patient. Mes associés le sont beaucoup moins.\n\n" +
+                       "Avec toute mon amitié,\nNestor",
+                AmountLabel = "RESTE DÛ\ncapital + intérêts amicaux",
+                Amount = "12 000,00 €",
+                Stamp = "RAPPEL AMICAL",
+                Footer = "Pas de banque, pas de papiers, pas de problème. Tant qu'on paie.",
+            };
+        }
+
+        /// <summary>La carte postale de maman : elle ne sait rien, et c'est mieux comme ça.</summary>
+        private static Letter MotherPostcard()
+        {
+            return new Letter
+            {
+                Sender = "CARTE POSTALE",
+                SenderLine = "Hyland — le port au coucher du soleil",
+                Brand = new Color(0.25f, 0.5f, 0.78f),
+                Reference = "",
+                Subject = "Mon grand,",
+                Body = "J'ai trouvé du travail à la laverie, près du centre. Ce n'est pas la supérette, mais les gens " +
+                       "sont gentils et personne ne me regarde de travers.\n\n" +
+                       "Le médecin dit que je vais bien. Grâce à toi. Je sais que tu as dû emprunter, ne me dis pas le " +
+                       "contraire, je te connais.\n\n" +
+                       "Viens me voir quand tu veux. Je t'ai gardé des crêpes.\n\n" +
+                       "Je t'embrasse fort,\nMaman",
+                AmountLabel = "",
+                Amount = "",
+                Stamp = "",
+                Footer = "P.-S. : Coach Ray est passé à la laverie. Il a demandé de tes nouvelles.",
             };
         }
 

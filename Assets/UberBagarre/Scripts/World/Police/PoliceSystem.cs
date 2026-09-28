@@ -106,7 +106,36 @@ namespace UberBagarre.World
         /// <summary>Un agent parle au joueur (pour l'affichage du choix).</summary>
         public PoliceOfficer Talking { get; set; }
 
+        /// <summary>
+        /// La chasse à l'homme de Brandt (l'histoire) : les étoiles ne redescendent jamais sous
+        /// ce niveau. 0 = pas de chasse. Perdre sa trace les envoie chercher ailleurs, c'est tout.
+        /// </summary>
+        public int Floor { get; set; }
+
+        /// <summary>Plus de pots-de-vin : les flics de Brandt savent (le carnet est chez Duval).</summary>
+        public bool NoBribes { get; set; }
+
+        private float _graceUntil;
+        private readonly List<Vector3> _hideouts = new List<Vector3>();
+
+        /// <summary>Une planque d'allié (la cave de M. Chen, l'arrière du Taco Ticklers) : on s'y fait oublier vite.</summary>
+        public void AddHideout(Vector3 at)
+        {
+            for (int i = 0; i < _hideouts.Count; i++) if ((_hideouts[i] - at).sqrMagnitude < 1f) return;
+            _hideouts.Add(at);
+        }
+
+        /// <summary>Quelqu'un couvre le joueur (Duval appelle le central) : plus d'étoiles, et un répit.</summary>
+        public void Grace(float seconds, string reason)
+        {
+            _graceUntil = Time.time + seconds;
+            Clear(reason);
+        }
+
         public Combatant Player { get { return _player; } }
+
+        /// <summary>Une interpellation est en cours (fondu, garde à vue).</summary>
+        public bool Arresting { get { return _arresting; } }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()
@@ -341,6 +370,18 @@ namespace UberBagarre.World
             UpdateWitnesses(dt);
             Prune();
 
+            // La chasse à l'homme : jamais moins que le plancher (sauf un répit accordé).
+            if (Floor > 0 && !_arresting && _stars < Floor && Time.time >= _graceUntil)
+            {
+                _stars = Mathf.Clamp(Floor, 0, 5);
+                _lastSeen = PlayerPosition;
+                _unseenFor = 0f;
+                _escape = 0f;
+                _flash = 1f;
+                Notice(new string('★', _stars) + "  CHASSE À L'HOMME");
+                _nextSpawn = Time.time + 3f;
+            }
+
             if (_stars > 0 && !_arresting)
             {
                 UpdateSight(dt);
@@ -395,14 +436,33 @@ namespace UberBagarre.World
             Vector3 player = PlayerPosition;
             float distance = Flat(player - _lastSeen).magnitude;
             bool outside = distance > SearchRadius;
-            bool hidden = (ShopDirectory.Instance != null && ShopDirectory.Instance.Inside != null) || HiddenAtHome(player);
+            bool hidden = (ShopDirectory.Instance != null && ShopDirectory.Instance.Inside != null) || HiddenAtHome(player) ||
+                          InHideout(player);
 
             float rate = outside ? 1f : 0.35f;
             if (hidden) rate *= 3f;
             _escape += dt * rate;
 
             float needed = 18f + 7f * _stars;
-            if (_escape >= needed) Clear(hidden ? "Planqué : la police a laissé tomber." : "La police a perdu ta trace.");
+            if (_escape < needed) return;
+
+            if (Floor > 0 && Time.time >= _graceUntil)
+            {
+                // Pendant la chasse, ils ne lâchent pas : ils cherchent ailleurs.
+                Vector2 away = Random.insideUnitCircle.normalized * (SearchRadius + 80f);
+                _lastSeen = player + new Vector3(away.x, 0f, away.y);
+                _escape = 0f;
+                Notice("Ils ont perdu ta trace. La chasse continue.");
+                return;
+            }
+
+            Clear(hidden ? "Planqué : la police a laissé tomber." : "La police a perdu ta trace.");
+        }
+
+        private bool InHideout(Vector3 player)
+        {
+            for (int i = 0; i < _hideouts.Count; i++) if (Flat(_hideouts[i] - player).sqrMagnitude < 8f * 8f) return true;
+            return false;
         }
 
         private static bool HiddenAtHome(Vector3 player)
@@ -532,6 +592,12 @@ namespace UberBagarre.World
         public bool Bribe()
         {
             if (_arresting || _progress == null || _stars > 2) return false;
+            if (NoBribes || Floor > 0)
+            {
+                Say("AGENT", "Ton fric, garde-le. Le commissaire veut ta peau, pas ton portefeuille.");
+                return false;
+            }
+
             if (!_progress.Spend(_bribe, "Arrangement (police)"))
             {
                 Say("AGENT", "Tu te fous de moi ? T'as même pas de quoi.");
@@ -593,6 +659,8 @@ namespace UberBagarre.World
 
             if (_input != null) _input.SetGameplayLock(this, false);
             _arresting = false;
+            // Relâché : de quoi sortir du commissariat avant que la chasse reprenne.
+            _graceUntil = Time.time + 90f;
             Say("MOI", "Une nuit sur un banc en ferraille. Il me faut un café. Et un avocat.");
         }
 

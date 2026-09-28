@@ -187,9 +187,10 @@ namespace UberBagarre.EditorTools
             ShopDirectory shops = BuildShops(systems, player, progress, night, materials, subtitles, fader, catalog, registry,
                 computerScreen, club, cityMap);
 
-            // --- l'histoire : ses personnages, ses lieux, ses chapitres
+            // --- l'histoire : ses adversaires, ses gens (à qui l'on parle), ses lieux
             OpenWorldStory.Character[] characters = BuildStoryCharacters(map, materials, attacks, night, club);
-            OpenWorldStory story = BuildStory(systems, characters, map, club, director, progress, subtitles, fader, phone, cityMap,
+            StoryCast cast = BuildStoryCast(systems, map, materials, night, club, shops, walkLoops);
+            OpenWorldStory story = BuildStory(systems, characters, cast, map, club, director, progress, subtitles, fader, phone, cityMap,
                 registry, computerScreen);
 
             // --- les lumières loin du joueur s'éteignent ; la ville y ajoute les siennes au chargement

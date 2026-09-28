@@ -98,7 +98,6 @@ namespace UberBagarre.Phone
         private bool _rdvUnseen;
         private bool _photoUnseen;
         private bool _wasRaised;
-        private readonly int[] _seen = new int[5];
 
         private string _toast;
         private float _toastUntil;
@@ -251,41 +250,83 @@ namespace UberBagarre.Phone
 
         // --------------------------------------------------------------- messages
 
-        public int ThreadCount { get { return 5; } }
+        /// <summary>
+        /// Les contacts, dans l'ordre où ils sont apparus : les cinq du début (Sami, maman, la
+        /// banque, l'opérateur, l'agence), puis ceux que l'histoire amène (Nestor, Lina, Ray…).
+        /// </summary>
+        private static readonly List<string> Contacts = new List<string>();
+        private static readonly string[] BaseContacts = { "SAMI", "MAMAN", "BANQUE", "SFR", "AGENCE" };
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetContacts()
+        {
+            Contacts.Clear();
+        }
+
+        private static void EnsureContacts()
+        {
+            if (Contacts.Count > 0) return;
+            Contacts.AddRange(BaseContacts);
+        }
+
+        private static void AddContact(string name)
+        {
+            EnsureContacts();
+            if (!string.IsNullOrEmpty(name) && !Contacts.Contains(name)) Contacts.Add(name);
+        }
+
+        public int ThreadCount
+        {
+            get
+            {
+                EnsureContacts();
+                return Contacts.Count;
+            }
+        }
 
         public static string ThreadName(int thread)
         {
-            switch (thread)
-            {
-                case 0: return "SAMI";
-                case 1: return "MAMAN";
-                case 2: return "BANQUE";
-                case 3: return "SFR";
-                default: return "AGENCE";
-            }
+            EnsureContacts();
+            return thread >= 0 && thread < Contacts.Count ? Contacts[thread] : "?";
         }
 
         public static Color ThreadColor(int thread)
         {
-            switch (thread)
+            switch (ThreadName(thread))
             {
-                case 0: return new Color(0.26f, 0.70f, 0.46f);
-                case 1: return new Color(0.86f, 0.46f, 0.58f);
-                case 2: return new Color(0.26f, 0.44f, 0.86f);
-                case 3: return new Color(0.86f, 0.20f, 0.20f);
-                default: return new Color(0.76f, 0.58f, 0.26f);
+                case "SAMI": return new Color(0.26f, 0.70f, 0.46f);
+                case "MAMAN": return new Color(0.86f, 0.46f, 0.58f);
+                case "BANQUE": return new Color(0.26f, 0.44f, 0.86f);
+                case "SFR": return new Color(0.86f, 0.20f, 0.20f);
+                case "AGENCE": return new Color(0.76f, 0.58f, 0.26f);
+                case "NESTOR": return new Color(0.55f, 0.12f, 0.12f);
+                case "LINA": return new Color(0.2f, 0.72f, 0.72f);
+                case "RAY": return new Color(0.92f, 0.52f, 0.18f);
+                case "HYLAND INFO": return new Color(0.42f, 0.48f, 0.6f);
+                case "DUVAL": return new Color(0.2f, 0.3f, 0.62f);
+                case "ROSA": return new Color(0.82f, 0.2f, 0.52f);
+                case "JEFF": return new Color(0.55f, 0.82f, 0.2f);
+                case "KARIM": return new Color(0.95f, 0.78f, 0.2f);
+                default:
+                    int h = ThreadName(thread).GetHashCode();
+                    return Color.HSVToRGB(Mathf.Abs(h % 360) / 360f, 0.5f, 0.75f);
             }
         }
+
+        private readonly Dictionary<string, int> _seenBy = new Dictionary<string, int>();
 
         public bool Unread(int thread)
         {
             Build(thread, _scratch);
-            return _scratch.Count > _seen[Mathf.Clamp(thread, 0, _seen.Length - 1)];
+            int seen;
+            _seenBy.TryGetValue(ThreadName(thread), out seen);
+            return _scratch.Count > seen;
         }
 
         /// <summary>
-        /// Le fil d'une conversation, construit selon l'avancée de l'histoire. La liste renvoyée
-        /// est réutilisée : la lire jusqu'au bout avant de redemander un autre fil.
+        /// Le fil d'une conversation : ce qu'il y avait avant l'histoire, puis les SMS reçus et
+        /// envoyés (sauvegardés). La liste renvoyée est réutilisée : la lire jusqu'au bout avant
+        /// de redemander un autre fil.
         /// </summary>
         public IList<Message> Messages(int thread)
         {
@@ -297,61 +338,65 @@ namespace UberBagarre.Phone
         {
             _target = into;
             into.Clear();
-            int contracts = _progress != null ? _progress.Contracts : 0;
+            string name = ThreadName(thread);
 
-            switch (thread)
+            switch (name)
             {
-                case 0:
+                case "SAMI":
                     Them("t'es réveillé ?");
-                    if (_linkSent || (_device != null && _device.AppInstalled && contracts > 0))
+                    if (_linkSent || (_device != null && _device.AppInstalled))
                     {
                         Them("tiens. tu m'as jamais demandé ça.");
                         into.Add(new Message { Text = "uberbagarre.apk", IsLink = true });
                     }
 
-                    if (contracts >= 1)
-                    {
-                        Them("alors ?");
-                        Me("150.");
-                        Them("je t'avais dit. fais gaffe à toi quand même");
-                    }
-
-                    if (contracts >= 2)
-                    {
-                        Them("les frères Kovac ?? t'es malade");
-                        Me("ils étaient deux. j'ai deux mains.");
-                    }
-
-                    if (contracts >= 3)
-                    {
-                        Them("le Taureau. t'as mis le TAUREAU par terre.");
-                        Them("tout le quartier en parle, fais-toi discret");
-                    }
-
                     break;
 
-                case 1:
+                case "MAMAN":
                     Them("tu manges bien ?");
                     Them("appelle moi quand tu peux mon grand");
-                    Them("je t'ai fait un virement de 20€ ne dis rien à ton père");
+                    Them("je t'ai fait un virement de 20€ ne dis rien à ta tante");
                     break;
 
-                case 2:
+                case "BANQUE":
                     Them("Votre compte présente un solde débiteur de 1 240,18 EUR.");
                     Them("Frais de rejet de prélèvement : 20,00 EUR.");
                     Them("Merci de régulariser votre situation sous 8 jours.");
                     break;
 
-                case 3:
+                case "SFR":
                     Them("Facture impayée. 3e relance.");
                     Them("Sans règlement, votre ligne sera suspendue le 20/03.");
                     break;
 
-                default:
-                    Them("Bonjour, le loyer de février est toujours en attente.");
+                case "AGENCE":
+                    Them("Bonjour, le loyer du motel est toujours en attente.");
                     Them("Sans règlement sous 8 jours, nous engagerons une procédure.");
                     break;
             }
+
+            if (_progress == null) return;
+            IReadOnlyList<PlayerProgress.Sms> sms = _progress.Messages;
+            for (int i = 0; i < sms.Count; i++)
+            {
+                if (sms[i] == null || sms[i].from != name) continue;
+                if (sms[i].mine) Me(sms[i].text);
+                else Them(sms[i].text);
+            }
+        }
+
+        private void OnSms(string from, string text)
+        {
+            AddContact(from);
+            Notify(App.Messages, from, text);
+        }
+
+        private void RegisterSavedContacts()
+        {
+            EnsureContacts();
+            if (_progress == null) return;
+            IReadOnlyList<PlayerProgress.Sms> sms = _progress.Messages;
+            for (int i = 0; i < sms.Count; i++) if (sms[i] != null) AddContact(sms[i].from);
         }
 
         private void Them(string text)
@@ -381,6 +426,21 @@ namespace UberBagarre.Phone
         }
 
         // --------------------------------------------------------------- cycle
+
+        private void OnEnable()
+        {
+            if (_progress != null) _progress.SmsReceived += OnSms;
+        }
+
+        private void OnDisable()
+        {
+            if (_progress != null) _progress.SmsReceived -= OnSms;
+        }
+
+        private void Start()
+        {
+            RegisterSavedContacts();
+        }
 
         private void Awake()
         {
@@ -448,7 +508,7 @@ namespace UberBagarre.Phone
             if (_app == App.UberBagarre && raised) _rdvUnseen = false;
             if (_app == App.Photo && raised) _photoUnseen = false;
             if (_app == App.Appels && raised) _callsSeen = true;
-            if (_app == App.Messages && _thread >= 0 && raised) _seen[_thread] = Messages(_thread).Count;
+            if (_app == App.Messages && _thread >= 0 && raised) _seenBy[ThreadName(_thread)] = Messages(_thread).Count;
 
             if (raised && _input != null && _input.Provider != null && _input.Bindings != null && !_device.IsRinging)
             {

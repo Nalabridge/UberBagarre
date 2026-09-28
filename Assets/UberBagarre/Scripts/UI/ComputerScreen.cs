@@ -44,7 +44,8 @@ namespace UberBagarre.UI
             Paris,
             Sport,
             Immobilier,
-            Mails
+            Mails,
+            Journal
         }
 
         [SerializeField] private HomeRegistry _homes;
@@ -83,6 +84,7 @@ namespace UberBagarre.UI
                     case AppId.Sport: return "SALLE DE SPORT";
                     case AppId.Immobilier: return "IMMOBILIER";
                     case AppId.Mails: return "MAILS";
+                    case AppId.Journal: return "HYLAND INFO";
                     default: return "NOUVEL ONGLET";
                 }
             }
@@ -139,6 +141,17 @@ namespace UberBagarre.UI
 
             _mails.Insert(0, new Mail { From = from, Subject = subject, Body = body, Unread = unread });
             if (_mails.Count > 20) _mails.RemoveAt(_mails.Count - 1);
+        }
+
+        /// <summary>Ce mail a-t-il été ouvert ? (faux s'il n'est pas dans la boîte)</summary>
+        public bool MailRead(string from, string subject)
+        {
+            for (int i = 0; i < _mails.Count; i++)
+            {
+                if (_mails[i].From == from && _mails[i].Subject == subject) return !_mails[i].Unread;
+            }
+
+            return false;
         }
 
         public int UnreadMails
@@ -223,6 +236,7 @@ namespace UberBagarre.UI
                 case AppId.Sport: DrawSport(area, u); break;
                 case AppId.Immobilier: DrawEstate(area, u); break;
                 case AppId.Mails: DrawMails(area, u); break;
+                case AppId.Journal: DrawJournal(area, u); break;
                 default: DrawDesktop(area, u); break;
             }
         }
@@ -275,7 +289,7 @@ namespace UberBagarre.UI
             Text(new Rect(search.x + 18f * u, search.y, search.width - 30f * u, search.height), "🔍  Rechercher ou saisir une adresse",
                 17, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
 
-            Site[] sites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail };
+            Site[] sites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail, Site.Journal };
             float w = (area.width * 0.8f - 4f * 16f * u) / 5f;
             float h = 150f * u;
             for (int i = 0; i < sites.Length; i++)
@@ -303,7 +317,8 @@ namespace UberBagarre.UI
             Paris,
             Sport,
             Immo,
-            Mail
+            Mail,
+            Journal
         }
 
         private readonly List<Site> _tabs = new List<Site>();
@@ -329,6 +344,7 @@ namespace UberBagarre.UI
                 case AppId.Sport: return Site.Sport;
                 case AppId.Immobilier: return Site.Immo;
                 case AppId.Mails: return Site.Mail;
+                case AppId.Journal: return Site.Journal;
                 default: return Site.Accueil;
             }
         }
@@ -342,6 +358,7 @@ namespace UberBagarre.UI
                 case Site.Sport: return AppId.Sport;
                 case Site.Immo: return AppId.Immobilier;
                 case Site.Mail: return AppId.Mails;
+                case Site.Journal: return AppId.Journal;
                 default: return AppId.Bureau;
             }
         }
@@ -355,6 +372,7 @@ namespace UberBagarre.UI
                 case Site.Sport: return "Iron Gym";
                 case Site.Immo: return "Hyland Immo";
                 case Site.Mail: return "Webmail";
+                case Site.Journal: return "Hyland Info";
                 default: return "Nouvel onglet";
             }
         }
@@ -368,6 +386,7 @@ namespace UberBagarre.UI
                 case Site.Sport: return "irongym.fr";
                 case Site.Immo: return "hyland-immo.fr";
                 case Site.Mail: return "webmail.hylandnet.fr";
+                case Site.Journal: return "hylandinfo.fr";
                 default: return "gogol.fr";
             }
         }
@@ -381,6 +400,7 @@ namespace UberBagarre.UI
                 case Site.Sport: return new Color(1f, 0.5f, 0.12f);
                 case Site.Immo: return new Color(0.3f, 0.6f, 1f);
                 case Site.Mail: return new Color(0.2f, 0.8f, 0.8f);
+                case Site.Journal: return new Color(0.85f, 0.85f, 0.88f);
                 default: return new Color(0.45f, 0.7f, 1f);
             }
         }
@@ -394,6 +414,7 @@ namespace UberBagarre.UI
                 case Site.Sport: return new Color(0.09f, 0.07f, 0.06f);
                 case Site.Immo: return new Color(0.05f, 0.08f, 0.14f);
                 case Site.Mail: return new Color(0.05f, 0.1f, 0.11f);
+                case Site.Journal: return new Color(0.08f, 0.08f, 0.1f);
                 default: return new Color(0.11f, 0.12f, 0.14f);
             }
         }
@@ -411,6 +432,7 @@ namespace UberBagarre.UI
                 case AppId.Sport: path = "/seances"; break;
                 case AppId.Immobilier: path = "/annonces"; break;
                 case AppId.Mails: path = _openMail >= 0 ? "/message/" + (_openMail + 1) : "/boite-de-reception"; break;
+                case AppId.Journal: path = _openArticle >= 0 ? "/article/" + (_openArticle + 1) : "/"; break;
                 default: path = "/"; break;
             }
 
@@ -607,7 +629,7 @@ namespace UberBagarre.UI
             float favY = toolY + toolH;
             float favH = 30f * u;
             GuiKit.Fill(new Rect(window.x, favY, window.width, favH), new Color(0.17f, 0.18f, 0.2f));
-            Site[] favorites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail };
+            Site[] favorites = { Site.Casino, Site.Paris, Site.Sport, Site.Immo, Site.Mail, Site.Journal };
             float fx = window.x + 14f * u;
             for (int i = 0; i < favorites.Length; i++)
             {
@@ -1341,6 +1363,50 @@ namespace UberBagarre.UI
             _progress.MoveTo(home);
             if (_homes != null) _homes.Apply();
             Toast("Tu habites maintenant : " + home + ". Tu t'y réveilleras.", false);
+        }
+
+        private int _openArticle = -1;
+
+        /// <summary>Le journal de la ville : ses articles, les plus récents d'abord.</summary>
+        private void DrawJournal(Rect area, float u)
+        {
+            _registeredRows = 0;
+            IReadOnlyList<NewsFeed.Article> articles = NewsFeed.Articles;
+
+            if (_openArticle >= 0 && _openArticle < articles.Count)
+            {
+                NewsFeed.Article a = articles[_openArticle];
+                Text(new Rect(area.x, area.y, area.width * 0.8f, 40f * u), a.title, 28, FontStyle.Bold, TextAnchor.MiddleLeft, Ink, u);
+                Text(new Rect(area.x, area.y + 44f * u, area.width * 0.8f, 26f * u), "Hyland Info  ·  jour " + a.day, 16, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+                Text(new Rect(area.x, area.y + 84f * u, area.width * 0.72f, 60f * u), a.lead, 20, FontStyle.Bold, TextAnchor.UpperLeft, Ink, u, true);
+                Text(new Rect(area.x, area.y + 150f * u, area.width * 0.72f, area.height - 240f * u), a.body, 19, FontStyle.Normal, TextAnchor.UpperLeft, Ink, u, true);
+                if (Row(new Rect(area.x, area.yMax - 70f * u, area.width * 0.3f, 56f * u), "RETOUR", null, true, u)) _openArticle = -1;
+                _registeredRows++;
+                return;
+            }
+
+            float y = area.y;
+            if (articles.Count == 0)
+            {
+                Text(new Rect(area.x, y, area.width, 40f * u), "Rien de neuf à Hyland. Pour l'instant.", 20, FontStyle.Normal, TextAnchor.MiddleLeft, Dim, u);
+                y += 60f * u;
+            }
+
+            for (int i = 0; i < articles.Count && i < 8; i++)
+            {
+                NewsFeed.Article a = articles[i];
+                if (Row(NextRow(ref y, area.x, area.width * 0.75f, 64f * u, u), (a.unread ? "● " : "") + a.title, a.lead, true, u))
+                {
+                    a.unread = false;
+                    _openArticle = i;
+                    Focus = 0;
+                }
+
+                _registeredRows++;
+            }
+
+            if (Row(NextRow(ref y, area.x, area.width * 0.3f, 56f * u, u), "RETOUR", null, true, u)) Go(AppId.Bureau);
+            _registeredRows++;
         }
 
         private void DrawMails(Rect area, float u)

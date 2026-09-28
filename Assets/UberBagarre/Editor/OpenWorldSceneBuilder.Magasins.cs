@@ -87,6 +87,9 @@ namespace UberBagarre.EditorTools
 
         private static readonly Vector3 ShopInteriorsOrigin = new Vector3(1000f, 0.5f, -240f);
 
+        /// <summary>La porte, dans la ville, de chaque magasin à façade (par nom) : l'histoire y donne rendez-vous.</summary>
+        private static readonly Dictionary<string, Vector3> ShopFronts = new Dictionary<string, Vector3>();
+
         private static string CounterLabel(ShopKind kind)
         {
             switch (kind)
@@ -118,6 +121,7 @@ namespace UberBagarre.EditorTools
             VehicleCatalog vehicles, HomeRegistry registry, ComputerScreen computer, ClubInteriorBuilder.Result club, CityMap cityMap)
         {
             List<CityMap.Landmark> marks = new List<CityMap.Landmark>();
+            ShopFronts.Clear();
             Color shopColor = new Color(1f, 0.8f, 0.3f);
             ShopScreen screen = systems.AddComponent<ShopScreen>();
             WirePanel(screen, player, progress);
@@ -164,6 +168,7 @@ namespace UberBagarre.EditorTools
                         Vector3 front;
                         if (FacadePosition(city, spec, out front))
                         {
+                            ShopFronts[spec.Name] = front;
                             marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(front.x, front.z), color = shopColor });
                         }
                     }

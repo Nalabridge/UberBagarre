@@ -43,10 +43,62 @@ namespace UberBagarre.EditorTools
                 Stars = 4, Silhouette = "Costaud", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.34f, 0.35f, 0.37f),
                 Pants = new Color(0.15f, 0.15f, 0.17f), Health = 190f,
                 Record = "« Le Comptable ». Tient les paris clandestins\nde la ville. Ne se salit jamais les mains." } },
-            new StoryRole { Tag = "sami", Look = new Target { Name = "SAMI", Age = "30 ans", Clothing = "Veste kaki",
-                Stars = 5, Silhouette = "Athlete", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.24f, 0.27f, 0.15f),
-                Pants = new Color(0.10f, 0.15f, 0.30f), Health = 240f,
-                Record = "Ton ami. Celui qui t'a installé l'appli.\nCelui qui a parié contre toi." } }
+            new StoryRole { Tag = "sami", Look = new Target { Name = "SAMI", Age = "27 ans", Clothing = "Veste kaki",
+                Stars = 3, Silhouette = "Athlete", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.24f, 0.27f, 0.15f),
+                Pants = new Color(0.10f, 0.15f, 0.30f), Health = 170f,
+                Record = "Ton ami d'enfance. Celui qui t'a installé l'appli.\nCelui qui a mis quelque chose dans ta bouteille." } },
+            new StoryRole { Tag = "karim", Look = new Target { Name = "KARIM", Age = "22 ans", Clothing = "Polo orange Taco Ticklers",
+                Stars = 1, Silhouette = "Athlete", Top = CorpsImporter.Top.TShirt, Shirt = new Color(0.95f, 0.55f, 0.10f),
+                Pants = new Color(0.15f, 0.15f, 0.18f), Health = 90f,
+                Record = "Livreur chez Taco Ticklers.\n« A mal parlé à un client. »" } },
+            new StoryRole { Tag = "encaisseur", Look = new Target { Name = "ENCAISSEUR", Age = "40 ans", Clothing = "Blouson de cuir",
+                Stars = 2, Silhouette = "Colosse", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.10f, 0.08f, 0.07f),
+                Pants = new Color(0.08f, 0.08f, 0.09f), Health = 150f,
+                Record = "Un associé de Nestor. Il ne parle pas beaucoup." } },
+            new StoryRole { Tag = "kovac_gars", Look = new Target { Name = "GARS DES KOVAC", Age = "26 ans", Clothing = "Survêtement gris",
+                Stars = 2, Silhouette = "Sec", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.40f, 0.40f, 0.42f),
+                Pants = new Color(0.20f, 0.20f, 0.22f), Health = 110f,
+                Record = "Un des gars des docks. Il suit Milan partout." } },
+            new StoryRole { Tag = "recrue", Look = new Target { Name = "LA RECRUE", Age = "25 ans", Clothing = "Short de boxe, torse nu",
+                Stars = 2, Silhouette = "Athlete", Top = CorpsImporter.Top.Debardeur, Shirt = new Color(0.12f, 0.12f, 0.14f),
+                Pants = new Color(0.55f, 0.08f, 0.08f), Health = 130f,
+                Record = "Le combat de test de Rosa." } },
+            new StoryRole { Tag = "facteur", Look = new Target { Name = "LE FACTEUR", Age = "29 ans", Clothing = "Maillot jaune",
+                Stars = 2, Silhouette = "Sec", Top = CorpsImporter.Top.Debardeur, Shirt = new Color(0.95f, 0.82f, 0.10f),
+                Pants = new Color(0.12f, 0.14f, 0.35f), Health = 140f,
+                Record = "10e de la Ligue. Frappe vite, livre toujours." } },
+            new StoryRole { Tag = "olga", Look = new Target { Name = "MAMA OLGA", Age = "44 ans", Clothing = "Justaucorps bordeaux",
+                Stars = 3, Silhouette = "Colosse", Top = CorpsImporter.Top.Debardeur, Shirt = new Color(0.40f, 0.05f, 0.12f),
+                Pants = new Color(0.40f, 0.05f, 0.12f), Health = 200f,
+                Record = "7e de la Ligue. Ancienne lutteuse. Elle étrangle." } },
+            new StoryRole { Tag = "dentiste", Look = new Target { Name = "LE DENTISTE", Age = "38 ans", Clothing = "Blouse blanche tachée",
+                Stars = 3, Silhouette = "Costaud", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.86f, 0.86f, 0.84f),
+                Pants = new Color(0.18f, 0.18f, 0.20f), Health = 180f,
+                Record = "4e de la Ligue. Triche : un poing américain sous le bandage." } },
+            new StoryRole { Tag = "sven", Look = new Target { Name = "SVEN", Age = "33 ans", Clothing = "Torse nu, barbe blonde",
+                Stars = 4, Silhouette = "Colosse", Top = CorpsImporter.Top.Debardeur, Shirt = new Color(0.75f, 0.72f, 0.62f),
+                Pants = new Color(0.10f, 0.10f, 0.12f), Health = 280f,
+                Record = "2e de la Ligue. Un colosse. Lent. Très lourd." } },
+            new StoryRole { Tag = "vigile", Look = new Target { Name = "VIGILE DU CASINO", Age = "35 ans", Clothing = "Costume noir, oreillette",
+                Stars = 3, Silhouette = "Costaud", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.05f, 0.05f, 0.06f),
+                Pants = new Color(0.05f, 0.05f, 0.06f), Health = 150f,
+                Record = "La sécurité de Sarkis." } },
+            new StoryRole { Tag = "casseur", Look = new Target { Name = "CASSEUR", Age = "28 ans", Clothing = "Capuche noire",
+                Stars = 3, Silhouette = "Athlete", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.08f, 0.08f, 0.09f),
+                Pants = new Color(0.08f, 0.08f, 0.09f), Health = 140f,
+                Record = "Payé par l'appli pour s'en prendre à Mme Keller." } },
+            new StoryRole { Tag = "flic", Look = new Target { Name = "FLIC DE BRANDT", Age = "36 ans", Clothing = "Uniforme bleu marine",
+                Stars = 4, Silhouette = "Costaud", Top = CorpsImporter.Top.TShirt, Shirt = new Color(0.12f, 0.16f, 0.32f),
+                Pants = new Color(0.07f, 0.08f, 0.13f), Health = 170f,
+                Record = "La brigade du commissaire. Corrompue jusqu'à l'os." } },
+            new StoryRole { Tag = "brandt", Look = new Target { Name = "COMMISSAIRE BRANDT", Age = "55 ans", Clothing = "Costume bleu nuit",
+                Stars = 5, Silhouette = "Colosse", Top = CorpsImporter.Top.Veste, Shirt = new Color(0.10f, 0.12f, 0.22f),
+                Pants = new Color(0.08f, 0.08f, 0.12f), Health = 340f,
+                Record = "Ancien boxeur de la police. Le bras armé du maire.\nIl connaît la boxe." } },
+            new StoryRole { Tag = "champion", Look = new Target { Name = "ÉRIC VANCE", Age = "26 ans", Clothing = "Short doré",
+                Stars = 5, Silhouette = "Athlete", Top = CorpsImporter.Top.Debardeur, Shirt = new Color(0.10f, 0.10f, 0.12f),
+                Pants = new Color(0.85f, 0.65f, 0.15f), Health = 300f,
+                Record = "Champion régional en titre.\nTon premier match officiel depuis trois ans." } }
         };
 
         // ------------------------------------------------------------------ personnages
@@ -183,7 +235,7 @@ namespace UberBagarre.EditorTools
             return false;
         }
 
-        private static OpenWorldStory BuildStory(GameObject systems, OpenWorldStory.Character[] characters, MapPack.Data map,
+        private static OpenWorldStory BuildStory(GameObject systems, OpenWorldStory.Character[] characters, StoryCast cast, MapPack.Data map,
             ClubInteriorBuilder.Result club, OpenWorldDirector director, PlayerProgress progress, SubtitleDisplay subtitles,
             ScreenFader fader, PhoneDevice phone, CityMap cityMap, HomeRegistry homes, ComputerScreen computer)
         {
@@ -201,6 +253,7 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(story, "_map", cityMap);
             SerializedWiring.SetObject(story, "_homes", homes);
             SerializedWiring.SetObject(story, "_computer", computer);
+            SerializedWiring.SetObject(story, "_cast", cast);
 
             Vector3 door = map.vertigo != null && map.vertigo.door != null ? MapPack.Position(map.vertigo.door) : Vector3.zero;
             // Le courrier, ouvert et lu à l'écran (la version du motel).

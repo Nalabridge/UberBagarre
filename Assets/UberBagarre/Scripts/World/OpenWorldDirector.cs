@@ -77,7 +77,30 @@ namespace UberBagarre.World
 
             /// <summary>Ce qui se dit au moment où la cible se retourne (à la place de sa réaction).</summary>
             public DialogueLine[] Lines;
+
+            /// <summary>Des renforts autour de la cible (la bande de Milan, des vigiles) : tous doivent tomber.</summary>
+            public Profile[] Extras;
+
+            /// <summary>Pas de photo (la Fosse, une embuscade) : payé dès que tout le monde est au sol.</summary>
+            public bool NoPhoto;
+
+            /// <summary>Une question avant le combat (réponse 0 = se battre, les autres = l'épargner).</summary>
+            public string ChoiceQuestion;
+            public string[] ChoiceOptions;
+
+            /// <summary>Pas de proposition au téléphone : c'est une embuscade, ça commence tout de suite.</summary>
+            public bool Direct;
+
+            /// <summary>Un style à part (le Facteur frappe vite, Sven est lent et lourd…), appliqué à l'apparition.</summary>
+            public Action<Combatant> Tune;
         }
+
+        /// <summary>Un choix fait avant un combat de l'histoire : (tag, réponse).</summary>
+        public event Action<string, int> StoryChoiceMade;
+
+        private readonly List<Combatant> _extras = new List<Combatant>();
+        private readonly List<GameObject> _extrasToClean = new List<GameObject>();
+        private bool _choiceAsked;
 
         private enum Stage
         {
@@ -236,6 +259,21 @@ namespace UberBagarre.World
         /// <summary>L'histoire impose la prochaine course (elle tombe dès que possible).</summary>
         public void QueueStoryContract(StoryContract contract)
         {
+            if (contract != null && contract.Direct && !Busy && _running == null &&
+                (_stage == Stage.Waiting || _stage == Stage.Paid || _stage == Stage.Offered))
+            {
+                // Une embuscade n'attend pas : l'offre ordinaire à l'écran part à quelqu'un d'autre.
+                if (_stage == Stage.Offered && _phone != null && _phone.Current == PhoneDevice.Screen.Accueil)
+                {
+                    _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+                }
+
+                _story = null;
+                OfferStory(contract);
+                Accept();
+                return;
+            }
+
             _story = contract;
             if (_stage == Stage.Waiting) _timer = Mathf.Min(_timer, 4f);
         }
@@ -368,7 +406,7 @@ namespace UberBagarre.World
                     }
 
                     if (_briefing != null && _objective != null) _briefing.ObjectiveProgress = _objective.Progress;
-                    if (!_target.IsAlive) BeginProof();
+                    if (!_target.IsAlive && ExtrasDown) BeginProof();
                     break;
 
                 case Stage.Paid:
@@ -408,8 +446,10 @@ namespace UberBagarre.World
 
             if (_story != null)
             {
-                OfferStory(_story);
+                StoryContract story = _story;
                 _story = null;
+                OfferStory(story);
+                if (story.Direct) Accept();
                 return;
             }
 
@@ -574,10 +614,16 @@ namespace UberBagarre.World
         private void OnConfirmed()
         {
             if (_stage != Stage.Offered || _phone == null || _phone.Current != PhoneDevice.Screen.Accueil) return;
+            Accept();
+        }
 
+        private void Accept()
+        {
             // Trop blessé, trop affamé : l'appli ne t'envoie pas au casse-pipe.
+            // (Une embuscade, elle, ne demande pas ton avis.)
             string unfit;
-            if (PlayerCondition.Instance != null && !PlayerCondition.Instance.CanFight(out unfit))
+            bool ambush = _running != null && _running.Direct;
+            if (!ambush && PlayerCondition.Instance != null && !PlayerCondition.Instance.CanFight(out unfit))
             {
                 Say("APPLI", "Course refusée. " + unfit);
                 return;
@@ -585,8 +631,11 @@ namespace UberBagarre.World
 
             SpawnTarget();
 
-            _phone.SetScreen(PhoneDevice.Screen.Mission);
-            _phone.Lower();
+            if (_phone != null)
+            {
+                _phone.SetScreen(PhoneDevice.Screen.Mission);
+                _phone.Lower();
+            }
 
             if (_map != null && _targetGo != null)
             {
@@ -623,10 +672,49 @@ namespace UberBagarre.World
             _targetBrain = _targetGo.GetComponent<EnemyBrain>();
             if (_targetBrain != null) _targetBrain.enabled = false;
             Toughen(_profile.stars);
+            if (_running != null && _running.Tune != null && _target != null) _running.Tune(_target);
 
             _activity = TargetActivity.Begin(_targetGo, TargetActivity.Parse(_spot.activity), _spot.lookAt, _kit);
 
             if (_target != null) _target.Damaged += OnTargetDamaged;
+
+            // Les renforts : autour de lui, en arc de cercle, et ils attendent le signal.
+            _extras.Clear();
+            _choiceAsked = false;
+            Profile[] extras = _running != null ? _running.Extras : null;
+            for (int i = 0; extras != null && i < extras.Length; i++)
+            {
+                if (extras[i] == null || extras[i].template == null) continue;
+                float angle = (i - (extras.Length - 1) * 0.5f) * 55f;
+                Vector3 at = _spot.position + rotation * (Quaternion.Euler(0f, angle, 0f) * new Vector3(0f, 0f, -2.4f));
+                GameObject go = Instantiate(extras[i].template, at, rotation, _targetsRoot);
+                go.name = extras[i].name;
+                go.SetActive(true);
+                ISpawnReceiver[] extraReceivers = go.GetComponentsInChildren<ISpawnReceiver>(true);
+                for (int r = 0; r < extraReceivers.Length; r++) extraReceivers[r].OnSpawned(at, rotation);
+
+                Combatant c = go.GetComponent<Combatant>();
+                if (c == null) continue;
+                c.SetDisplayName(extras[i].name);
+                if (go.GetComponent<TargetInjuries>() == null) go.AddComponent<TargetInjuries>();
+                EnemyBrain b = go.GetComponent<EnemyBrain>();
+                if (b != null)
+                {
+                    b.enabled = false;
+                    b.ApplyDifficulty(0.3f + 0.15f * extras[i].stars);
+                }
+
+                _extras.Add(c);
+            }
+        }
+
+        private bool ExtrasDown
+        {
+            get
+            {
+                for (int i = 0; i < _extras.Count; i++) if (_extras[i] != null && _extras[i].IsAlive) return false;
+                return true;
+            }
         }
 
         /// <summary>
@@ -797,7 +885,27 @@ namespace UberBagarre.World
             if (speaking && _input != null && _input.InteractPressed && _faceOffTime > 0.3f) _subtitles.Skip();
 
             // Les paroles d'abord ; au pire, on n'attend pas plus de 30 s.
-            if ((!speaking && _faceOffTime > 0.8f) || _faceOffTime > 30f) StartFight();
+            if ((!speaking && _faceOffTime > 0.8f) || _faceOffTime > 30f)
+            {
+                // Une question avant de cogner : l'histoire laisse le choix.
+                if (_running != null && _running.ChoiceOptions != null && _running.ChoiceOptions.Length > 1)
+                {
+                    if (_choiceAsked) return;
+                    _choiceAsked = true;
+                    string tag = _running.Tag;
+                    ChoicePrompt.Ask(_profile != null ? _profile.name : "", _running.ChoiceQuestion ?? "Alors ?", _running.ChoiceOptions,
+                        delegate(int answer)
+                        {
+                            Action<string, int> chosen = StoryChoiceMade;
+                            if (chosen != null) chosen(tag, answer);
+                            if (answer == 0) StartFight();
+                            else Spare();
+                        });
+                    return;
+                }
+
+                StartFight();
+            }
         }
 
         private void EndFaceOff()
@@ -816,6 +924,11 @@ namespace UberBagarre.World
 
             _stage = Stage.Fighting;
             if (_targetBrain != null) _targetBrain.enabled = true;
+            for (int i = 0; i < _extras.Count; i++)
+            {
+                EnemyBrain b = _extras[i] != null ? _extras[i].GetComponent<EnemyBrain>() : null;
+                if (b != null) b.enabled = true;
+            }
 
             // La foule ne se forme que dans les coins abrités (ruelle, parking, hangar) : en plein
             // découvert, les gens passent leur chemin.
@@ -856,6 +969,14 @@ namespace UberBagarre.World
         {
             _stage = Stage.Proof;
             if (PlayerCondition.Instance != null) PlayerCondition.Instance.FoughtOnce();
+
+            // La Fosse, une embuscade : pas de photo, c'est fini quand tout le monde est au sol.
+            if (_running != null && _running.NoPhoto)
+            {
+                if (_objective != null) _objective.Knockout();
+                Pay();
+                return;
+            }
             bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
             if (_objective != null) _objective.Knockout();
             bool open = hasGoal && _objective.StaysOpen && !_objective.AlreadyMet;
@@ -1024,8 +1145,22 @@ namespace UberBagarre.World
             _timer = _betweenOrders;
         }
 
+        /// <summary>On l'épargne : pas de combat, la course s'arrête là (l'histoire saura pourquoi).</summary>
+        private void Spare()
+        {
+            EndFaceOff();
+            if (_map != null) _map.ClearWaypoint();
+            if (_phone != null && _phone.Current == PhoneDevice.Screen.Mission) _phone.SetScreen(PhoneDevice.Screen.Verrouille);
+            _running = null;
+            _stage = Stage.Waiting;
+            _timer = _betweenOrders;
+            ScheduleCleanup();
+        }
+
         private void ScheduleCleanup()
         {
+            for (int i = 0; i < _extras.Count; i++) if (_extras[i] != null) _extrasToClean.Add(_extras[i].gameObject);
+            _extras.Clear();
             if (_target != null) _target.Damaged -= OnTargetDamaged;
             if (_objective != null) _objective.End();
 
@@ -1045,6 +1180,12 @@ namespace UberBagarre.World
         /// <summary>Le corps part quand plus personne ne le regarde (loin, ou après un long moment).</summary>
         private void CleanUp()
         {
+            if (_toClean == null && _extrasToClean.Count > 0 && Time.time >= _cleanAt)
+            {
+                for (int i = 0; i < _extrasToClean.Count; i++) if (_extrasToClean[i] != null) Destroy(_extrasToClean[i]);
+                _extrasToClean.Clear();
+            }
+
             if (_toClean == null || Time.time < _cleanAt) return;
 
             float distance = _player != null ? (_toClean.transform.position - _player.transform.position).magnitude : 999f;
@@ -1052,6 +1193,8 @@ namespace UberBagarre.World
 
             Destroy(_toClean);
             _toClean = null;
+            for (int i = 0; i < _extrasToClean.Count; i++) if (_extrasToClean[i] != null) Destroy(_extrasToClean[i]);
+            _extrasToClean.Clear();
         }
 
         private void OnFracture(TargetInjuries target, string what)

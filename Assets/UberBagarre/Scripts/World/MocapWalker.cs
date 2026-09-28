@@ -70,6 +70,32 @@ namespace UberBagarre.World
         /// <summary>Vrai tant qu'il est au sol (renversé) ou en train de se relever.</summary>
         public bool IsDown { get { return _downStage != 0; } }
 
+        private bool _oneWay;
+
+        /// <summary>Arrivé au bout d'un trajet à sens unique (un personnage de l'histoire).</summary>
+        public bool Arrived { get; private set; }
+
+        /// <summary>
+        /// Un trajet à parcourir une seule fois, sans pause (un personnage qu'on suit, qu'on
+        /// escorte) : il part du premier point et s'arrête au dernier.
+        /// </summary>
+        public void Walk(Vector3[] path, float speed)
+        {
+            if (path == null || path.Length < 2) return;
+            _path = path;
+            _speed = speed;
+            _pauseChance = 0f;
+            _oneWay = true;
+            Arrived = false;
+            _next = 1;
+            _pause = 0f;
+            if (_body == null) _body = GetComponent<Rigidbody>();
+            transform.position = path[0];
+            if (_body != null) _body.position = path[0];
+            Face(path[1] - path[0], 1f);
+            enabled = true;
+        }
+
         /// <summary>Pose le trajet (constructeur de la ville).</summary>
         public void SetPath(Vector3[] path, int start, float speed)
         {
@@ -94,9 +120,12 @@ namespace UberBagarre.World
                 return;
             }
 
-            _next = (_startIndex + 1) % _path.Length;
-            transform.position = _path[_startIndex % _path.Length];
-            Face(_path[_next] - transform.position, 1f);
+            if (!_oneWay)
+            {
+                _next = (_startIndex + 1) % _path.Length;
+                transform.position = _path[_startIndex % _path.Length];
+                Face(_path[_next] - transform.position, 1f);
+            }
 
             BuildGraph();
 
@@ -179,6 +208,13 @@ namespace UberBagarre.World
 
             if (to.magnitude < 0.35f)
             {
+                if (_oneWay && _next == _path.Length - 1)
+                {
+                    Arrived = true;
+                    _currentSpeed = 0f;
+                    return;
+                }
+
                 _next = (_next + 1) % _path.Length;
                 if (Random.value < _pauseChance) _pause = Random.Range(_pauseDuration.x, _pauseDuration.y);
                 return;

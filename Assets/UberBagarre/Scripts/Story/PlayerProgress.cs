@@ -77,6 +77,16 @@ namespace UberBagarre.Story
             public int day;
         }
 
+        /// <summary>Un SMS reçu (ou envoyé) : l'histoire arrive surtout par là.</summary>
+        [Serializable]
+        public class Sms
+        {
+            public string from;
+            public string text;
+            public bool mine;
+            public int day;
+        }
+
         /// <summary>Une ligne du casier judiciaire.</summary>
         [Serializable]
         public class RecordEntry
@@ -140,6 +150,12 @@ namespace UberBagarre.Story
 
             /// <summary>Le Code : négatif = la Brute, positif = le Justicier.</summary>
             public int code;
+
+            /// <summary>Les SMS, dans l'ordre.</summary>
+            public List<Sms> sms = new List<Sms>();
+
+            /// <summary>Des compteurs nommés (combats de la Ligue, visites à maman...).</summary>
+            public List<string> counters = new List<string>();
             public List<string> owned = new List<string>();
             public List<string> flags = new List<string>();
             public int chapter;
@@ -516,6 +532,65 @@ namespace UberBagarre.Story
             return true;
         }
 
+        // ------------------------------------------------------------------ SMS, compteurs
+
+        /// <summary>Un SMS arrive (de, texte) : le téléphone le notifie.</summary>
+        public event Action<string, string> SmsReceived;
+
+        public IReadOnlyList<Sms> Messages { get { return _data.sms; } }
+
+        public void AddSms(string from, string text, bool mine = false)
+        {
+            if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(text)) return;
+            _data.sms.Add(new Sms { from = from, text = text, mine = mine, day = _data.day });
+            if (_data.sms.Count > 400) _data.sms.RemoveAt(0);
+            if (!mine)
+            {
+                Action<string, string> handler = SmsReceived;
+                if (handler != null) handler(from, text);
+            }
+
+            RaiseChanged();
+        }
+
+        /// <summary>Un compteur nommé (« ligue », « maman »…) : sa valeur.</summary>
+        public int Counter(string name)
+        {
+            string prefix = name + "=";
+            for (int i = 0; i < _data.counters.Count; i++)
+            {
+                if (_data.counters[i].StartsWith(prefix))
+                {
+                    int value;
+                    if (int.TryParse(_data.counters[i].Substring(prefix.Length), out value)) return value;
+                }
+            }
+
+            return 0;
+        }
+
+        public void SetCounter(string name, int value)
+        {
+            string prefix = name + "=";
+            for (int i = 0; i < _data.counters.Count; i++)
+            {
+                if (!_data.counters[i].StartsWith(prefix)) continue;
+                _data.counters[i] = prefix + value;
+                RaiseChanged();
+                return;
+            }
+
+            _data.counters.Add(prefix + value);
+            RaiseChanged();
+        }
+
+        public int Increment(string name)
+        {
+            int value = Counter(name) + 1;
+            SetCounter(name, value);
+            return value;
+        }
+
         // ------------------------------------------------------------------ casier, Code
 
         /// <summary>Le poids du casier : plus il est lourd, plus la police réagit vite.</summary>
@@ -739,6 +814,11 @@ namespace UberBagarre.Story
         public void SetFlag(string flag)
         {
             if (!string.IsNullOrEmpty(flag) && !_data.flags.Contains(flag)) _data.flags.Add(flag);
+        }
+
+        public void ClearFlag(string flag)
+        {
+            _data.flags.Remove(flag);
         }
 
         public void SetChapter(int chapter)
