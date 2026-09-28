@@ -249,6 +249,7 @@ namespace UberBagarre.World
 
             _progress.ResetProgress();
             NewsFeed.Clear();
+            PlayerPrefs.DeleteKey(FallKey);
             chapter = Mathf.Clamp(chapter, Prologue, Acte5);
             if (chapter > Prologue) SkipTo(chapter);
             Begin();
@@ -277,6 +278,8 @@ namespace UberBagarre.World
         {
             _results.Clear();
             _choices.Clear();
+            _side.Clear();
+            _fall = 0;
             _reserved.Clear();
             _waitingTalk.Clear();
             _pendingTalk = null;
@@ -292,6 +295,7 @@ namespace UberBagarre.World
 
             if (_ringGate != null) _ringGate.SetActive(true);
             if (_director != null) _director.NapUntilHour = -1f;
+            if (CombatPresence.Player != null) CombatPresence.Player.Forced = false;
         }
 
         private IEnumerator Opening()
@@ -376,7 +380,8 @@ namespace UberBagarre.World
                 if (_progress.Chapter == act) break;
             }
 
-            if (_director != null) _director.Paused = false;
+            // Après la fin du Justicier, l'appli n'existe plus.
+            if (_director != null) _director.Paused = Done("appli:fermee");
             Goal(string.Empty);
         }
 
@@ -480,6 +485,7 @@ namespace UberBagarre.World
         {
             // La partie vient d'être rechargée : on reprend à la dernière nuit.
             if (!_started) return;
+            CountFallDeath();
             StopAllCoroutines();
             ResetRuntime();
             if (_director != null) _director.ClearStoryContract();
@@ -730,6 +736,7 @@ namespace UberBagarre.World
             StoryActor a = _cast != null ? _cast.Actor(actor) : null;
             if (a == null) yield break;
             if (!a.Placed) Put(actor, place);
+            _reserved.Add(actor);
             a.SetTalkable(true);
             if (objective != null) Goal(objective);
             if (place != null) Mark(place);
@@ -906,7 +913,8 @@ namespace UberBagarre.World
         /// Lance une course de l'histoire et attend : gagnée, ou épargnée (réponse au choix). Une
         /// course ratée (K.O., fuite) retombe un peu plus tard — l'histoire ne se perd pas.
         /// </summary>
-        private IEnumerator Fight(OpenWorldDirector.StoryContract contract, string objective, string retry = null)
+        /// <param name="once">Une seule tentative (une histoire secondaire) : ratée, <see cref="_outcome"/> vaut -1.</param>
+        private IEnumerator Fight(OpenWorldDirector.StoryContract contract, string objective, string retry = null, bool once = false)
         {
             if (_director == null || contract == null || contract.Profile == null || contract.Spot == null)
             {
@@ -945,6 +953,14 @@ namespace UberBagarre.World
                 {
                     _outcome = 0;
                     yield return new WaitForSeconds(3.5f);
+                    yield return Calm();
+                    yield break;
+                }
+
+                if (once)
+                {
+                    _outcome = -1;
+                    yield return new WaitForSeconds(3f);
                     yield return Calm();
                     yield break;
                 }

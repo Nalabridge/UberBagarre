@@ -2654,3 +2654,41 @@ Proportions : la carte est à l'échelle réelle (portes 2,10 m, berline 4,85 ×
 un rendu à hauteur d'yeux). Ce qui faisait « géant » : 75° de champ vertical (≈ 106° en horizontal)
 et des yeux à 1,62 m. Désormais 64° et 1,57 m (capsule 1,75 m) ; le corps du joueur est mis à la
 taille de la caméra pour que ses pieds restent au sol.
+
+## 31. L'histoire complète : un fil d'étapes, pas des chapitres
+
+Le premier `OpenWorldStory` était une machine à chapitres (un numéro, quelques drapeaux, un
+`switch` dans `Resume`). Avec cinq actes, des choix qui se croisent et des histoires secondaires
+qui vivent en même temps, ce modèle devenait un labyrinthe. Il est remplacé par un **fil** :
+
+- `Saga()` est une coroutine qui joue l'acte en cours (`PrologueLine`, `Acte1Line` … `Acte5Line`,
+  un fichier par acte dans `Scripts/World/Saga/`). Chaque étape est gardée par un **drapeau de la
+  sauvegarde** (`if (!Done("a2:taureau")) …`) : une partie rechargée rejoue l'acte depuis le début
+  en sautant ce qui est fait. Pas d'état caché dans le moteur, rien à « restaurer ».
+- Les étapes s'écrivent avec une poignée d'**attentes** : `Call` (le téléphone sonne, on répond),
+  `Texts` (SMS), `TalkTo` (parler à quelqu'un, E), `Reach` (rejoindre un lieu), `Fight` (une course
+  de l'histoire, gagnée ou épargnée ; ratée, elle retombe), `Choose` (`ChoicePrompt`), `UntilHour`
+  / `UntilNight` (le lit fait alors une sieste jusqu'à l'heure), `UntilNextDay`, `BackRoom` (la
+  salle du fond du Vertigo). `Calm()` attend que rien d'autre ne se passe (course, dialogue, menu,
+  fondu, garde à vue).
+- `City()` fait vivre la ville à côté : les **habitués** placés selon l'heure (sauf ceux que le fil
+  s'est **réservés** pour une scène), les histoires secondaires lancées chacune dans sa coroutine
+  (`Side(id, …)`, une seule instance à la fois), les SMS du matin. Parler à un habitué qu'aucune
+  scène n'attend ouvre une **visite** (`Visit`) : ce qu'il dit dépend du Code et des drapeaux.
+- `StoryCast` (construit par `OpenWorldSceneBuilder.Saga`) : les gens à qui l'on parle
+  (`StoryActor` : un corps de spectateur, un `Interactable`, parfois un `MocapWalker` pour la
+  filature et l'escorte) et les **lieux** nommés (motel, salle de Ray, laverie, Dragon d'Or,
+  commissariat, docks…), pris dans les points de la carte, les magasins et leurs façades. Un
+  `WalkGraph` (A* sur les points des boucles de passants) trace les trajets à pied.
+- Les courses de l'histoire passent par le directeur (`StoryContract`) : renforts (`Extras`), sans
+  photo (`NoPhoto`), embuscade immédiate (`Direct` — elle chasse une offre ordinaire), question
+  avant le combat (`ChoiceQuestion`), style de combat (`Tune`, des `StatModifier` à source
+  « Histoire »). Une seule course d'histoire à la fois : le fil et la ville attendent leur tour.
+- Ce qui n'est pas dans la sauvegarde (le journal `NewsFeed`, les mails) est **rejoué** au
+  chargement d'après les drapeaux `news:*` et `mail:*` ; les textes sont rangés par identifiant
+  dans `OpenWorldStory.Journal.cs`.
+- La police sert l'histoire : `PoliceSystem.Floor` (la chasse à l'homme : jamais moins d'étoiles),
+  `AddHideout` (les planques des alliés), `Grace` (Duval appelle le central), `NoBribes` (le carnet
+  est chez Duval). Les personnages de l'histoire ne sont jamais témoins.
+- La Chute se compte même à travers une mort (qui recharge la partie) : un compteur hors
+  sauvegarde (`PlayerPrefs`), remis à zéro à l'entrée de l'acte 5.

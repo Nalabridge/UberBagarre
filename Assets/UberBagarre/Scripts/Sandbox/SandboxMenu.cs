@@ -809,17 +809,20 @@ namespace UberBagarre.Sandbox
             ry += 34f;
 
             float third = (column - 20f) / 3f;
-            string[] chapters = { "PROLOGUE", "CHAPITRE 1", "CHAPITRE 2" };
+            string[] chapters = _cheats.OpenWorld != null
+                ? new[] { "PROLOGUE", "ACTE 1", "ACTE 2", "ACTE 3", "ACTE 4", "ACTE 5" }
+                : new[] { "PROLOGUE", "CHAPITRE 1", "CHAPITRE 2" };
 
             for (int i = 0; i < chapters.Length; i++)
             {
-                if (!Button(new Rect(right + i * (third + 10f), ry, third, 28f), chapters[i], _playerAccent)) continue;
+                Rect button = new Rect(right + (i % 3) * (third + 10f), ry + (i / 3) * 34f, third, 28f);
+                if (!Button(button, chapters[i], _playerAccent)) continue;
 
                 _cheats.StartChapter(i);
                 SetOpen(false);
             }
 
-            ry += 38f;
+            ry += 38f + ((chapters.Length - 1) / 3) * 34f;
 
             LocationDirector locations = _cheats.Locations;
 

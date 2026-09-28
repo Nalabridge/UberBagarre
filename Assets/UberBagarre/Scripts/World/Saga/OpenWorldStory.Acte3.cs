@@ -160,7 +160,7 @@ namespace UberBagarre.World
             Goal(string.Empty);
             Free("TONY", false);
             Free("JEFF", false);
-            Free("KARIM", false);
+            Free("KARIM", Done("karim:frappe"));
             yield return Lines(L("MOI", "L'uniforme, les rondes, la porte. Il ne manque que la nuit."));
         }
 

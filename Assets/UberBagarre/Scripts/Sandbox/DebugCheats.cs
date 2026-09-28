@@ -129,7 +129,25 @@ namespace UberBagarre.Sandbox
 
         public bool HasStory
         {
-            get { return _story != null || _prologue != null; }
+            get { return _story != null || _prologue != null || OpenWorld != null; }
+        }
+
+        private OpenWorldStory _openWorld;
+        private bool _openWorldSearched;
+
+        /// <summary>L'histoire du monde ouvert, s'il y en a une dans la scène.</summary>
+        public OpenWorldStory OpenWorld
+        {
+            get
+            {
+                if (_openWorld == null && !_openWorldSearched)
+                {
+                    _openWorldSearched = true;
+                    _openWorld = FindAnyObjectByType<OpenWorldStory>();
+                }
+
+                return _openWorld;
+            }
         }
 
         public LocationDirector Locations
@@ -147,6 +165,11 @@ namespace UberBagarre.Sandbox
         {
             get
             {
+                if (OpenWorld != null && Progress != null)
+                {
+                    return OpenWorldStory.ChapterName(Progress.Chapter) + "  ·  jour " + Progress.Day + "  ·  Code " + Progress.Code;
+                }
+
                 if (_story == null) return string.Empty;
                 if (!_story.IsRunning) return _story.IsFinished ? "(terminee)" : "(aucune)";
                 return _story.CurrentBeatId + "  (" + (_story.BeatIndex + 1) + "/" + _story.BeatCount + ")";
@@ -322,9 +345,17 @@ namespace UberBagarre.Sandbox
             if (_story != null) _story.SkipBeat();
         }
 
-        /// <summary>0 = prologue, 1 = chapitre 1, 2 = chapitre 2.</summary>
+        /// <summary>0 = prologue, 1 = chapitre 1, 2 = chapitre 2 (monde ouvert : les actes 0 à 5).</summary>
         public void StartChapter(int chapter)
         {
+            if (OpenWorld != null)
+            {
+                Noclip = false;
+                Fly = false;
+                OpenWorld.StartChapter(chapter);
+                return;
+            }
+
             if (_prologue == null) return;
 
             Noclip = false;

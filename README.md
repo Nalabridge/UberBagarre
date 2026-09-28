@@ -202,7 +202,10 @@ Tu peux les changer sans toucher à une ligne de code.
 | 25 | Voix des personnages, ambiances sonores par lieu, caméra stable, combat nerveux, adversaire toujours lisible, menu de triche dans le jeu | ✅ |
 | 26 | Téléphone avec un vrai système (8 applis), appareil photo plein écran, prise en main réaliste, cinématique d'avant-combat, foule qui se forme, garde et coups en vrille, mouchard de caméra | ✅ |
 | 27 | Écran titre et pause avec réglages graphiques, face-à-face dialogués avant chaque bagarre, courrier animé, maison détaillée et voiture sur l'allée, bleus peints dans la peau, mains au repos hors combat | ✅ |
-| 28 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 28 | Monde ouvert sur la carte Schedule 1 : magasins, logements, voitures du pack, circulation, ordinateur, casino | ✅ |
+| 29 | Faim et blessures, police (témoins, étoiles, recherche, garde à vue, casier), vol de voitures, passants, météo, écran de chargement, nouveau menu | ✅ |
+| 30 | L'histoire complète « Hyland cogne » : prologue, cinq actes, choix, Code, histoires secondaires, cinq fins ([Docs/HISTOIRE.md](Docs/HISTOIRE.md)) | ✅ |
+| 31 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -366,21 +369,23 @@ chargée par-dessus au lancement (`MapStreamer`) : ses portes deviennent de vrai
 lampadaires et ses fenêtres s'allument la nuit, et qui tombe à l'eau est repêché sur le trottoir.
 
 **L'écran titre** survole la ville en cinq plans (l'avenue, l'enseigne du Vertigo, le motel, le port
-vu d'en haut, le manoir) : **CONTINUER** (le jour, le niveau, l'argent, le titre, le chapitre de la
-sauvegarde), **NOUVELLE PARTIE**, **CHAPITRES**, graphismes, commandes.
+vu d'en haut, le manoir) : **CONTINUER** (le jour, le niveau, l'argent, le titre de la sauvegarde),
+**NOUVELLE PARTIE**, graphismes, commandes. Entre l'écran titre et la ville, un **écran de
+chargement** (le lieu, le jour, des astuces) tient jusqu'à ce que tout soit en place.
 
-**L'histoire** (`OpenWorldStory`) :
-
-| Chapitre | Ce qui se passe |
-|---|---|
-| Prologue — la planque | Réveil au motel Hyland, chambre 3. Le courrier sur le bureau. Sami appelle (sors le téléphone, réponds) : l'appli. Première course : Bruno Moretti, qui fume devant le Vertigo. |
-| 1 — deux étoiles | Après une nuit (ou quelques courses) : Dragan Kovac sur le parking de la pizzeria, puis son frère Milan qui te cherche. |
-| 2 — trois étoiles | Sami rappelle : la salle du fond du Vertigo. Entre, attends : la commande tombe — le Taureau, dans la fosse. |
-| 3 — quatre étoiles | Quelqu'un avait commandé ce combat contre toi. Victor Sarkis, « le Comptable », derrière le casino. |
-| 4 — cinq étoiles | Sarkis crache le nom : Sami. Une commande à ton nom tombe — les docks. |
-| Épilogue | La ville continue : courses, casino, le manoir sur la colline. |
-
-Entre deux chapitres, le jeu est libre. Chapitre et étapes sont dans la sauvegarde.
+**L'histoire — « Hyland cogne »** (`OpenWorldStory`, détail complet dans
+[`Docs/HISTOIRE.md`](Docs/HISTOIRE.md)) : Léo Marchal, boxeur radié, 12 000 € de dettes chez Nestor,
+une appli illégale installée par son ami Sami. Un prologue et cinq actes — les petites courses et
+l'inspectrice Duval, la Fosse du Vertigo et le Taureau, le casse du casino et le carnet noir de
+Sarkis, la trahison de Sami, la nuit de l'élection contre Brandt et le maire Holt — puis cinq fins
+(le Justicier, le Roi, le Fantôme, la Chute, et une fin secrète). **Pas de chapitres à l'écran** :
+l'histoire arrive au téléphone (appels, SMS, l'appli), à l'ordinateur (mails, le journal *Hyland
+Info*), au courrier, et par les gens qu'on va voir (E) : Coach Ray à la salle, maman à la laverie,
+Lina au cabinet, Jeff au skatepark, M. Chen au Dragon d'Or… Les choix (épargner Karim ou non, à qui
+donner le carnet, que faire de Sami, accepter Holt) déplacent le **Code** (Brute ↔ Justicier) et
+changent les dialogues, les alliés et la fin. Autour : les échéances de Nestor et ses encaisseurs,
+les visites à maman, le racket de M. Chen, le tournoi de Ray, la ceinture à racheter, les rivaux qui
+reviennent. Tout est dans la sauvegarde (la dernière nuit passée au lit).
 
 **Les courses** ont un contexte : la cible **fait quelque chose** (fume, téléphone, boit, tague un
 mur, s'entraîne, pêche, deale, se dispute, retire au distributeur) avec ses accessoires ; à quelques
@@ -445,6 +450,34 @@ le soleil tourne, les lampadaires et les fenêtres s'allument le soir. Le rendu 
 et doux (préréglage **VILLE** dans Graphismes), façon Schedule I. Le champ de vision par défaut est
 de 64° et les yeux du joueur à 1,57 m : à l'échelle de la carte (portes de 2,10 m), on ne se sent
 plus géant.
+
+**La vie en ville** :
+
+- **La faim et les blessures** : l'estomac se creuse (une nuit, une bagarre) ; affamé ou blessé,
+  on frappe plus lentement et l'appli refuse les courses. Le frigo de la chambre (les courses de la
+  supérette), la trousse de soins, le cabinet médical ou l'hôpital remettent sur pied.
+- **Les voitures** : la tienne t'attend devant le motel. Les autres se **volent**, à la manière de
+  *Thief Simulator* : crochetage goupille par goupille (il faut des crochets : quincaillerie, marché
+  noir), les fils sous le volant, parfois l'alarme ; une voiture de la circulation arrêtée, on en
+  sort le conducteur (plus rapide, beaucoup plus grave). Descendre de voiture est animé. La
+  circulation respecte les carrefours.
+- **Les passants** : on peut les provoquer (E) ou les frapper sans raison ; chacun son tempérament
+  (le timide s'enfuit, le sanguin se met en garde). K.O., on fouille ses poches.
+- **La police** : un témoin qui voit une bagarre en plein découvert, un vol, une agression sort
+  son téléphone — file hors de sa vue ou va lui « parler » avant 15 s. Une à cinq étoiles
+  (patrouilles à pied, voitures, la brigade de Brandt) ; hors de vue, un **cercle de recherche** sur
+  la carte : en sortir et se faire oublier (un magasin, chez soi, une autre tenue, une autre voiture
+  aident). Devant un agent (une étoile) : **E** se rendre, **R** payer (deux étoiles au plus).
+  Arrêté : une nuit au poste, amende (10 %), réputation, appli suspendue une journée, et le
+  **casier** retient tout (Maître Lenoir le nettoie, cher).
+- **La météo** : éclaircies, ciel couvert, pluie et orage ; les rues mouillées et les **flaques**
+  reflètent les néons. La première course se fait la nuit, sous la pluie, devant le Vertigo.
+- **Les courses** sont plus dures (les cibles encaissent et cognent selon leurs étoiles) ; une
+  cible **au sol** peut être frappée encore — c'est souvent la consigne payée en bonus (casser une
+  jambe…), mais c'est un délit à part si quelqu'un regarde. La **foule** ne se forme que dans les
+  coins abrités (ruelle, parking, hangar, la Fosse).
+- **Le Vertigo** : le bar et la piste au néon ; un **escalier** remonte vers la porte de sortie ;
+  la Fosse est derrière une porte, dans la salle du fond (c'est illégal).
 
 ## Le monde ouvert
 
@@ -596,6 +629,10 @@ Et jamais deux chutes à moins de 3 secondes d'écart, sinon on ne se relève pl
 ---
 
 ## Le prologue
+
+> Cette section et les deux suivantes décrivent la **scène linéaire** du menu 3 (le premier
+> prototype d'histoire, en chapitres). L'histoire complète, « Hyland cogne », se joue dans le
+> **monde ouvert** (menu 3b) : voir [`Docs/HISTOIRE.md`](Docs/HISTOIRE.md).
 
 `Uber Bagarre → 3 - Construire le JEU (histoire complete)`, puis Play.
 

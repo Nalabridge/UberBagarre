@@ -234,6 +234,7 @@ namespace UberBagarre.World
                 MocapWalker walker = walkers[i];
                 if (walker == null || !walker.isActiveAndEnabled || walker.IsDown) continue;
                 if (victim != null && walker.gameObject == victim) continue;
+                if (walker.GetComponent<Story.StoryActor>() != null) continue;
                 if (IsCalling(walker)) continue;
                 Vector3 eyes = walker.transform.position + Vector3.up * 1.6f;
                 if ((eyes - place).sqrMagnitude > _witnessRange * _witnessRange) continue;
