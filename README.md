@@ -494,9 +494,11 @@ Schedule 1 est rendu avec **URP** (Universal Render Pipeline). Le jeu y passe au
    ambiante** (SSAO), HDR, espace de couleur linéaire ; les matériaux restés sur le « Standard » du
    rendu intégré (jeu, add-ons) passent sur **URP Lit** ; le terrain de la ville passe sur celui
    d'URP.
-2. **Unity fermé**, installer le **correctif URP de la carte** (`CorrectifURP.zip`, release
-   `carte-urp-v2`) : supprimer `Assets/Schedule1/Materiaux` et `Assets/Schedule1/Shaders`, puis
-   dézipper le correctif dans `Assets/` (remplacer les textures).
+2. **Unity fermé**, installer le **correctif URP de la carte** (`CorrectifURP.zip`, livré en 22
+   volumes `CorrectifURP.zip.001` à `.022` : les mettre dans un même dossier et ouvrir le `.001`
+   avec 7-Zip ; ou le refaire avec `Tools/schedule1/python/correctif_urp.py`) : supprimer
+   `Assets/Schedule1/Materiaux` et `Assets/Schedule1/Shaders`, puis extraire le correctif dans
+   `Assets/` (remplacer les textures).
 3. Rouvrir Unity, relancer **3b - Construire le MONDE OUVERT**.
 
 **Ce que change le correctif de la carte** : les **1 146 matériaux d'origine** de Schedule 1 (sur
