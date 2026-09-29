@@ -483,7 +483,11 @@ namespace UberBagarre.EditorTools
             }
 
             Texture2D tag = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
-            Shader shader = Shader.Find("Legacy Shaders/Transparent/Diffuse");
+            // Sous URP, le « Transparent/Diffuse » du rendu intégré serait rose : URP Lit transparent.
+            Shader shader = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null
+                ? Shader.Find("Universal Render Pipeline/Lit")
+                : null;
+            if (shader == null) shader = Shader.Find("Legacy Shaders/Transparent/Diffuse");
             if (shader == null) return null;
 
             string path = AccessoriesFolder + "/M_Tag.mat";
@@ -497,6 +501,7 @@ namespace UberBagarre.EditorTools
             material.shader = shader;
             material.mainTexture = tag;
             material.color = Color.white;
+            UrpSetup.MakeTransparent(material);
             EditorUtility.SetDirty(material);
             return material;
         }

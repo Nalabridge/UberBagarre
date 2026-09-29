@@ -2692,3 +2692,67 @@ qui vivent en même temps, ce modèle devenait un labyrinthe. Il est remplacé p
   est chez Duval). Les personnages de l'histoire ne sont jamais témoins.
 - La Chute se compte même à travers une mort (qui recharge la partie) : un compteur hors
   sauvegarde (`PlayerPrefs`), remis à zéro à l'entrée de l'acte 5.
+
+## 32. Le rendu de Schedule 1 : URP, sans dépendre d'URP à la compilation
+
+Schedule 1 est rendu avec URP ; la v1 de la carte avait converti ses matériaux vers le Standard du
+rendu intégré, d'où une lumière « fausse » (autre modèle d'éclairage, reflets à 100 %, pas
+d'occlusion ambiante). Le jeu passe donc sous URP, avec trois contraintes : le projet doit compiler
+**avec ou sans** le paquet (rien dans git ne le déclare), rien ne doit devenir rose, et les
+matériaux de la carte doivent être **ceux du jeu d'origine**.
+
+### 32.1 Les shaders : deux versions dans chaque fichier
+
+- Chaque shader éclairé du projet (`UberSkin`, `UberWetGround`) et de la carte (`CarteTriplanaire`,
+  `CarteDoubleFace`, `CarteEau`) a un premier SubShader URP (`"RenderPipeline" =
+  "UniversalPipeline"`) gardé par `PackageRequirements { "com.unity.render-pipelines.universal" }` :
+  sans le paquet, il n'est même pas importé ; le SubShader du rendu intégré suit.
+- Leur surface est calculée à la main, puis éclairée par `UberShade` (`Art/Shaders/UberUrp.hlsl`),
+  qui remplit `InputData` / `SurfaceData` et appelle `UniversalFragmentPBR` : soleil et ombres en
+  cascades, lampes en Forward+ (`_CLUSTER_LIGHT_LOOP`), SSAO, ambiante (`SampleSH`), sondes, brume.
+  Une surface maison posée à côté d'un matériau URP Lit d'origine réagit à la lumière pareil.
+- Ombres, profondeur et normales : `UberUrpPasses.hlsl` (mêmes calculs que ceux d'URP Lit, dont
+  `ApplyShadowBias` / `ApplyShadowClamping`), inclus après le `CBUFFER` du matériau dans un bloc
+  `HLSLINCLUDE` : toutes les passes partagent le même `UnityPerMaterial`, donc le SRP Batcher
+  regroupe les rendus de la ville. La double face a ses propres passes (découpe et vent suivis
+  jusque dans l'ombre).
+- Le triplanaire lit les **propriétés d'origine** du Shader Graph de Schedule 1 (`_DiffuseTexture`,
+  `_NormalTexture`, `_Tiling`, `_BlendingEdges` = exposant des poids, `_Rotation` en degrés,
+  `_NormalStrength`, `_BaseColor`, `_Smoothness`, `_Metallic`) et refait le nœud *Triplanar* (poids
+  `|n|^k`, projections zy / xz / xy, normales en mélange « whiteout »).
+- `UberBagarre/Ciel` : le ciel de Schedule 1 (*Sky Studio*) refait sur les valeurs de son matériau ;
+  non éclairé, sans passe propre à un moteur, il marche partout. Il lit `_UberSunDir` et
+  `_UberNight`, posés par `TimeOfDay`.
+
+### 32.2 Le correctif de la carte (`Tools/schedule1/python/correctif_urp.py`)
+
+- Pour chaque matériau du pack v1 (même GUID, donc mêmes références dans la scène), on repart du
+  fichier **d'origine** de l'export : URP Lit / Complex Lit / Simple Lit rebranchés sur les vrais
+  shaders d'URP (GUID de leurs `.meta` : `933532a4…`, `ee7e4c9a…`, `8d2bb70c…`), le Shader Graph
+  triplanaire sur notre shader. Le reste (packs payants, matériaux absents de l'export) : la
+  conversion v1, traduite vers URP Lit.
+- Chaque matériau URP reçoit le sous-objet `AssetVersion` d'URP (script `d0353a89…`, version 7,
+  celle d'URP 14 dont vient Schedule 1) : à l'import, URP n'applique que les mises à niveau
+  postérieures, comme s'il ouvrait le projet d'origine. Sans lui, URP pourrait croire le matériau
+  très ancien et recopier les propriétés obsolètes (`_Glossiness`, `_Color`, `_MainTex`) sur les
+  vraies ; par sécurité, ces propriétés cachées sont de toute façon alignées sur les vraies.
+- Textures : jusqu'à 2048 px ; une texture déjà dans le pack garde son nom et son format (sinon
+  Unity verrait deux fichiers pour un GUID). Noms uniques sans tenir compte de la casse (Windows).
+
+### 32.3 L'installation (`Editor/UrpSetup.cs`) et le jeu (`Scripts/View/UrpBridge.cs`)
+
+- `UrpSetup` : `Client.Add` du paquet si besoin, puis (après la recompilation, via `SessionState`
+  et `[InitializeOnLoadMethod]`) création du pipeline par réflexion (`UniversalRendererData`,
+  `UniversalRenderPipelineAsset.Create`), réglages écrits par **noms sérialisés** (`SerializedObject`
+  : Forward+, ombres, SSAO ajoutée comme sous-objet du renderer avec sa `m_RendererFeatureMap`),
+  assignation à `GraphicsSettings` et à chaque niveau de qualité, espace linéaire, conversion des
+  matériaux Standard / Legacy vers URP Lit (la logique d'URP, `ShaderUtils.UpdateMaterial`, recalcule
+  mots-clés et modes de mélange ; à défaut on les pose à la main), terrain de la ville sur
+  `TerrainLit.mat` d'URP.
+- `UrpBridge` ne fait rien hors URP. Sous URP : un volume global créé à l'exécution (tonemapping
+  neutre, bloom, étalonnage, vignette, grain, aberration) piloté par `GraphicsDirector` ; chaque
+  caméra de jeu reçoit ses `UniversalAdditionalCameraData` (post-traitement, FXAA / SMAA / TAA) au
+  premier `beginCameraRendering` ; `UberPostProcess` et `PlanarReflection` sont coupés ; un terrain
+  resté sur le matériau intégré passe sur celui d'URP.
+- `TimeOfDay` sous URP : la lumière de la scène de Schedule 1 (soleil 2,76, ombres 0,95, ambiante
+  *Trilight*, brume linéaire 0–200 m, reflets 0,25) mélangée à la nuit et à la pluie comme avant.

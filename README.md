@@ -205,7 +205,9 @@ Tu peux les changer sans toucher à une ligne de code.
 | 28 | Monde ouvert sur la carte Schedule 1 : magasins, logements, voitures du pack, circulation, ordinateur, casino | ✅ |
 | 29 | Faim et blessures, police (témoins, étoiles, recherche, garde à vue, casier), vol de voitures, passants, météo, écran de chargement, nouveau menu | ✅ |
 | 30 | L'histoire complète « Hyland cogne » : prologue, cinq actes, choix, Code, histoires secondaires, cinq fins ([Docs/HISTOIRE.md](Docs/HISTOIRE.md)) | ✅ |
-| 31 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
+| 31 | Carte façon GTA (point, itinéraire), premiers pas, troncs solides, voitures à l'échelle, coups rééquilibrés | ✅ |
+| 32 | Rendu de Schedule 1 : URP, matériaux d'origine de la carte, sa lumière et son ciel | ✅ |
+| 33 | Nettoyage, documentation, préparation des stats | 🔄 en continu |
 
 ---
 
@@ -478,6 +480,46 @@ plus géant.
   coins abrités (ruelle, parking, hangar, la Fosse).
 - **Le Vertigo** : le bar et la piste au néon ; un **escalier** remonte vers la porte de sortie ;
   la Fosse est derrière une porte, dans la salle du fond (c'est illégal).
+
+## Le rendu de Schedule 1 (URP)
+
+Schedule 1 est rendu avec **URP** (Universal Render Pipeline). Le jeu y passe aussi, pour avoir
+**exactement** ses matériaux et sa lumière, pas une conversion vers l'ancien rendu intégré.
+
+**Installer (une fois)** :
+
+1. **Uber Bagarre → 0 - Passer sous URP (le rendu de Schedule 1)**. Le paquet URP s'installe,
+   Unity recompile, puis tout se règle seul : pipeline en **Forward+** (toutes les lampes de la rue
+   sur chaque objet), **ombres douces** du soleil en 4 cascades jusqu'à 150 m, **occlusion
+   ambiante** (SSAO), HDR, espace de couleur linéaire ; les matériaux restés sur le « Standard » du
+   rendu intégré (jeu, add-ons) passent sur **URP Lit** ; le terrain de la ville passe sur celui
+   d'URP.
+2. **Unity fermé**, installer le **correctif URP de la carte** (`CorrectifURP.zip`, release
+   `carte-urp-v2`) : supprimer `Assets/Schedule1/Materiaux` et `Assets/Schedule1/Shaders`, puis
+   dézipper le correctif dans `Assets/` (remplacer les textures).
+3. Rouvrir Unity, relancer **3b - Construire le MONDE OUVERT**.
+
+**Ce que change le correctif de la carte** : les **1 146 matériaux d'origine** de Schedule 1 (sur
+1 254) sont remis **tels quels** — 993 « URP Lit », 5 « Complex Lit » et 6 « Simple Lit » sur les
+vrais shaders d'URP, 142 murs et briques « triplanaires » sur notre shader qui lit leurs propriétés
+d'origine (leur Shader Graph n'est pas dans l'export). Seuls les matériaux de packs payants du jeu
+(herbe stylisée, eau, vitres, bâtiments modulaires) restent convertis. Les textures reprennent leur
+taille d'origine jusqu'à **2048 px** (1024 dans la v1).
+
+**La lumière** est celle de la scène de Schedule 1 (`TimeOfDay`, sous URP) : soleil blanc à peine
+chaud d'intensité 2,76, ombres à 95 %, ambiante à trois couleurs (ciel bleu clair, horizon gris, sol
+bleuté), brume **linéaire** bleutée jusqu'à 200 m, reflets d'environnement à **25 %** (c'est ce qui
+garde la chaussée mate), et un ciel refait sur les valeurs de son « Sky Studio » (dégradé, soleil,
+nuages qui défilent, étoiles la nuit : `UberBagarre/Ciel`). Le post-traitement passe par un volume
+URP (tonemapping neutre, bloom, étalonnage, vignette), réglé depuis le menu Graphismes comme avant.
+
+**Ce qui reste différent** : Schedule 1 utilise aussi des assets payants de l'Asset Store — le ciel
+*Sky Studio*, l'eau *Stylized Water 2*, l'herbe *Stylized Grass Shader*, les rayons *Corgi God Rays*
+et *Volumetric Light Beam*, les imposteurs *Amplify Impostors*. Ils ne sont pas dans l'export ; le jeu
+en a des équivalents maison. Pour un rendu identique à 100 %, il faut les acheter et les importer.
+
+Sans URP, le jeu garde son rendu intégré (post-traitement maison, reflets planaires) : tous les
+shaders du projet ont les deux versions.
 
 ## Le monde ouvert
 

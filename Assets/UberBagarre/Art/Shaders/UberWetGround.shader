@@ -43,6 +43,112 @@ Shader "UberBagarre/WetGround"
         _RippleFadeDistance ("Distance de fondu des ondulations", Float) = 28
     }
 
+    // --- URP (le rendu de Schedule 1) : bitume et flaques. Plus de miroir planaire (URP ne le
+    // déclenche pas) : les flaques reflètent le ciel et les sondes, comme la chaussée de Schedule 1.
+    SubShader
+    {
+        // Ignoré tant qu'URP n'est pas installé : le shader reste valide en rendu intégré.
+        PackageRequirements { "com.unity.render-pipelines.universal": "14.0" }
+        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
+        LOD 300
+
+        Pass
+        {
+            Name "ForwardLit"
+            Tags { "LightMode" = "UniversalForward" }
+
+            HLSLPROGRAM
+            #pragma target 3.5
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS_VERTEX _ADDITIONAL_LIGHTS
+            #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
+            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
+            #pragma multi_compile_fog
+            #pragma multi_compile_instancing
+            #include "Assets/UberBagarre/Art/Shaders/UberUrp.hlsl"
+
+            TEXTURE2D(_MainTex); SAMPLER(sampler_MainTex);
+            TEXTURE2D(_BumpMap); SAMPLER(sampler_BumpMap);
+            TEXTURE2D(_WetMask); SAMPLER(sampler_WetMask);
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _MainTex_ST;
+                float4 _WetMask_ST;
+                half4 _Color;
+                half _BumpScale;
+                half _Glossiness;
+                half _Metallic;
+                half _WetLevel;
+                half _WetDarken;
+            CBUFFER_END
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+                float4 tangentOS : TANGENT;
+                float2 uv : TEXCOORD0;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float4 uv : TEXCOORD0;
+                float3 positionWS : TEXCOORD1;
+                float3 normalWS : TEXCOORD2;
+                float4 tangentWS : TEXCOORD3;
+                float4 shadowCoord : TEXCOORD4;
+                half fogFactor : TEXCOORD5;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output = (Varyings)0;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_TRANSFER_INSTANCE_ID(input, output);
+                VertexPositionInputs position = GetVertexPositionInputs(input.positionOS.xyz);
+                VertexNormalInputs normal = GetVertexNormalInputs(input.normalOS, input.tangentOS);
+                output.positionCS = position.positionCS;
+                output.positionWS = position.positionWS;
+                output.normalWS = normal.normalWS;
+                output.tangentWS = float4(normal.tangentWS, input.tangentOS.w);
+                output.uv = float4(TRANSFORM_TEX(input.uv, _MainTex), TRANSFORM_TEX(input.uv, _WetMask));
+                output.shadowCoord = GetShadowCoord(position);
+                output.fogFactor = ComputeFogFactor(position.positionCS.z);
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                UNITY_SETUP_INSTANCE_ID(input);
+                half4 albedo = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv.xy) * _Color;
+                half puddle = SAMPLE_TEXTURE2D(_WetMask, sampler_WetMask, input.uv.zw).r * _WetLevel;
+
+                half3 normalTS = UnpackNormalScale(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, input.uv.xy), _BumpScale * (1.0 - puddle * 0.85));
+                float3 normalWS = UberTangentToWorld(normalTS, normalize(input.normalWS), input.tangentWS);
+
+                // L'eau assombrit et lisse : mais pas en miroir parfait (0,82), comme une vraie flaque.
+                half3 color = albedo.rgb * lerp(1.0, 1.0 - _WetDarken, puddle);
+                half smoothness = lerp(_Glossiness, 0.82, puddle);
+                return UberShade(input.positionWS, normalWS, input.positionCS, input.shadowCoord, input.fogFactor,
+                                 color, _Metallic, smoothness, 1.0, half3(0, 0, 0));
+            }
+            ENDHLSL
+        }
+
+        // Ombres portées, profondeur et normales (pour l'occlusion ambiante) : celles d'URP Lit.
+        UsePass "Universal Render Pipeline/Lit/SHADOWCASTER"
+        UsePass "Universal Render Pipeline/Lit/DEPTHONLY"
+        UsePass "Universal Render Pipeline/Lit/DEPTHNORMALS"
+    }
+
+    // --- Rendu intégré (Built-in) : la version d'origine, avec le reflet planaire.
     SubShader
     {
         Tags { "RenderType" = "Opaque" }

@@ -299,6 +299,11 @@ namespace UberBagarre.EditorTools
                 SerializedWiring.SetFloat(time, "_ambientNight", 0.34f);
                 SerializedWiring.SetColor(time, "_skyTintDay", new Color(0.5f, 0.66f, 0.92f));
                 SerializedWiring.SetFloat(time, "_skyExposureDay", 1.3f);
+
+                // Sous URP : le ciel de Schedule 1 (dégradé, soleil, nuages) avec sa lumière.
+                Material sky = EditorBuildUtility.CreateOrUpdateEffectMaterial(NightMaterialFactory.MaterialsFolder, "M_CielSchedule1", "UberBagarre/Ciel");
+                if (sky != null) SerializedWiring.SetObject(time, "_schedule1Sky", sky);
+                SerializedWiring.SetBool(time, "_schedule1", true);
                 EditorUtility.SetDirty(time);
             }
 
@@ -641,7 +646,8 @@ namespace UberBagarre.EditorTools
                 copy.CopyPropertiesFromMaterial(source);
             }
 
-            Texture albedo = source.HasProperty("_MainTex") ? source.GetTexture("_MainTex") : null;
+            Texture albedo = source.HasProperty("_BaseMap") ? source.GetTexture("_BaseMap") : null;
+            if (albedo == null && source.HasProperty("_MainTex")) albedo = source.GetTexture("_MainTex");
             copy.EnableKeyword("_EMISSION");
             copy.SetColor("_EmissionColor", emission);
             if (useAlbedo && albedo != null) copy.SetTexture("_EmissionMap", albedo);

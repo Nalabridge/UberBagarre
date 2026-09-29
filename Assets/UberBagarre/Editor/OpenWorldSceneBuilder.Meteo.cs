@@ -162,7 +162,10 @@ namespace UberBagarre.EditorTools
             material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
             material.SetFloat("_Cutoff", 0.96f);
+            material.SetFloat("_AlphaClip", 1f);
+            material.SetFloat("_Surface", 0f);
             material.SetFloat("_SpecularHighlights", 1f);
+            material.SetFloat("_EnvironmentReflections", 1f);
             material.SetFloat("_GlossyReflections", 1f);
             material.enableInstancing = true;
             EditorUtility.SetDirty(material);

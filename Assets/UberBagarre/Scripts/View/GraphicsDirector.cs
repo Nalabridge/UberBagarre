@@ -145,10 +145,27 @@ namespace UberBagarre.View
                     PlanarReflection reflection = _reflections[i];
                     if (reflection == null) continue;
 
-                    reflection.Enabled = _reflectionsEnabled;
+                    // Sous URP, le miroir du sol n'est jamais déclenché : les flaques reflètent
+                    // le ciel et les sondes, comme dans Schedule 1.
+                    reflection.Enabled = _reflectionsEnabled && !UrpBridge.Active;
                     reflection.Downsample = _reflectionDownsample;
                 }
             }
+
+            // Sous URP, le même réglage va au volume de post-traitement et aux caméras.
+            UrpBridge.Apply(new UrpBridge.Look
+            {
+                Post = _postEnabled,
+                Bloom = _bloom,
+                Threshold = _threshold,
+                Exposure = _exposure,
+                Saturation = _saturation,
+                Contrast = _contrast,
+                Vignette = _vignette,
+                Grain = _grain,
+                Aberration = _aberration,
+                AntiAliasing = _antiAliasing
+            });
 
             if (_timeOfDay != null) _timeOfDay.Day = _day;
 

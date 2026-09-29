@@ -79,6 +79,30 @@ namespace UberBagarre.View
         [Tooltip("Valeur du curseur au-dessus de laquelle elles sont completement eteintes.")]
         private float _lightsOffAbove = 0.55f;
 
+        [Header("Lumiere de Schedule 1 (sous URP)")]
+        [SerializeField]
+        [Tooltip("Sous URP (le rendu de Schedule 1), le jour prend la lumiere exacte de sa scene : " +
+                 "soleil, ambiante a trois couleurs, brume lineaire bleutee, reflets a 25 %, et son ciel.")]
+        private bool _schedule1 = true;
+
+        [SerializeField]
+        [Tooltip("Le ciel facon Schedule 1 (shader UberBagarre/Ciel). Sans lui, le ciel ci-dessus reste.")]
+        private Material _schedule1Sky;
+
+        // Les valeurs de la scène de Schedule 1 : son soleil et ses RenderSettings (Main.unity).
+        private static readonly Color S1SunColor = new Color(1f, 0.964389f, 0.9195454f);
+        private const float S1SunIntensity = 2.7607884f;
+        private const float S1ShadowStrength = 0.95f;
+        private static readonly Color S1AmbientSky = new Color(0.5520355f, 0.78309023f, 0.977011f);
+        private static readonly Color S1AmbientEquator = new Color(0.4281111f, 0.45352837f, 0.47316286f);
+        private static readonly Color S1AmbientGround = new Color(0.35239235f, 0.47594082f, 0.5749386f);
+        private static readonly Color S1FogColor = new Color(0.57989687f, 0.6373861f, 0.74509805f);
+        private const float S1FogEnd = 200f;
+        private const float S1Reflections = 0.25f;
+
+        private static readonly int SunDirId = Shader.PropertyToID("_UberSunDir");
+        private static readonly int NightId = Shader.PropertyToID("_UberNight");
+
         private NeonFlicker[] _artificial;
         private Material _skyInstance;
         private bool _collected;
@@ -171,11 +195,64 @@ namespace UberBagarre.View
 
             float t = _day;
 
+            if (_schedule1 && UrpBridge.Active)
+            {
+                ApplySchedule1(t);
+                ApplyMoon(t);
+                ApplyArtificial(t);
+                return;
+            }
+
             ApplySun(t);
             ApplyMoon(t);
             ApplySky(t);
             ApplyAtmosphere(t);
             ApplyArtificial(t);
+        }
+
+        /// <summary>
+        /// La lumière de Schedule 1, telle que sa scène la règle : un soleil blanc à peine chaud
+        /// et fort (2,76), des ombres douces presque pleines, une ambiante à trois couleurs (ciel
+        /// bleu clair, horizon gris, sol bleuté), une brume LINÉAIRE bleutée jusqu'à 200 m, et des
+        /// reflets d'environnement à 25 % seulement (c'est ce qui garde la chaussée mate). La nuit
+        /// et la pluie s'y mélangent comme dans le reste du cycle.
+        /// </summary>
+        private void ApplySchedule1(float t)
+        {
+            Color rain = new Color(0.46f, 0.48f, 0.5f);
+
+            if (_sun != null)
+            {
+                _sun.transform.rotation = Quaternion.Euler(_sunAngles);
+                _sun.color = Color.Lerp(S1SunColor, new Color(0.78f, 0.82f, 0.88f), _overcast);
+                _sun.intensity = S1SunIntensity * t * t * (1f - 0.72f * _overcast);
+                _sun.shadowStrength = S1ShadowStrength * (1f - 0.55f * _overcast);
+                _sun.shadows = LightShadows.Soft;
+                _sun.enabled = _sun.intensity > 0.002f;
+            }
+
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientIntensity = 1f;
+            float dim = Mathf.Lerp(_ambientNight, 1f, t) * (1f - 0.22f * _overcast);
+            RenderSettings.ambientSkyColor = Color.Lerp(Color.Lerp(_ambientSkyNight, S1AmbientSky, t), rain * t, _overcast * 0.5f) * dim;
+            RenderSettings.ambientEquatorColor = Color.Lerp(_ambientSkyNight * 0.7f, S1AmbientEquator, t) * dim;
+            RenderSettings.ambientGroundColor = Color.Lerp(_ambientGroundNight, S1AmbientGround, t) * dim;
+
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 0f;
+            RenderSettings.fogEndDistance = Mathf.Lerp(150f, S1FogEnd, t) * (1f - 0.45f * _overcast);
+            RenderSettings.fogColor = Color.Lerp(Color.Lerp(_fogNight, S1FogColor, t), rain * Mathf.Lerp(0.18f, 1f, t), _overcast * 0.7f);
+            RenderSettings.reflectionIntensity = S1Reflections;
+
+            if (_schedule1Sky != null) RenderSettings.skybox = _schedule1Sky;
+            else ApplySky(t);
+            RenderSettings.sun = t > 0.35f ? _sun : _moon;
+
+            // Le ciel suit le soleil et s'assombrit la nuit.
+            Vector3 toSun = _sun != null ? -_sun.transform.forward : new Vector3(0.3f, 0.6f, 0.4f);
+            Shader.SetGlobalVector(SunDirId, new Vector4(toSun.x, toSun.y, toSun.z, 0f));
+            Shader.SetGlobalFloat(NightId, Mathf.Clamp01(1f - t));
         }
 
         private void ApplySun(float t)

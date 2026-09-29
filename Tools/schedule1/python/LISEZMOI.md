@@ -35,6 +35,7 @@ lancer **dans l'ordre**, depuis ce dossier.
 | 9 | `roads.py`, `graph.py` | réseau des rues (graphe, circuit) |
 | 10 | `points.py` | `points.pkl` : spawns, parkings, distributeurs, points de livraison |
 | 11 | `reseau.py`, `reseau_portes.py` | `reseau.json`, `CarteDessus.png` (minicarte) |
+| 12 | `correctif_urp.py` | `out/CorrectifURP.zip` : les matériaux **d'origine** remis sur les vrais shaders d'URP, textures jusqu'à 2048 px (voir le README, « Le rendu de Schedule 1 ») |
 
 `room.py X0 X1 Z0 Z1 YMAX YMIN image.png` rend une pièce vue de dessus avec une grille d'un
 mètre : c'est ainsi qu'ont été placés les meubles du motel, du bungalow et du manoir.

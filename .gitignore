@@ -54,3 +54,7 @@ Assets/UberBagarre/Art/Animations/Generes.meta
 # Ville du monde ouvert (maillages fusionnes regeneres par CityBuilder)
 Assets/UberBagarre/Art/Ville/Generes/
 Assets/UberBagarre/Art/Ville/Generes.meta
+
+# Rendu URP cree par « Uber Bagarre > 0 - Passer sous URP » (propre a chaque machine)
+Assets/UberBagarre/Settings/Rendu/
+Assets/UberBagarre/Settings/Rendu.meta
