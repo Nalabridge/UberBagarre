@@ -1071,6 +1071,19 @@ namespace UberBagarre.View
         /// puis le corps reste au sol. Renvoie faux si les animations ne peuvent pas la jouer —
         /// le ragdoll prend alors le relais.
         /// </summary>
+        /// <summary>
+        /// La physique prend le corps (ragdoll de mort) : l'animation s'arrête net et laisse les
+        /// os dans la pose du moment — pas de retour à la pose de repos, qui ferait sauter le corps.
+        /// </summary>
+        public void StopForRagdoll()
+        {
+            _dead = true;
+            _active = false;
+            if (_graph.IsValid()) _graph.Stop();
+            if (_animator != null) _animator.enabled = false;
+            enabled = false;
+        }
+
         public bool PlayDeath(DamageInfo info)
         {
             if (!_active || !_built) return false;

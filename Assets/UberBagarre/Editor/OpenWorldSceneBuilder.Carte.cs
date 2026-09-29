@@ -131,6 +131,8 @@ namespace UberBagarre.EditorTools
 
             List<Vector3[]> walkLoops = MapPack.Loops(map.walk);
             List<Vector3[]> driveLoops = MapPack.Loops(map.drive);
+            cityMap.SetRoads(driveLoops);
+            EditorUtility.SetDirty(cityMap);
             GameObject walkers = BuildPedestrians(walkLoops, night, materials, 9, 11, attacks);
             // --- les voitures : celles de la ville (compacte, berline, SUV, pick-up, coupé),
             // devenues conduisibles. La compacte devant le motel est à toi ; les véhicules garés
@@ -190,6 +192,11 @@ namespace UberBagarre.EditorTools
             // --- l'histoire : ses adversaires, ses gens (à qui l'on parle), ses lieux
             OpenWorldStory.Character[] characters = BuildStoryCharacters(map, materials, attacks, night, club);
             StoryCast cast = BuildStoryCast(systems, map, materials, night, club, shops, walkLoops);
+
+            // --- les premiers pas : les touches essentielles, cochées au fur et à mesure
+            FirstSteps firstSteps = systems.AddComponent<FirstSteps>();
+            firstSteps.Configure(player.GetComponent<PlayerInputReader>(), fader);
+            EditorUtility.SetDirty(firstSteps);
             OpenWorldStory story = BuildStory(systems, characters, cast, map, club, director, progress, subtitles, fader, phone, cityMap,
                 registry, computerScreen);
 

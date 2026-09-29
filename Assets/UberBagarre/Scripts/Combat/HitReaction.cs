@@ -32,12 +32,12 @@ namespace UberBagarre.Combat
 
         [SerializeField, Min(0f)]
         [Tooltip("Vitesse de recul, en m/s. Voir la note sur la distance reellement parcourue.")]
-        private float _lightKnockback = 2.2f;
+        private float _lightKnockback = 1.9f;
 
         [Header("Reaction lourde")]
         [SerializeField, Min(0f)] private float _heavyDuration = 0.42f;
         [SerializeField] private float _heavyAngle = 22f;
-        [SerializeField, Min(0f)] private float _heavyKnockback = 2.6f;
+        [SerializeField, Min(0f)] private float _heavyKnockback = 2.2f;
 
         [Header("Coup bloque")]
         [SerializeField, Min(0f)]
@@ -62,7 +62,11 @@ namespace UberBagarre.Combat
 
         [SerializeField, Min(0f)]
         [Tooltip("Part du recul proportionnelle a la force d'impact du coup.")]
-        private float _knockbackPerImpactForce = 0.11f;
+        private float _knockbackPerImpactForce = 0.07f;
+
+        [SerializeField, Min(0.1f)]
+        [Tooltip("Plafond du facteur de recul : meme un uppercut charge ne projette pas a l'autre bout de la rue.")]
+        private float _maxKnockbackFactor = 1.1f;
 
         [Header("Retour")]
         [SerializeField, Min(0.5f)] private float _recoverySpeed = 6f;
@@ -137,7 +141,7 @@ namespace UberBagarre.Combat
                 // reellement parcourue vaut v2 / (2 x amortissement) : avec l'amortissement de 8
                 // des moteurs, 0,9 m/s ne deplacait que 5 cm. Invisible. A 2 m/s on recule de
                 // 25 cm, a 4 m/s d'un bon metre : c'est la plage ou le coup se VOIT porter.
-                float speed = knockback * (_knockbackBase + info.ImpactForce * _knockbackPerImpactForce);
+                float speed = knockback * Mathf.Min(_knockbackBase + info.ImpactForce * _knockbackPerImpactForce, _maxKnockbackFactor);
 
                 Vector3 push = info.Direction.normalized * speed;
                 push.y = 0f;
@@ -162,7 +166,7 @@ namespace UberBagarre.Combat
             if (_receiver == null) return;
 
             float speed = _lightKnockback * _blockedKnockbackScale *
-                          (_knockbackBase + info.ImpactForce * _knockbackPerImpactForce);
+                          Mathf.Min(_knockbackBase + info.ImpactForce * _knockbackPerImpactForce, _maxKnockbackFactor);
 
             Vector3 push = info.Direction.normalized * speed;
             push.y = 0f;

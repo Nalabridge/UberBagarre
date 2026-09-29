@@ -321,6 +321,10 @@ namespace UberBagarre.World
 
             for (int i = 0; i < roots.Length; i++) SwapMaterials(roots[i]);
 
+            // Les arbres de la carte n'ont pas de collision : on leur donne un tronc solide.
+            int trunks = CityColliders.AddTreeTrunks(scene, roots);
+            if (trunks > 0) Debug.Log("[UberBagarre] " + trunks + " troncs d'arbres rendus solides.");
+
             int renderers = 0;
             for (int i = 0; i < roots.Length; i++) renderers += roots[i].GetComponentsInChildren<Renderer>(true).Length;
             Debug.Log("[UberBagarre] Ville chargee (" + scene.name + ") : " + roots.Length + " racines, " + renderers +

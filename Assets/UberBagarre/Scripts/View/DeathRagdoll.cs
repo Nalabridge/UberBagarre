@@ -35,10 +35,13 @@ namespace UberBagarre.View
         private MonoBehaviour[] _disableOnDeath = new MonoBehaviour[0];
 
         [SerializeField]
-        [Tooltip("Optionnel : les animations capturees. Si elles savent jouer la mort, le corps " +
-                 "s'effondre en animation (chute arriere ou avant selon le coup) au lieu de " +
-                 "partir en poupee de chiffon.")]
+        [Tooltip("Optionnel : les animations capturees. Coupees a la mort pour laisser la physique faire.")]
         private MocapDriver _mocap;
+
+        [SerializeField]
+        [Tooltip("Mort animee (une chute capturee) au lieu du ragdoll physique. Desactive : une chute " +
+                 "animee ignore les murs (le corps s'enfoncait dedans) ; la physique, elle, s'y cogne.")]
+        private bool _animatedDeath;
 
         [SerializeField]
         [Tooltip("Le CharacterController. Il doit partir : sa capsule continuerait de pousser le " +
@@ -72,12 +75,12 @@ namespace UberBagarre.View
         [SerializeField, Min(0f)]
         [Tooltip("Poussee appliquee au bassin dans la direction du coup fatal. Assez pour que la " +
                  "chute raconte d'ou venait le coup, pas assez pour faire voler le corps.")]
-        private float _deathImpulse = 2.6f;
+        private float _deathImpulse = 1.7f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Poussee supplementaire sur la partie touchee. C'est elle qui fait que la tete " +
                  "partent en arriere sur un uppercut.")]
-        private float _localImpulse = 1.8f;
+        private float _localImpulse = 1.1f;
 
         [SerializeField, Min(1)]
         [Tooltip("Iterations du solveur. Montees volontairement : un ragdoll genere a la volee " +
@@ -135,12 +138,15 @@ namespace UberBagarre.View
 
             SilenceDrivers();
 
-            if (_mocap != null && _mocap.PlayDeath(info))
+            if (_animatedDeath && _mocap != null && _mocap.PlayDeath(info))
             {
                 AddCorpseShapes();
                 if (_logBuild) Debug.Log("[UberBagarre] Mort animee sur " + name + ".", this);
                 return;
             }
+
+            // Le ragdoll part de la pose du moment : l'animation s'arrête là où elle en était.
+            if (_mocap != null) _mocap.StopForRagdoll();
 
             // Le bassin porte tout le reste : il est construit en premier et sert de parent
             // d'articulation a la colonne comme aux cuisses.

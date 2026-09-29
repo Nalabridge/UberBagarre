@@ -387,16 +387,31 @@ namespace UberBagarre.Phone
 
         private void OnSms(string from, string text)
         {
-            AddContact(from);
+            // Comme une vraie messagerie : la conversation qui vient de recevoir un message passe
+            // en haut de la liste. Le fil ouvert (et la ligne sélectionnée) suivent leur contact.
+            string open = _thread >= 0 ? ThreadName(_thread) : null;
+            string selected = _app == App.Messages && _thread < 0 ? ThreadName(_listSelection) : null;
+            BringToTop(from);
+            if (open != null) _thread = Contacts.IndexOf(open);
+            if (selected != null) _listSelection = Mathf.Max(0, Contacts.IndexOf(selected));
             Notify(App.Messages, from, text);
         }
 
+        private static void BringToTop(string name)
+        {
+            EnsureContacts();
+            if (string.IsNullOrEmpty(name)) return;
+            Contacts.Remove(name);
+            Contacts.Insert(0, name);
+        }
+
+        /// <summary>Au chargement : les conversations dans l'ordre du dernier message reçu (le plus récent en haut).</summary>
         private void RegisterSavedContacts()
         {
             EnsureContacts();
             if (_progress == null) return;
             IReadOnlyList<PlayerProgress.Sms> sms = _progress.Messages;
-            for (int i = 0; i < sms.Count; i++) if (sms[i] != null) AddContact(sms[i].from);
+            for (int i = 0; i < sms.Count; i++) if (sms[i] != null) BringToTop(sms[i].from);
         }
 
         private void Them(string text)

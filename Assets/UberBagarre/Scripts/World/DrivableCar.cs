@@ -315,6 +315,9 @@ namespace UberBagarre.World
             _body.isKinematic = false;
             _body.interpolation = RigidbodyInterpolation.Interpolate;
             _body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            // Sortie d'un chevauchement (apparition, collision brutale) : en douceur, pas en boulet.
+            _body.maxDepenetrationVelocity = 3f;
+            _body.maxAngularVelocity = 7f;
             _body.centerOfMass = _centerOfMass;
             if (_body.mass < 100f) _body.mass = 1250f;
             _body.linearDamping = 0.02f;
@@ -562,9 +565,13 @@ namespace UberBagarre.World
                 // --- suspension
                 float spring = hit.distance - _wheelRadius;
                 Vector3 pointVelocity = _body.GetPointVelocity(hit.point);
-                float compressionSpeed = -Vector3.Dot(pointVelocity, transform.up);
-                float force = (w.length - spring) * _spring + compressionSpeed * _damper;
-                force = Mathf.Max(0f, force);
+                // Bornée : une roue qui tape un trottoir, un poteau ou le toit d'une autre voiture
+                // à pleine vitesse donnait une force d'amortisseur énorme — la voiture décollait,
+                // et plus rien ne l'arrêtait (« parti dans le ciel à 20 000 km/h »).
+                float compressionSpeed = Mathf.Clamp(-Vector3.Dot(pointVelocity, transform.up), -4f, 4f);
+                float force = (Mathf.Max(0f, w.length - spring)) * _spring + compressionSpeed * _damper;
+                float maxForce = _body.mass * -Physics.gravity.y * 2.5f;
+                force = Mathf.Clamp(force, 0f, maxForce);
                 w.load = force;
                 _body.AddForceAtPosition(transform.up * force, origin);
 
@@ -606,6 +613,7 @@ namespace UberBagarre.World
                 _body.AddForce(-transform.up * v.magnitude * v.magnitude * _downforce);
             }
 
+            LimitSpeed();
             TrackSafety(dt, grounded);
             SweepPedestrians(speed, dt);
         }
@@ -674,6 +682,41 @@ namespace UberBagarre.World
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Garde-fou physique : jamais plus vite que ce qu'une voiture peut faire, jamais un bond
+        /// vertical de fusée, jamais une toupie. Si malgré tout elle part (un choc impossible),
+        /// elle revient à sa dernière position sûre.
+        /// </summary>
+        private void LimitSpeed()
+        {
+            Vector3 v = _body.linearVelocity;
+            float cap = Mathf.Max(_maxSpeed * 1.6f, 20f);
+
+            if (v.magnitude > cap * 2.5f || !IsFinite(v) || transform.position.y > _lastSafePosition.y + 40f)
+            {
+                // Partie en vrille (un choc impossible) : retour à la dernière position sûre.
+                _body.linearVelocity = Vector3.zero;
+                _body.angularVelocity = Vector3.zero;
+                _body.position = _lastSafePosition;
+                _body.rotation = _lastSafeRotation;
+                transform.SetPositionAndRotation(_lastSafePosition, _lastSafeRotation);
+                return;
+            }
+
+            if (v.magnitude > cap) v = v.normalized * cap;
+            if (v.y > 8f) v.y = 8f;
+            _body.linearVelocity = v;
+
+            Vector3 w = _body.angularVelocity;
+            if (w.magnitude > 6f) _body.angularVelocity = w.normalized * 6f;
+        }
+
+        private static bool IsFinite(Vector3 v)
+        {
+            return !(float.IsNaN(v.x) || float.IsNaN(v.y) || float.IsNaN(v.z) ||
+                     float.IsInfinity(v.x) || float.IsInfinity(v.y) || float.IsInfinity(v.z));
         }
 
         private void TrackSafety(float dt, int grounded)

@@ -16,6 +16,11 @@ namespace UberBagarre.World
     ///
     /// Les rues, les îlots et les lieux sont écrits une fois pour toutes par le constructeur de
     /// la ville : la carte dessine ce qui existe vraiment, au mètre près.
+    ///
+    /// Comme dans GTA, la grande carte (M) se manipule : clic gauche pour poser son propre point
+    /// (violet), clic droit (ou un clic sur le point) pour l'enlever, molette pour zoomer,
+    /// glisser pour se déplacer. L'itinéraire se trace par les rues, sur la grande carte et sur
+    /// la mini-carte — violet vers ton point, jaune vers la course. Arrivé, le point s'efface.
     /// </summary>
     public class CityMap : MonoBehaviour
     {
@@ -56,12 +61,44 @@ namespace UberBagarre.World
         [SerializeField, Min(60f)] private float _miniSize = 230f;
         [SerializeField, Min(0.2f)] private float _miniScale = 1.1f;
 
+        [Header("Itinéraire")]
+        [SerializeField]
+        [Tooltip("Les points des rues (les boucles de la circulation, bout à bout).")]
+        private Vector3[] _roadPoints = new Vector3[0];
+
+        [SerializeField]
+        [Tooltip("L'indice du premier point de chaque boucle dans _roadPoints.")]
+        private int[] _roadLoops = new int[0];
+
         private bool _full;
         private bool _hasWaypoint;
         private Vector3 _waypoint;
         private string _waypointLabel;
         private Color _waypointColor = new Color(1f, 0.82f, 0.25f);
         private Transform _waypointFollow;
+
+        // Le point posé par le joueur (GTA : violet), indépendant du GPS de la course.
+        private bool _hasUserPoint;
+        private Vector3 _userPoint;
+        private static readonly Color UserColor = new Color(0.78f, 0.38f, 1f);
+
+        // La grande carte : zoom et déplacement, et le clic en cours.
+        private float _zoom = 1f;
+        private Vector2 _pan;
+        private bool _dragging;
+        private Vector2 _pressAt;
+        private float _dragDistance;
+        private CursorLockController _cursorLock;
+
+        // Les itinéraires (recalculés quand on bouge ou quand la destination change).
+        private RoadGraph _graph;
+        private readonly List<Vector2> _userRoute = new List<Vector2>();
+        private readonly List<Vector2> _missionRoute = new List<Vector2>();
+        private Vector3 _userRouteFrom;
+        private Vector3 _missionRouteFrom;
+        private Vector3 _userRouteTo;
+        private Vector3 _missionRouteTo;
+        private float _nextRoute;
 
         private Texture2D _arrow;
         private Texture2D _dot;
@@ -75,6 +112,43 @@ namespace UberBagarre.World
         private static readonly Color Park = new Color(0.14f, 0.24f, 0.13f, 1f);
 
         public bool HasWaypoint { get { return _hasWaypoint; } }
+
+        /// <summary>Le point posé par le joueur sur la grande carte.</summary>
+        public bool HasUserPoint { get { return _hasUserPoint; } }
+
+        /// <summary>La grande carte est ouverte.</summary>
+        public bool FullOpen { get { return _full; } }
+
+        public void SetUserPoint(Vector3 world)
+        {
+            _hasUserPoint = true;
+            _userPoint = world;
+            _userRoute.Clear();
+            _nextRoute = 0f;
+        }
+
+        public void ClearUserPoint()
+        {
+            _hasUserPoint = false;
+            _userRoute.Clear();
+        }
+
+        /// <summary>Les rues pour l'itinéraire : les boucles de la circulation.</summary>
+        public void SetRoads(IList<Vector3[]> loops)
+        {
+            List<Vector3> points = new List<Vector3>();
+            List<int> starts = new List<int>();
+            for (int i = 0; loops != null && i < loops.Count; i++)
+            {
+                if (loops[i] == null || loops[i].Length < 2) continue;
+                starts.Add(points.Count);
+                points.AddRange(loops[i]);
+            }
+
+            _roadPoints = points.ToArray();
+            _roadLoops = starts.ToArray();
+            _graph = null;
+        }
 
         /// <summary>Un repère posé par un autre système (la police, un cercle de recherche).</summary>
         public struct Blip
@@ -166,9 +240,15 @@ namespace UberBagarre.World
 
         private void Update()
         {
-            if (_input != null && _input.MapPressed && !GameMenu.IsOpen) _full = !_full;
+            if (_input != null && _input.MapPressed && !GameMenu.IsOpen) SetFull(!_full);
+            if (_full && GameMenu.IsOpen) SetFull(false);
 
             if (_hasWaypoint && _waypointFollow != null) _waypoint = _waypointFollow.position;
+
+            // Arrivé à son point : il s'efface, comme dans GTA.
+            if (_hasUserPoint && _player != null && Flat(_player.position - _userPoint) < 9f) ClearUserPoint();
+
+            UpdateRoutes();
 
             if (_beam != null && _hasWaypoint)
             {
@@ -180,6 +260,75 @@ namespace UberBagarre.World
                 bool show = distance > 9f;
                 if (_beam.activeSelf != show) _beam.SetActive(show);
             }
+        }
+
+        /// <summary>
+        /// Ouvre ou ferme la grande carte. Ouverte, elle se manipule à la souris : le curseur est
+        /// libéré et le joueur ne bouge plus derrière (comme la carte de GTA, qui met en pause).
+        /// </summary>
+        private void SetFull(bool full)
+        {
+            if (_full == full) return;
+            _full = full;
+            _dragging = false;
+
+            if (_cursorLock == null) _cursorLock = FindAnyObjectByType<CursorLockController>();
+            if (full)
+            {
+                _zoom = 1f;
+                _pan = Vector2.zero;
+                if (_cursorLock != null)
+                {
+                    _cursorLock.enabled = false;
+                    _cursorLock.SetLocked(false);
+                }
+
+                if (_input != null) _input.SetGameplayLock(this, true);
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
+            else
+            {
+                if (_input != null) _input.SetGameplayLock(this, false);
+                if (_cursorLock != null)
+                {
+                    _cursorLock.enabled = true;
+                    _cursorLock.SetLocked(true);
+                }
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (_full) SetFull(false);
+        }
+
+        // ------------------------------------------------------------------ itinéraires
+
+        private void UpdateRoutes()
+        {
+            if (_player == null || _roadPoints == null || _roadPoints.Length < 2) return;
+            if (Time.unscaledTime < _nextRoute) return;
+            _nextRoute = Time.unscaledTime + 0.5f;
+
+            Vector3 from = _player.position;
+            if (_hasUserPoint) Route(_userRoute, ref _userRouteFrom, ref _userRouteTo, from, _userPoint);
+            else _userRoute.Clear();
+
+            if (_hasWaypoint) Route(_missionRoute, ref _missionRouteFrom, ref _missionRouteTo, from, _waypoint);
+            else _missionRoute.Clear();
+        }
+
+        /// <summary>Recalcule un itinéraire si on s'est éloigné du dernier départ, ou si la destination a bougé.</summary>
+        private void Route(List<Vector2> route, ref Vector3 lastFrom, ref Vector3 lastTo, Vector3 from, Vector3 to)
+        {
+            bool stale = route.Count == 0 || Flat(from - lastFrom) > 12f || Flat(to - lastTo) > 6f;
+            if (!stale) return;
+
+            if (_graph == null) _graph = new RoadGraph(_roadPoints, _roadLoops);
+            lastFrom = from;
+            lastTo = to;
+            _graph.Find(new Vector2(from.x, from.z), new Vector2(to.x, to.z), route);
         }
 
         // ------------------------------------------------------------------ dessin
@@ -195,15 +344,112 @@ namespace UberBagarre.World
 
         private void OnGUI()
         {
-            if (Event.current.type != EventType.Repaint || Hidden || _player == null) return;
+            if (Hidden || _player == null) return;
 
             EnsureStyles();
-
             float unit = Screen.height / 1080f;
-            DrawMarker(unit);
+
+            // La grande carte écoute la souris ; le reste ne fait que se dessiner.
+            if (_full && Event.current.type != EventType.Repaint && Event.current.type != EventType.Layout)
+            {
+                HandleMapInput(unit);
+                return;
+            }
+
+            if (Event.current.type != EventType.Repaint) return;
+
+            DrawMarker(unit, _hasWaypoint, _waypoint, _waypointColor);
+            DrawMarker(unit, _hasUserPoint, _userPoint, UserColor);
 
             if (_full) DrawFull(unit);
             else DrawMini(unit);
+        }
+
+        /// <summary>Le cadre de la grande carte et son échelle (zoom compris).</summary>
+        private Rect FullArea(float unit, out float scale, out Vector2 center)
+        {
+            float margin = 70f * unit;
+            float fit = Mathf.Min((Screen.width - margin * 2f) / _bounds.width, (Screen.height - margin * 2f - 40f * unit) / _bounds.height);
+            Rect area = new Rect((Screen.width - _bounds.width * fit) * 0.5f, margin + 30f * unit, _bounds.width * fit, _bounds.height * fit);
+            scale = fit * _zoom;
+            center = _bounds.center + _pan;
+            return area;
+        }
+
+        private static Vector2 FromMap(Rect local, Vector2 center, float scale, Vector2 map)
+        {
+            return new Vector2(center.x + (map.x - local.width * 0.5f) / scale, center.y - (map.y - local.height * 0.5f) / scale);
+        }
+
+        private void HandleMapInput(float unit)
+        {
+            Event e = Event.current;
+            float scale;
+            Vector2 center;
+            Rect area = FullArea(unit, out scale, out center);
+            Rect local = new Rect(0f, 0f, area.width, area.height);
+            Vector2 mouse = e.mousePosition - area.position;
+            bool over = area.Contains(e.mousePosition);
+
+            switch (e.type)
+            {
+                case EventType.ScrollWheel:
+                    if (!over) break;
+                    {
+                        // Zoom vers le curseur : le point sous la souris reste sous la souris.
+                        Vector2 before = FromMap(local, center, scale, mouse);
+                        _zoom = Mathf.Clamp(_zoom * (e.delta.y > 0f ? 0.85f : 1.18f), 1f, 6f);
+                        float newScale;
+                        FullArea(unit, out newScale, out center);
+                        Vector2 after = FromMap(local, center, newScale, mouse);
+                        _pan += before - after;
+                        ClampPan();
+                    }
+                    e.Use();
+                    break;
+
+                case EventType.MouseDown:
+                    if (!over) break;
+                    _dragging = e.button == 0;
+                    _pressAt = e.mousePosition;
+                    _dragDistance = 0f;
+                    if (e.button == 1)
+                    {
+                        ClearUserPoint();
+                    }
+
+                    e.Use();
+                    break;
+
+                case EventType.MouseDrag:
+                    if (!_dragging) break;
+                    _dragDistance += e.delta.magnitude;
+                    _pan += new Vector2(-e.delta.x, e.delta.y) / scale;
+                    ClampPan();
+                    e.Use();
+                    break;
+
+                case EventType.MouseUp:
+                    if (e.button == 0 && _dragging && _dragDistance < 6f && over)
+                    {
+                        // Un clic, pas un glissé : poser son point — ou l'enlever si on clique dessus.
+                        Vector2 world = FromMap(local, center, scale, mouse);
+                        Vector2 existing = ToMap(local, center, scale, new Vector2(_userPoint.x, _userPoint.z));
+                        if (_hasUserPoint && (existing - mouse).magnitude < 14f * unit) ClearUserPoint();
+                        else SetUserPoint(new Vector3(world.x, _player.position.y, world.y));
+                    }
+
+                    _dragging = false;
+                    e.Use();
+                    break;
+            }
+        }
+
+        private void ClampPan()
+        {
+            float x = _bounds.width * 0.5f * (1f - 1f / _zoom);
+            float y = _bounds.height * 0.5f * (1f - 1f / _zoom);
+            _pan = new Vector2(Mathf.Clamp(_pan.x, -x, x), Mathf.Clamp(_pan.y, -y, y));
         }
 
         private void DrawMini(float unit)
@@ -220,6 +466,8 @@ namespace UberBagarre.World
             Rect local = new Rect(0f, 0f, frame.width, frame.height);
             GuiKit.Fill(local, Water);
             DrawCity(local, center, scale);
+            DrawRoute(local, center, scale, _missionRoute, _waypointColor, 4f * unit);
+            DrawRoute(local, center, scale, _userRoute, UserColor, 4f * unit);
             DrawOverlay(local, center, scale, unit);
 
             if (_hasWaypoint)
@@ -229,44 +477,93 @@ namespace UberBagarre.World
                 DrawDot(clamped, 12f * unit, _waypointColor);
             }
 
+            if (_hasUserPoint)
+            {
+                Vector2 p = ToMap(local, center, scale, new Vector2(_userPoint.x, _userPoint.z));
+                Vector2 clamped = new Vector2(Mathf.Clamp(p.x, 8f, local.width - 8f), Mathf.Clamp(p.y, 8f, local.height - 8f));
+                DrawDot(clamped, 12f * unit, UserColor);
+            }
+
             DrawPlayer(new Vector2(local.width * 0.5f, local.height * 0.5f), 20f * unit);
             GUI.EndGroup();
 
+            float line = frame.yMax + 4f * unit;
             if (_hasWaypoint)
             {
                 float distance = Flat(_player.position - _waypoint);
-                GuiKit.OutlinedLabel(new Rect(frame.x, frame.yMax + 4f * unit, frame.width, 22f * unit),
+                GuiKit.OutlinedLabel(new Rect(frame.x, line, frame.width, 22f * unit),
                     Mathf.RoundToInt(distance) + " m  ·  " + _waypointLabel, _small, _waypointColor, Color.black, 1f);
+                line += 20f * unit;
             }
 
-            GuiKit.OutlinedLabel(new Rect(frame.x, frame.yMax + (_hasWaypoint ? 24f : 4f) * unit, frame.width, 20f * unit),
+            if (_hasUserPoint)
+            {
+                float distance = Flat(_player.position - _userPoint);
+                GuiKit.OutlinedLabel(new Rect(frame.x, line, frame.width, 22f * unit),
+                    Mathf.RoundToInt(distance) + " m  ·  TON POINT", _small, UserColor, Color.black, 1f);
+                line += 20f * unit;
+            }
+
+            GuiKit.OutlinedLabel(new Rect(frame.x, line, frame.width, 20f * unit),
                 "M  carte", _small, new Color(1f, 1f, 1f, 0.55f), Color.black, 1f);
+        }
+
+        /// <summary>Un itinéraire : une ligne épaisse, segment par segment.</summary>
+        private static void DrawRoute(Rect local, Vector2 center, float scale, List<Vector2> route, Color color, float width)
+        {
+            if (route == null || route.Count < 2) return;
+            Color shadow = new Color(0f, 0f, 0f, 0.6f);
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int i = 1; i < route.Count; i++)
+                {
+                    Vector2 a = ToMap(local, center, scale, route[i - 1]);
+                    Vector2 b = ToMap(local, center, scale, route[i]);
+                    if ((a.x < -50f && b.x < -50f) || (a.y < -50f && b.y < -50f)) continue;
+                    if ((a.x > local.width + 50f && b.x > local.width + 50f) || (a.y > local.height + 50f && b.y > local.height + 50f)) continue;
+                    Segment(a, b, pass == 0 ? width + 3f : width, pass == 0 ? shadow : color);
+                }
+            }
+        }
+
+        private static void Segment(Vector2 a, Vector2 b, float width, Color color)
+        {
+            Vector2 d = b - a;
+            float length = d.magnitude;
+            if (length < 0.5f) return;
+            float angle = Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg;
+            Matrix4x4 saved = GUI.matrix;
+            GUIUtility.RotateAroundPivot(angle, a);
+            GuiKit.Fill(new Rect(a.x, a.y - width * 0.5f, length + width * 0.4f, width), color);
+            GUI.matrix = saved;
         }
 
         private void DrawFull(float unit)
         {
             GuiKit.Fill(new Rect(0f, 0f, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.72f));
 
-            float margin = 70f * unit;
-            float scale = Mathf.Min((Screen.width - margin * 2f) / _bounds.width, (Screen.height - margin * 2f - 40f * unit) / _bounds.height);
-            Rect area = new Rect((Screen.width - _bounds.width * scale) * 0.5f, margin + 30f * unit,
-                _bounds.width * scale, _bounds.height * scale);
+            float scale;
+            Vector2 center;
+            Rect area = FullArea(unit, out scale, out center);
 
-            GuiKit.OutlinedLabel(new Rect(0f, margin * 0.35f, Screen.width, 40f * unit), "LA VILLE",
+            GuiKit.OutlinedLabel(new Rect(0f, area.y - 50f * unit, Screen.width, 40f * unit), "LA VILLE",
                 _title, Color.white, Color.black, 1f);
 
             GUI.BeginGroup(area);
             Rect local = new Rect(0f, 0f, area.width, area.height);
             GuiKit.Fill(local, Water);
-            DrawCity(local, _bounds.center, scale);
-            DrawOverlay(local, _bounds.center, scale, unit);
+            DrawCity(local, center, scale);
+            DrawRoute(local, center, scale, _missionRoute, _waypointColor, 5f * unit);
+            DrawRoute(local, center, scale, _userRoute, UserColor, 5f * unit);
+            DrawOverlay(local, center, scale, unit);
 
             for (int i = 0; i < _landmarks.Length; i++)
             {
                 Landmark l = _landmarks[i];
                 if (l == null) continue;
 
-                Vector2 p = ToMap(local, _bounds.center, scale, l.position);
+                Vector2 p = ToMap(local, center, scale, l.position);
+                if (p.x < -20f || p.y < -20f || p.x > local.width + 20f || p.y > local.height + 20f) continue;
                 DrawDot(p, 10f * unit, l.color);
                 GuiKit.OutlinedLabel(new Rect(p.x + 8f * unit, p.y - 10f * unit, 260f * unit, 20f * unit), l.label,
                     _label, l.color, Color.black, 1f);
@@ -274,17 +571,39 @@ namespace UberBagarre.World
 
             if (_hasWaypoint)
             {
-                Vector2 p = ToMap(local, _bounds.center, scale, new Vector2(_waypoint.x, _waypoint.z));
+                Vector2 p = ToMap(local, center, scale, new Vector2(_waypoint.x, _waypoint.z));
                 DrawDot(p, 16f * unit, _waypointColor);
                 GuiKit.OutlinedLabel(new Rect(p.x + 10f * unit, p.y + 4f * unit, 300f * unit, 20f * unit), _waypointLabel,
                     _label, _waypointColor, Color.black, 1f);
             }
 
-            DrawPlayer(ToMap(local, _bounds.center, scale, new Vector2(_player.position.x, _player.position.z)), 22f * unit);
+            if (_hasUserPoint)
+            {
+                Vector2 p = ToMap(local, center, scale, new Vector2(_userPoint.x, _userPoint.z));
+                DrawPin(p, unit);
+                GuiKit.OutlinedLabel(new Rect(p.x + 12f * unit, p.y - 26f * unit, 300f * unit, 20f * unit),
+                    "TON POINT  ·  " + Mathf.RoundToInt(Flat(_player.position - _userPoint)) + " m", _label, UserColor, Color.black, 1f);
+            }
+
+            DrawPlayer(ToMap(local, center, scale, new Vector2(_player.position.x, _player.position.z)), 22f * unit);
             GUI.EndGroup();
 
             GuiKit.OutlinedLabel(new Rect(0f, area.yMax + 10f * unit, Screen.width, 22f * unit),
-                "M  fermer la carte", _small, new Color(1f, 1f, 1f, 0.6f), Color.black, 1f);
+                "Clic gauche : poser ton point    Clic droit : l'enlever    Molette : zoom    Glisser : se déplacer    M : fermer",
+                _small, new Color(1f, 1f, 1f, 0.7f), Color.black, 1f);
+        }
+
+        /// <summary>Le point du joueur : une épingle (un rond sur une pointe), façon GTA.</summary>
+        private void DrawPin(Vector2 at, float unit)
+        {
+            float size = 18f * unit;
+            Matrix4x4 saved = GUI.matrix;
+            GUIUtility.RotateAroundPivot(45f, new Vector2(at.x, at.y - size * 0.55f));
+            GuiKit.Fill(new Rect(at.x - size * 0.35f, at.y - size * 0.9f, size * 0.7f, size * 0.7f), Color.black);
+            GuiKit.Fill(new Rect(at.x - size * 0.28f, at.y - size * 0.83f, size * 0.56f, size * 0.56f), UserColor);
+            GUI.matrix = saved;
+            DrawDot(new Vector2(at.x, at.y - size * 0.9f), size, UserColor);
+            DrawDot(new Vector2(at.x, at.y - size * 0.9f), size * 0.4f, Color.white);
         }
 
         private void DrawCity(Rect local, Vector2 center, float scale)
@@ -339,15 +658,15 @@ namespace UberBagarre.World
             GUI.color = saved;
         }
 
-        /// <summary>Le repère du GPS à l'écran : là où est la cible, ou au bord, dans sa direction.</summary>
-        private void DrawMarker(float unit)
+        /// <summary>Un repère à l'écran (la course, ou ton point) : là où il est, ou au bord, dans sa direction.</summary>
+        private void DrawMarker(float unit, bool has, Vector3 target, Color color)
         {
-            if (!_hasWaypoint || _full) return;
+            if (!has || _full) return;
 
             Camera camera = GuiKit.ActiveCamera(_camera);
             if (camera == null) return;
 
-            Vector3 world = _waypoint + Vector3.up * 2.1f;
+            Vector3 world = target + Vector3.up * 2.1f;
             Vector3 screen = camera.WorldToScreenPoint(world);
             bool behind = screen.z < 0f;
             if (behind) screen = -screen;
@@ -373,12 +692,12 @@ namespace UberBagarre.World
             Matrix4x4 saved = GUI.matrix;
             GUIUtility.RotateAroundPivot(45f, new Vector2(x, y));
             GuiKit.Fill(new Rect(x - size * 0.5f - 2f, y - size * 0.5f - 2f, size + 4f, size + 4f), Color.black);
-            GuiKit.Fill(new Rect(x - size * 0.5f, y - size * 0.5f, size, size), _waypointColor);
+            GuiKit.Fill(new Rect(x - size * 0.5f, y - size * 0.5f, size, size), color);
             GUI.matrix = saved;
 
-            float distance = Flat(_player.position - _waypoint);
+            float distance = Flat(_player.position - target);
             GuiKit.OutlinedLabel(new Rect(x - 80f * unit, y + size * 0.7f, 160f * unit, 20f * unit),
-                Mathf.RoundToInt(distance) + " m", _small, _waypointColor, Color.black, 1f);
+                Mathf.RoundToInt(distance) + " m", _small, color, Color.black, 1f);
         }
 
         private static float Flat(Vector3 v)
@@ -447,6 +766,203 @@ namespace UberBagarre.World
             t.SetPixels32(pixels);
             t.Apply(false, true);
             return t;
+        }
+    }
+    /// <summary>
+    /// Le graphe des rues pour l'itinéraire : les points des boucles de la circulation, reliés à
+    /// leurs voisins de boucle, et entre boucles quand ils se touchent (les carrefours, les deux
+    /// voies d'une même rue). Un A* y trouve le chemin par les rues.
+    /// </summary>
+    public sealed class RoadGraph
+    {
+        private readonly Vector2[] _points;
+        private readonly List<int>[] _links;
+
+        public RoadGraph(Vector3[] points, int[] loops)
+        {
+            int n = points != null ? points.Length : 0;
+            _points = new Vector2[n];
+            _links = new List<int>[n];
+            for (int i = 0; i < n; i++)
+            {
+                _points[i] = new Vector2(points[i].x, points[i].z);
+                _links[i] = new List<int>(4);
+            }
+
+            // Les voisins le long de chaque boucle (et la boucle se referme).
+            for (int l = 0; loops != null && l < loops.Length; l++)
+            {
+                int start = loops[l];
+                int end = l + 1 < loops.Length ? loops[l + 1] : n;
+                for (int i = start; i < end; i++)
+                {
+                    int next = i + 1 < end ? i + 1 : start;
+                    if (next == i) continue;
+                    Link(i, next);
+                }
+            }
+
+            // Les points proches (moins de 5 m) se rejoignent : carrefours et voies parallèles.
+            const float cell = 5f;
+            Dictionary<long, List<int>> grid = new Dictionary<long, List<int>>();
+            for (int i = 0; i < n; i++)
+            {
+                long key = Key(Mathf.FloorToInt(_points[i].x / cell), Mathf.FloorToInt(_points[i].y / cell));
+                List<int> bucket;
+                if (!grid.TryGetValue(key, out bucket)) grid[key] = bucket = new List<int>();
+                bucket.Add(i);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                int cx = Mathf.FloorToInt(_points[i].x / cell);
+                int cy = Mathf.FloorToInt(_points[i].y / cell);
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        List<int> bucket;
+                        if (!grid.TryGetValue(Key(cx + dx, cy + dy), out bucket)) continue;
+                        for (int k = 0; k < bucket.Count; k++)
+                        {
+                            int j = bucket[k];
+                            if (j <= i) continue;
+                            if ((_points[j] - _points[i]).sqrMagnitude < cell * cell) Link(i, j);
+                        }
+                    }
+                }
+            }
+        }
+
+        private static long Key(int x, int y)
+        {
+            return ((long)x << 32) ^ (uint)y;
+        }
+
+        private void Link(int a, int b)
+        {
+            if (!_links[a].Contains(b)) _links[a].Add(b);
+            if (!_links[b].Contains(a)) _links[b].Add(a);
+        }
+
+        private int Nearest(Vector2 p)
+        {
+            int best = -1;
+            float bestDistance = float.MaxValue;
+            for (int i = 0; i < _points.Length; i++)
+            {
+                float d = (_points[i] - p).sqrMagnitude;
+                if (d >= bestDistance) continue;
+                bestDistance = d;
+                best = i;
+            }
+
+            return best;
+        }
+
+        /// <summary>Le chemin par les rues de <paramref name="from"/> à <paramref name="to"/>, dans <paramref name="route"/>.</summary>
+        public void Find(Vector2 from, Vector2 to, List<Vector2> route)
+        {
+            route.Clear();
+            int start = Nearest(from);
+            int goal = Nearest(to);
+            if (start < 0 || goal < 0)
+            {
+                route.Add(from);
+                route.Add(to);
+                return;
+            }
+
+            int n = _points.Length;
+            float[] g = new float[n];
+            int[] came = new int[n];
+            bool[] closed = new bool[n];
+            for (int i = 0; i < n; i++)
+            {
+                g[i] = float.MaxValue;
+                came[i] = -1;
+            }
+
+            // Une file de priorité simple (tas binaire) : le graphe compte quelques milliers de points.
+            List<KeyValuePair<float, int>> open = new List<KeyValuePair<float, int>>();
+            g[start] = 0f;
+            Push(open, Vector2.Distance(_points[start], _points[goal]), start);
+            bool found = false;
+            while (open.Count > 0)
+            {
+                int current = Pop(open);
+                if (closed[current]) continue;
+                if (current == goal)
+                {
+                    found = true;
+                    break;
+                }
+
+                closed[current] = true;
+                List<int> links = _links[current];
+                for (int k = 0; k < links.Count; k++)
+                {
+                    int next = links[k];
+                    if (closed[next]) continue;
+                    float cost = g[current] + Vector2.Distance(_points[current], _points[next]);
+                    if (cost >= g[next]) continue;
+                    g[next] = cost;
+                    came[next] = current;
+                    Push(open, cost + Vector2.Distance(_points[next], _points[goal]), next);
+                }
+            }
+
+            route.Add(to);
+            if (found)
+            {
+                for (int at = goal; at >= 0; at = came[at])
+                {
+                    route.Add(_points[at]);
+                    if (at == start) break;
+                }
+            }
+
+            route.Add(from);
+            route.Reverse();
+        }
+
+        private static void Push(List<KeyValuePair<float, int>> heap, float priority, int item)
+        {
+            heap.Add(new KeyValuePair<float, int>(priority, item));
+            int i = heap.Count - 1;
+            while (i > 0)
+            {
+                int parent = (i - 1) / 2;
+                if (heap[parent].Key <= heap[i].Key) break;
+                KeyValuePair<float, int> t = heap[parent];
+                heap[parent] = heap[i];
+                heap[i] = t;
+                i = parent;
+            }
+        }
+
+        private static int Pop(List<KeyValuePair<float, int>> heap)
+        {
+            int result = heap[0].Value;
+            int last = heap.Count - 1;
+            heap[0] = heap[last];
+            heap.RemoveAt(last);
+            int i = 0;
+            while (true)
+            {
+                int l = i * 2 + 1;
+                int r = l + 1;
+                int smallest = i;
+                if (l < heap.Count && heap[l].Key < heap[smallest].Key) smallest = l;
+                if (r < heap.Count && heap[r].Key < heap[smallest].Key) smallest = r;
+                if (smallest == i) break;
+                KeyValuePair<float, int> t = heap[smallest];
+                heap[smallest] = heap[i];
+                heap[i] = t;
+                i = smallest;
+            }
+
+            return result;
         }
     }
 }

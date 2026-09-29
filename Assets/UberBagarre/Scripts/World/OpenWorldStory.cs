@@ -348,6 +348,13 @@ namespace UberBagarre.World
                 yield return new WaitForSeconds(1f);
             }
 
+            // Une partie neuve : l'aide aux premières touches (tant qu'on ne l'a jamais complétée).
+            if (fresh)
+            {
+                FirstSteps steps = FindAnyObjectByType<FirstSteps>();
+                if (steps != null) steps.Begin(false);
+            }
+
             Run();
         }
 

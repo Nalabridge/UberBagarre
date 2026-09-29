@@ -368,6 +368,9 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ modèle conduisible
 
+        /// <summary>Échelle des voitures par rapport aux modèles de la carte.</summary>
+        public const float VehicleScale = 0.88f;
+
         private GameObject BuildTemplate(Transform source, Model model, Transform donor)
         {
             Transform[] wheels;
@@ -379,6 +382,13 @@ namespace UberBagarre.EditorTools
             Vector3 forward;
             float radius;
             if (!Frame(source, out ground, out forward, out radius)) return null;
+
+            // Plus petites que les modèles de la carte : à côté des maisons et des portes de la
+            // ville, elles paraissaient trop grosses. Tout est mesuré après la réduction (roues,
+            // carrosserie, siège, collisions), donc la physique suit.
+            const float k = VehicleScale;
+            radius *= k;
+            for (int i = 0; i < hubs.Length; i++) hubs[i] = ground + (hubs[i] - ground) * k;
 
             Transform body = ModelChild(source, model.key);
 
@@ -393,8 +403,8 @@ namespace UberBagarre.EditorTools
             GameObject shell = Object.Instantiate(body.gameObject, root.transform);
             shell.name = "Carrosserie";
             shell.SetActive(true);
-            shell.transform.SetPositionAndRotation(body.position, body.rotation);
-            shell.transform.localScale = body.lossyScale;
+            shell.transform.SetPositionAndRotation(ground + (body.position - ground) * k, body.rotation);
+            shell.transform.localScale = body.lossyScale * k;
             CityPreparation.ClearStatic(shell);
             Strip(shell.transform);
 
