@@ -17,7 +17,10 @@ Shader "UberBagarre/Carte/DoubleFace"
     // --- URP : même découpe, même vent ; les ombres portées suivent le vent et la découpe.
     SubShader
     {
-        PackageRequirements { "com.unity.render-pipelines.universal": "14.0" }
+        PackageRequirements
+        {
+            "com.unity.render-pipelines.universal": "14.0"
+        }
         Tags { "Queue" = "AlphaTest" "RenderType" = "TransparentCutout" "RenderPipeline" = "UniversalPipeline" "IgnoreProjector" = "True" }
         LOD 300
         Cull Off
@@ -147,7 +150,7 @@ Shader "UberBagarre/Carte/DoubleFace"
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
-            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
+            #pragma multi_compile _ _FORWARD_PLUS _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
 

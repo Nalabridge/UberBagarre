@@ -34,7 +34,10 @@ Shader "UberBagarre/Peau"
     SubShader
     {
         // Ignoré tant qu'URP n'est pas installé : le shader reste valide en rendu intégré.
-        PackageRequirements { "com.unity.render-pipelines.universal": "14.0" }
+        PackageRequirements
+        {
+            "com.unity.render-pipelines.universal": "14.0"
+        }
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
         LOD 300
 
@@ -52,7 +55,7 @@ Shader "UberBagarre/Peau"
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
-            #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
+            #pragma multi_compile _ _FORWARD_PLUS _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
             #include "Assets/UberBagarre/Art/Shaders/UberUrp.hlsl"

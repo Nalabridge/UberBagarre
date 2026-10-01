@@ -143,12 +143,15 @@ namespace UberBagarre.EditorTools
 
             int converted = ConvertMaterials();
             int terrains = FixCityTerrains();
+            int shaders = UpdateMapShaders();
+            ReimportOurShaders();
             AssetDatabase.SaveAssets();
 
             string report = "Le jeu tourne maintenant sous URP, le rendu de Schedule 1.\n\n" +
                             "• Pipeline : " + PipelinePath + " (Forward+, ombres douces 4 cascades, SSAO, HDR)\n" +
                             "• Matériaux convertis du rendu intégré vers URP Lit : " + converted + "\n" +
-                            "• Terrains de la ville passés sur le matériau d'URP : " + terrains + "\n\n" +
+                            "• Terrains de la ville passés sur le matériau d'URP : " + terrains + "\n" +
+                            "• Shaders de la carte mis à jour : " + shaders + "\n\n" +
                             "Ensuite :\n" +
                             "1. Si ce n'est pas fait, installe le correctif URP de la carte (CorrectifURP.zip) : " +
                             "les matériaux d'origine de Schedule 1.\n" +
@@ -459,6 +462,54 @@ namespace UberBagarre.EditorTools
             m.SetFloat("_Blend", 0f);
             m.SetFloat("_AlphaClip", 0f);
             if (!UpdateUrpMaterial(m)) SetLitKeywords(m, 2, false, false, false, false);
+        }
+
+        // ------------------------------------------------------------------ shaders de la carte
+
+        /// <summary>
+        /// Les shaders de la carte livrés avec son correctif URP sont repris ici depuis le dépôt
+        /// (Tools/schedule1/shaders) : une correction de shader n'oblige pas à retélécharger la carte.
+        /// Seulement si le correctif URP est installé — les matériaux de la v1 attendent les anciens.
+        /// </summary>
+        private static int UpdateMapShaders()
+        {
+            if (!File.Exists(MapPack.Root + "/LISEZMOI_URP.txt")) return 0;
+
+            string source = Path.Combine(Path.GetDirectoryName(Application.dataPath) ?? ".", "Tools/schedule1/shaders");
+            if (!Directory.Exists(source)) return 0;
+
+            int updated = 0;
+            foreach (string file in Directory.GetFiles(source, "*.shader"))
+            {
+                string target = MapPack.Root + "/Shaders/" + Path.GetFileName(file);
+                if (!File.Exists(target)) continue;
+
+                string text = File.ReadAllText(file);
+                if (text == File.ReadAllText(target)) continue;
+
+                File.WriteAllText(target, text);
+                AssetDatabase.ImportAsset(target, ImportAssetOptions.ForceUpdate);
+                updated++;
+            }
+
+            return updated;
+        }
+
+        /// <summary>
+        /// Nos shaders portent leur version URP dans un SubShader gardé par « PackageRequirements » :
+        /// elle n'est retenue qu'à l'import. Importés avant l'arrivée du paquet URP, ils resteraient
+        /// sans elle (et roses) : on les réimporte.
+        /// </summary>
+        public static void ReimportOurShaders()
+        {
+            foreach (string folder in new[] { "Assets/UberBagarre/Art/Shaders", MapPack.Root + "/Shaders" })
+            {
+                if (!AssetDatabase.IsValidFolder(folder)) continue;
+                foreach (string guid in AssetDatabase.FindAssets("t:Shader", new[] { folder }))
+                {
+                    AssetDatabase.ImportAsset(AssetDatabase.GUIDToAssetPath(guid), ImportAssetOptions.ForceUpdate);
+                }
+            }
         }
 
         // ------------------------------------------------------------------ terrain de la ville
