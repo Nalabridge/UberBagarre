@@ -169,7 +169,7 @@ namespace UberBagarre.EditorTools
                         if (FacadePosition(city, spec, out front))
                         {
                             ShopFronts[spec.Name] = front;
-                            marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(front.x, front.z), color = shopColor });
+                            marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(front.x, front.z), color = shopColor, icon = spec.Kind.ToString() });
                         }
                     }
                     else
@@ -186,7 +186,7 @@ namespace UberBagarre.EditorTools
                         ShopClerk clerk = BuildClerk(go.transform, position, rotation, spec.Kind, seed++, materials, night, library, subtitles);
                         Interactable counter = CounterOn(clerk.gameObject, spec);
                         shop.Configure(spec.Name, spec.Kind, spec.Building, counter, screen, clerk, null, null, null, spec.Filter);
-                        marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(position.x, position.z), color = shopColor });
+                        marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(position.x, position.z), color = shopColor, icon = spec.Kind.ToString() });
                     }
 
                     EditorUtility.SetDirty(shop);
