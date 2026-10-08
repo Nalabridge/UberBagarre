@@ -105,6 +105,8 @@ namespace UberBagarre.View
 
         private static readonly int SunDirId = Shader.PropertyToID("_UberSunDir");
         private static readonly int NightId = Shader.PropertyToID("_UberNight");
+        private static readonly int MoonDirId = Shader.PropertyToID("_UberMoonDir");
+        private static readonly int OvercastId = Shader.PropertyToID("_UberOvercast");
 
         private NeonFlicker[] _artificial;
         private Material _skyInstance;
@@ -256,6 +258,9 @@ namespace UberBagarre.View
             Vector3 toSun = _sun != null ? -_sun.transform.forward : new Vector3(0.3f, 0.6f, 0.4f);
             Shader.SetGlobalVector(SunDirId, new Vector4(toSun.x, toSun.y, toSun.z, 0f));
             Shader.SetGlobalFloat(NightId, Mathf.Clamp01(1f - t));
+            Vector3 toMoon = _moon != null ? -_moon.transform.forward : -toSun;
+            Shader.SetGlobalVector(MoonDirId, new Vector4(toMoon.x, toMoon.y, toMoon.z, 0f));
+            Shader.SetGlobalFloat(OvercastId, _overcast);
         }
 
         private void ApplySun(float t)
