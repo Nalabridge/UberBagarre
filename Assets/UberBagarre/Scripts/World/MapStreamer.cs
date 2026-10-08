@@ -361,11 +361,27 @@ namespace UberBagarre.World
         // ------------------------------------------------------------------ performances
 
         [Header("Performances")]
-        [SerializeField, Min(20f)] private float _smallDetailDistance = 110f;
-        [SerializeField, Min(40f)] private float _mediumDetailDistance = 260f;
-        [SerializeField, Min(10f)] private float _grassDistance = 70f;
-        [SerializeField, Range(0f, 1f)] private float _grassDensity = 0.7f;
-        [SerializeField, Range(0.3f, 2f)] private float _lodBias = 0.85f;
+        [SerializeField, Min(20f)] private float _smallDetailDistance = 170f;
+        [SerializeField, Min(40f)] private float _mediumDetailDistance = 420f;
+        [SerializeField, Min(10f)] private float _grassDistance = 110f;
+        [SerializeField, Range(0f, 1f)] private float _grassDensity = 0.8f;
+        [SerializeField, Range(0.3f, 3f)] private float _lodBias = 1.6f;
+        [SerializeField, Min(100f)] private float _treeDistance = 900f;
+
+        /// <summary>
+        /// Distance d'affichage choisie dans les options (1 = normale) : elle multiplie les
+        /// distances des détails, de l'herbe, des arbres et le biais des niveaux de détail.
+        /// </summary>
+        public static float ViewDistance = 1f;
+
+        private Scene _tunedScene;
+
+        /// <summary>Réapplique la distance d'affichage (appelé quand l'option change).</summary>
+        public void ApplyViewDistance(float factor)
+        {
+            ViewDistance = Mathf.Clamp(factor, 0.5f, 2f);
+            if (_tunedScene.IsValid() && _tunedScene.isLoaded) TuneForPerformance(_tunedScene);
+        }
 
         /// <summary>
         /// Les petits objets de la ville (rangés dans leurs calques par la préparation) ne sont
@@ -374,9 +390,11 @@ namespace UberBagarre.World
         /// </summary>
         private void TuneForPerformance(Scene scene)
         {
+            _tunedScene = scene;
+            float k = Mathf.Clamp(ViewDistance, 0.5f, 2f);
             float[] distances = new float[32];
-            distances[CityRules.SmallDetailLayer] = _smallDetailDistance;
-            distances[CityRules.MediumDetailLayer] = _mediumDetailDistance;
+            distances[CityRules.SmallDetailLayer] = _smallDetailDistance * k;
+            distances[CityRules.MediumDetailLayer] = _mediumDetailDistance * k;
 
             Camera[] cameras = Resources.FindObjectsOfTypeAll<Camera>();
             for (int i = 0; i < cameras.Length; i++)
@@ -393,14 +411,16 @@ namespace UberBagarre.World
                 Terrain[] terrains = roots[r].GetComponentsInChildren<Terrain>(true);
                 for (int i = 0; i < terrains.Length; i++)
                 {
-                    terrains[i].detailObjectDistance = _grassDistance;
+                    terrains[i].detailObjectDistance = Mathf.Min(250f, _grassDistance * k);
                     terrains[i].detailObjectDensity = _grassDensity;
-                    terrains[i].treeDistance = Mathf.Min(terrains[i].treeDistance, 400f);
-                    terrains[i].heightmapPixelError = Mathf.Max(terrains[i].heightmapPixelError, 6f);
+                    terrains[i].treeDistance = _treeDistance * k;
+                    terrains[i].treeBillboardDistance = 160f * k;
+                    terrains[i].treeCrossFadeLength = 20f;
+                    terrains[i].heightmapPixelError = k >= 1f ? 4f : 7f;
                 }
             }
 
-            QualitySettings.lodBias = _lodBias;
+            QualitySettings.lodBias = _lodBias * k;
         }
 
         private static bool IsPrepared(GameObject[] roots)

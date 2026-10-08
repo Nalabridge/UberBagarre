@@ -97,7 +97,10 @@ namespace UberBagarre.View
         private static readonly Color S1AmbientEquator = new Color(0.4281111f, 0.45352837f, 0.47316286f);
         private static readonly Color S1AmbientGround = new Color(0.35239235f, 0.47594082f, 0.5749386f);
         private static readonly Color S1FogColor = new Color(0.57989687f, 0.6373861f, 0.74509805f);
-        private const float S1FogEnd = 200f;
+        // Schedule 1 règle sa brume à 200 m ; on la recule (début 40 m, fin 650 m) : à 200 m, la
+        // ville disparaissait trop tôt et la distance d'affichage paraissait courte.
+        private const float S1FogStart = 40f;
+        private const float S1FogEnd = 650f;
         private const float S1Reflections = 0.25f;
 
         private static readonly int SunDirId = Shader.PropertyToID("_UberSunDir");
@@ -240,8 +243,8 @@ namespace UberBagarre.View
 
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogStartDistance = 0f;
-            RenderSettings.fogEndDistance = Mathf.Lerp(150f, S1FogEnd, t) * (1f - 0.45f * _overcast);
+            RenderSettings.fogStartDistance = Mathf.Lerp(20f, S1FogStart, t) * (1f - 0.5f * _overcast);
+            RenderSettings.fogEndDistance = Mathf.Lerp(380f, S1FogEnd, t) * (1f - 0.45f * _overcast);
             RenderSettings.fogColor = Color.Lerp(Color.Lerp(_fogNight, S1FogColor, t), rain * Mathf.Lerp(0.18f, 1f, t), _overcast * 0.7f);
             RenderSettings.reflectionIntensity = S1Reflections;
 

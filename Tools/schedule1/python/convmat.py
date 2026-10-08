@@ -113,7 +113,7 @@ def convert(m):
         o.shader=(4800000,SH_DBL,3); a=tex(m,'_Albedo'); o.t('_MainTex',a)
         n=tex(m,'_NormalMap')
         if n: o.t('_BumpMap',n,normal=True); o.floats['_BumpScale']=1; o.kw.append('_NORMALMAP')
-        o.colors['_Color']=(0.9,0.95,0.9,1); o.floats.update(_Cutoff=0.4,_Glossiness=0.1,_Metallic=0,_Wind=0.5); o.queue=2450; o.instancing=1
+        o.colors['_Color']=(0.6,0.68,0.58,1); o.floats.update(_Cutoff=0.4,_Glossiness=0.05,_Metallic=0,_Wind=0.5); o.queue=2450; o.instancing=1
         return o
     if sh in ('c6ea859aa19bc27458b61cb66fc3269c','a5ee4875340a65c43b281798f7b95194','60424e672167bb34499888633d96a62a'):
         a=pick(m,('basecolor','albedo','diffuse','color'),('mask',)); n=pick(m,('normal',))

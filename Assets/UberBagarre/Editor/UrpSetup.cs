@@ -144,6 +144,7 @@ namespace UberBagarre.EditorTools
             int converted = ConvertMaterials();
             int terrains = FixCityTerrains();
             int shaders = UpdateMapShaders();
+            TuneFoliage();
             ReimportOurShaders();
             AssetDatabase.SaveAssets();
 
@@ -201,11 +202,15 @@ namespace UberBagarre.EditorTools
             return pipeline;
         }
 
-        /// <summary>Forward+ : toutes les lampes de la rue sur chaque objet, sans limite de quatre.</summary>
+        /// <summary>
+        /// Rendu « Forward » (jusqu'à 8 lampes par objet). Pas Forward+ : sur URP 17.0, avec les
+        /// centaines de lampes et de sondes de reflets de la carte, des surfaces y prenaient la
+        /// lumière ou le reflet d'une autre et clignotaient en blanc quand la caméra bougeait.
+        /// </summary>
         private static void TuneRenderer(ScriptableObject renderer)
         {
             SerializedObject so = new SerializedObject(renderer);
-            Set(so, "m_RenderingMode", 2);
+            Set(so, "m_RenderingMode", 0);
             if (so.FindProperty("postProcessData") != null && so.FindProperty("postProcessData").objectReferenceValue == null)
                 Set(so, "postProcessData", LoadByGuid<ScriptableObject>(PostProcessDataGuid));
             so.ApplyModifiedPropertiesWithoutUndo();
@@ -493,6 +498,33 @@ namespace UberBagarre.EditorTools
             }
 
             return updated;
+        }
+
+        /// <summary>
+        /// Le feuillage des sapins de la carte : la v1 l'avait teint d'un vert presque blanc
+        /// (0,9 ; 0,95 ; 0,9), qui sous la lumière de Schedule 1 donnait des arbres vert pomme.
+        /// Un vert sapin plus sombre, une seule fois (les matériaux déjà retouchés gardent leur teinte).
+        /// </summary>
+        private static void TuneFoliage()
+        {
+            string folder = MapPack.Root + "/Materiaux";
+            if (!AssetDatabase.IsValidFolder(folder)) return;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { folder }))
+            {
+                Material m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+                if (m == null || m.shader == null || m.shader.name != "UberBagarre/Carte/DoubleFace") continue;
+                if (!m.HasProperty("_Wind") || !m.HasProperty("_Color")) continue;
+
+                float wind = m.GetFloat("_Wind");
+                if (wind < 0.3f || wind > 0.7f) continue;     // les sapins (0,5) ; l'herbe ondule à 1
+
+                Color c = m.GetColor("_Color");
+                if (c.r < 0.8f) continue;
+                m.SetColor("_Color", new Color(0.6f, 0.68f, 0.58f, c.a));
+                m.SetFloat("_Glossiness", 0.05f);
+                EditorUtility.SetDirty(m);
+            }
         }
 
         /// <summary>

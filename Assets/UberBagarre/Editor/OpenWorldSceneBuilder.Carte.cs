@@ -277,12 +277,12 @@ namespace UberBagarre.EditorTools
         /// </summary>
         private static void TuneCityRendering(GraphicsDirector graphics, Light sun)
         {
-            SerializedWiring.SetFloat(graphics, "_bloom", 0.6f);
-            SerializedWiring.SetFloat(graphics, "_threshold", 1.2f);
+            SerializedWiring.SetFloat(graphics, "_bloom", 0.55f);
+            SerializedWiring.SetFloat(graphics, "_threshold", 1.15f);
             SerializedWiring.SetFloat(graphics, "_exposure", 1.05f);
-            SerializedWiring.SetFloat(graphics, "_saturation", 1.14f);
-            SerializedWiring.SetFloat(graphics, "_contrast", 1.0f);
-            SerializedWiring.SetFloat(graphics, "_vignette", 0.16f);
+            SerializedWiring.SetFloat(graphics, "_saturation", 1.2f);
+            SerializedWiring.SetFloat(graphics, "_contrast", 1.07f);
+            SerializedWiring.SetFloat(graphics, "_vignette", 0.14f);
             SerializedWiring.SetFloat(graphics, "_volumetric", 0.55f);
             SerializedWiring.SetBool(graphics, "_restoreDay", false);
             SerializedWiring.SetFloat(graphics, "_day", 1f);

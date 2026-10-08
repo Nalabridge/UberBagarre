@@ -45,7 +45,7 @@ namespace UberBagarre.World
             return added;
         }
 
-        private static bool IsTree(string name)
+        public static bool IsTree(string name)
         {
             if (string.IsNullOrEmpty(name)) return false;
             string n = name.ToLowerInvariant();
@@ -55,7 +55,7 @@ namespace UberBagarre.World
         }
 
         /// <summary>L'objet « arbre » le plus haut dans la hiérarchie (l'arbre entier, pas une LOD ou une branche).</summary>
-        private static Transform TreeRoot(Transform t)
+        public static Transform TreeRoot(Transform t)
         {
             Transform found = null;
             for (Transform at = t; at != null; at = at.parent)

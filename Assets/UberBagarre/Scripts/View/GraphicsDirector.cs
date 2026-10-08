@@ -23,7 +23,9 @@ namespace UberBagarre.View
         // le bruit qu'on vient justement de retirer.
         // Gfx5 : la ville passe à un rendu clair et doux (façon Schedule I) ; les réglages
         // sauvegardés de l'ancien rendu nocturne ne doivent pas l'écraser.
-        private const string PrefsPrefix = "UberBagarre.Gfx5.";
+        // Gfx6 : sous URP, un rendu plus vivant (saturation, contraste) ; les anciens réglages
+        // enregistrés ne doivent pas ramener l'image terne d'avant.
+        public const string PrefsPrefix = "UberBagarre.Gfx6.";
 
         public enum Preset
         {
@@ -196,12 +198,12 @@ namespace UberBagarre.View
                     break;
 
                 case Preset.Ville:
-                    _bloom = 0.6f;
-                    _threshold = 1.2f;
+                    _bloom = 0.55f;
+                    _threshold = 1.15f;
                     _exposure = 1.05f;
-                    _saturation = 1.14f;
-                    _contrast = 1.0f;
-                    _vignette = 0.16f;
+                    _saturation = 1.2f;
+                    _contrast = 1.07f;
+                    _vignette = 0.14f;
                     _grain = 0f;
                     _aberration = 0f;
                     _volumetric = 0.55f;

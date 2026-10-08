@@ -24,7 +24,7 @@ namespace UberBagarre.EditorTools
     /// Lancée d'elle-même quand la ville s'ouvre dans l'éditeur et avant chaque construction du
     /// monde ouvert ; aussi au menu Uber Bagarre → Préparer la ville.
     /// </summary>
-    public static class CityPreparation
+    public static partial class CityPreparation
     {
         private const StaticEditorFlags Frozen = StaticEditorFlags.BatchingStatic |
                                                  StaticEditorFlags.OccluderStatic |
@@ -97,7 +97,8 @@ namespace UberBagarre.EditorTools
                       " portes coulissantes rendues mobiles, " + report.vehicles + " vehicules, " + report.blockers +
                       " murs de la demo retires (" + report.objects + " objets defiges), " + report.roads +
                       " routes et " + report.districtObjects + " elements des quartiers fermes rallumes ; " + report.small +
-                      " petits objets et " + report.medium + " objets moyens ranges pour n'etre dessines que de pres.");
+                      " petits objets et " + report.medium + " objets moyens ranges pour n'etre dessines que de pres ; " +
+                      report.trees + " arbres retires des batiments.");
             return true;
         }
 
@@ -112,6 +113,7 @@ namespace UberBagarre.EditorTools
             public int districtObjects;
             public int small;
             public int medium;
+            public int trees;
         }
 
         private static Report Run(Scene city)
@@ -178,6 +180,7 @@ namespace UberBagarre.EditorTools
 
             OpenClosedDistricts(city, ref report);
             SortByDistance(city, ref report);
+            report.trees = ClearTreesFromBuildings(city);
 
             GameObject marker = new GameObject(Marker);
             SceneManager.MoveGameObjectToScene(marker, city);

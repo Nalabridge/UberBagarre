@@ -21,7 +21,7 @@ namespace UberBagarre.World
         public const int MediumDetailLayer = 27;
 
         /// <summary>Version de la préparation : l'augmenter la fait refaire.</summary>
-        public const int PreparedVersion = 2;
+        public const int PreparedVersion = 3;
 
         /// <summary>
         /// Les murs de la démo : la ville d'origine était fermée par des murs invisibles et des

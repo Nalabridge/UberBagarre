@@ -206,6 +206,14 @@ Shader "UberBagarre/Carte/DoubleFace"
                 normalWS = UberTangentToWorld(normalTS, normalWS, input.tangentWS);
             #endif
 
+                // Le feuillage (sapins, herbe : ceux qui ondulent au vent) a son propre éclairage,
+                // doux et traversé de lumière ; les grillages et rubans restent des surfaces.
+                if (_Wind > 0.001)
+                {
+                    return UberShadeFoliage(input.positionWS, normalWS, input.positionCS, input.shadowCoord, input.fogFactor,
+                                            albedo.rgb, 0.6);
+                }
+
                 return UberShade(input.positionWS, normalWS, input.positionCS, input.shadowCoord, input.fogFactor,
                                  albedo.rgb, _Metallic, _Glossiness, 1.0, half3(0, 0, 0));
             }

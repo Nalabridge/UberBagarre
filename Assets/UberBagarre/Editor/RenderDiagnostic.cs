@@ -44,7 +44,7 @@ namespace UberBagarre.EditorTools
             r.AppendLine("Pipeline par défaut : " + (GraphicsSettings.defaultRenderPipeline != null ? GraphicsSettings.defaultRenderPipeline.name : "aucun"));
             r.AppendLine("Qualité : " + QualitySettings.names[QualitySettings.GetQualityLevel()] + " — espace couleur " + PlayerSettings.colorSpace +
                          " — MSAA " + QualitySettings.antiAliasing);
-            r.AppendLine("Anticrénelage choisi dans le jeu : " + PlayerPrefs.GetInt("UberBagarre.Gfx5.aa", -1) + " (0 aucun, 1 FXAA, 2 TAA, 3 MSAA)");
+            r.AppendLine("Anticrénelage choisi dans le jeu : " + PlayerPrefs.GetInt(UberBagarre.View.GraphicsDirector.PrefsPrefix + "aa", -1) + " (0 aucun, 1 FXAA, 2 TAA, 3 MSAA)");
 
             r.AppendLine();
             r.AppendLine("--- Nos shaders");

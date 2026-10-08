@@ -60,6 +60,42 @@ half4 UberShade(float3 positionWS, float3 normalWS, float4 positionCS, float4 sh
                           albedo, metallic, smoothness, occlusion, emission, 1);
 }
 
+// Le feuillage (sapins, herbe). Une feuille n'est pas une plaque : la lumière l'enveloppe et la
+// traverse. Éclairé comme une surface ordinaire, un sapin devient un damier de faces claires et
+// de faces noires, et ses propres ombres le hachent de taches dures — c'était le « feuillage
+// bizarre ». Ici :
+// - la normale est ramenée vers le haut : la ramure s'éclaire comme un volume, du sommet ;
+// - l'intérieur de la ramure reçoit moins de ciel (occlusion) : les ombres restent d'un vert
+//   profond au lieu de virer au vert clair bleuté du ciel ;
+// - l'ombre que l'arbre se porte à lui-même est un peu adoucie (la lumière passe entre les aiguilles) ;
+// - à contre-jour, le soleil traverse les feuilles (translucidité) ;
+// - aucun reflet brillant.
+half4 UberShadeFoliage(float3 positionWS, float3 normalWS, float4 positionCS, float4 shadowCoordVS, half fogFactor,
+                       half3 albedo, half translucency)
+{
+    half3 n = normalize(lerp(normalize(normalWS), half3(0, 1, 0), 0.55));
+    half4 color = UberShadeAlpha(positionWS, n, positionCS, shadowCoordVS, 0, albedo, 0, 0.04, 0.55, half3(0, 0, 0), 1);
+
+#if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
+    float4 shadowCoord = shadowCoordVS;
+#elif defined(MAIN_LIGHT_CALCULATE_SHADOWS)
+    float4 shadowCoord = TransformWorldToShadowCoord(positionWS);
+#else
+    float4 shadowCoord = float4(0, 0, 0, 0);
+#endif
+    Light mainLight = GetMainLight(shadowCoord, positionWS, half4(1, 1, 1, 1));
+    half3 light = mainLight.color * mainLight.distanceAttenuation;
+
+    half wrap = saturate(dot(n, mainLight.direction) * 0.5 + 0.5);
+    half fill = (1.0 - mainLight.shadowAttenuation) * wrap * 0.12;
+    half3 view = GetWorldSpaceNormalizeViewDir(positionWS);
+    half back = pow(saturate(dot(view, -mainLight.direction)), 3.0) * translucency * lerp(0.35, 1.0, mainLight.shadowAttenuation);
+
+    color.rgb += albedo * light * (fill + back * 0.6);
+    color.rgb = MixFog(color.rgb, fogFactor);
+    return color;
+}
+
 // Une normale de texture (espace tangent) vers le monde.
 float3 UberTangentToWorld(half3 normalTS, float3 normalWS, float4 tangentWS)
 {
