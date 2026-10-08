@@ -217,6 +217,9 @@ namespace UberBagarre.UI
             // de jeu par-dessus.
             if (FightIntro.AnyPlaying || GameMenu.ShowingTitle) return;
 
+            // Un plan de caméra (le comptoir d'un magasin, le barbier) : l'image est au décor.
+            if (View.ShotCamera.Active || FullScreenPanel.AnyOpen) return;
+
             if (!_visible) return;
 
             bool driving = PlayerDriving.IsDriving;

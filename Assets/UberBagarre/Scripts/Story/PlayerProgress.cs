@@ -66,6 +66,20 @@ namespace UberBagarre.Story
             public int shirt;
             public int pants;
             public int shoes;
+
+            /// <summary>La tête, chez le barbier : coupe (HairCut), barbe (BeardStyle), couleur (catalogue).</summary>
+            public int hair = 2;
+            public int beard;
+            public int hairColor = 1;
+
+            public Outfit Copy()
+            {
+                return new Outfit
+                {
+                    top = top, shirt = shirt, pants = pants, shoes = shoes,
+                    hair = hair, beard = beard, hairColor = hairColor
+                };
+            }
         }
 
         /// <summary>Une ligne du relevé de compte (l'appli Banque).</summary>
@@ -773,7 +787,7 @@ namespace UberBagarre.Story
         public void Wear(Outfit outfit)
         {
             if (outfit == null) return;
-            _data.outfit = new Outfit { top = outfit.top, shirt = outfit.shirt, pants = outfit.pants, shoes = outfit.shoes };
+            _data.outfit = outfit.Copy();
             RaiseChanged();
         }
 

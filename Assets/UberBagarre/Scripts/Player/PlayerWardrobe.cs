@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UberBagarre.Story;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.Player
@@ -126,8 +127,22 @@ namespace UberBagarre.Player
         [SerializeField] private SkinnedMeshRenderer _shadow;
         [SerializeField] private TopVariant[] _tops = new TopVariant[0];
 
+        [SerializeField]
+        [Tooltip("Les cheveux et la barbe (le barbier). Trouvés sous le joueur si vide.")]
+        private HairRig _hair;
+
         private readonly Dictionary<Material, Material> _tinted = new Dictionary<Material, Material>();
         private string _worn;
+
+        /// <summary>Les cheveux du joueur (le barbier les montre et les essaie).</summary>
+        public HairRig Hair
+        {
+            get
+            {
+                if (_hair == null) _hair = GetComponentInChildren<HairRig>(true);
+                return _hair;
+            }
+        }
 
         private void OnEnable()
         {
@@ -150,6 +165,21 @@ namespace UberBagarre.Player
             _tinted.Clear();
         }
 
+        /// <summary>
+        /// Se voir en entier (barbier, cabine d'essayage) : le corps complet, tête comprise, est
+        /// dessiné à la place du corps sans tête de la vue subjective, avec les cheveux.
+        /// </summary>
+        public void ShowWholeBody(bool show)
+        {
+            if (_body != null) _body.enabled = !show;
+            if (_shadow != null)
+            {
+                _shadow.shadowCastingMode = show ? UnityEngine.Rendering.ShadowCastingMode.On : UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly;
+            }
+
+            if (Hair != null) _hair.SetVisible(show);
+        }
+
         /// <summary>Essayer une tenue sans l'acheter (aperçu du vestiaire).</summary>
         public void Preview(PlayerProgress.Outfit outfit)
         {
@@ -166,9 +196,16 @@ namespace UberBagarre.Player
         {
             if (outfit == null || _tops == null || _tops.Length == 0) return;
 
-            string signature = outfit.top + "/" + outfit.shirt + "/" + outfit.pants + "/" + outfit.shoes;
+            string signature = outfit.top + "/" + outfit.shirt + "/" + outfit.pants + "/" + outfit.shoes + "/" + outfit.hair + "/" +
+                               outfit.beard + "/" + outfit.hairColor;
             if (signature == _worn) return;
             _worn = signature;
+
+            if (Hair != null)
+            {
+                _hair.Set((HairCut)Mathf.Clamp(outfit.hair, 0, HairCatalog.Cuts.Length - 1),
+                    (BeardStyle)Mathf.Clamp(outfit.beard, 0, HairCatalog.Beards.Length - 1), HairCatalog.ColorOf(outfit.hairColor));
+            }
 
             TopVariant top = _tops[Mathf.Clamp(outfit.top, 0, _tops.Length - 1)];
             if (top == null) return;

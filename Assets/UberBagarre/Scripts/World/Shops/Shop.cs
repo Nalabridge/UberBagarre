@@ -50,6 +50,42 @@ namespace UberBagarre.World
         public Interactable Exit { get { return _exit; } }
         public ShopClerk Clerk { get { return _clerk; } }
         public bool HasInterior { get { return _interior != null && _arrival != null; } }
+        public Interactable Counter { get { return _counter; } }
+
+        private ShopHours.Hours _hours;
+        private bool _hoursReady;
+
+        /// <summary>Les horaires d'ouverture (voir <see cref="ShopHours"/>).</summary>
+        public ShopHours.Hours Hours
+        {
+            get
+            {
+                if (!_hoursReady)
+                {
+                    _hours = ShopHours.For(_kind, _displayName);
+                    _hoursReady = true;
+                }
+
+                return _hours;
+            }
+        }
+
+        /// <summary>Ouvert en ce moment (tenu à jour par <see cref="ShopDirectory"/>).</summary>
+        public bool IsOpen { get; private set; } = true;
+
+        public void SetOpen(bool open)
+        {
+            IsOpen = open;
+            if (_clerk != null && _clerk.gameObject.activeSelf != open && !(open == false && _screen != null && _screen.IsServing(this)))
+            {
+                _clerk.gameObject.SetActive(open);
+            }
+        }
+
+        private void Awake()
+        {
+            if (_clerk != null) _clerk.Bind(this);
+        }
 
         private void OnEnable()
         {
@@ -63,7 +99,7 @@ namespace UberBagarre.World
 
         private void OnCounter(Interactable source)
         {
-            if (_screen != null) _screen.Open(this);
+            if (_screen != null && IsOpen) _screen.Open(this);
         }
 
         /// <summary>Le constructeur de la scène y écrit le magasin.</summary>

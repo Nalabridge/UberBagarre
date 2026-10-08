@@ -115,6 +115,9 @@ namespace UberBagarre.World
 
         public bool HasWaypoint { get { return _hasWaypoint; } }
 
+        /// <summary>Où mène le GPS de la course (valable si <see cref="HasWaypoint"/>).</summary>
+        public Vector3 WaypointPosition { get { return _waypoint; } }
+
         /// <summary>Le point posé par le joueur sur la grande carte.</summary>
         public bool HasUserPoint { get { return _hasUserPoint; } }
 
@@ -378,7 +381,7 @@ namespace UberBagarre.World
             get
             {
                 return GameMenu.IsOpen || FightIntro.AnyPlaying || (_phone != null && _phone.CameraMode) ||
-                       DoorPortal.AnyPassing;
+                       DoorPortal.AnyPassing || FullScreenPanel.AnyOpen || UberBagarre.View.ShotCamera.Active;
             }
         }
 

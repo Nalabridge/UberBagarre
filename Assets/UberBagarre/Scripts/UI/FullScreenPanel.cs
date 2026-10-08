@@ -340,20 +340,8 @@ namespace UberBagarre.UI
         /// </summary>
         protected bool Button(Rect rect, string label, string detail, bool enabled, float u)
         {
-            int index = _registered;
-            if (Event.current.type == EventType.Repaint) _registered++;
-
-            Vector2 mouse = Event.current.mousePosition;
-            bool hover = rect.Contains(mouse);
-            if (hover && Event.current.type == EventType.Repaint && (mouse - _lastMouse).sqrMagnitude > 0.5f)
-            {
-                if (_focus != index) Play(_tick);
-                _focus = index;
-            }
-
-            if (Event.current.type == EventType.Repaint) _lastMouse = mouse;
-
-            bool focused = _focus == index;
+            bool focused, hover;
+            bool activated = Item(rect, enabled, out focused, out hover);
 
             float radius = Mathf.Min(12f * u, rect.height * 0.5f);
             if (focused)
@@ -379,6 +367,31 @@ namespace UberBagarre.UI
                     enabled ? Dim : new Color(1f, 1f, 1f, 0.3f), 0.3f);
             }
 
+            return activated;
+        }
+
+        /// <summary>
+        /// Un élément focalisable sans dessin : l'écran le dessine lui-même. Prend le focus au
+        /// survol (ou aux flèches) et renvoie vrai quand on l'active (clic, ou Entrée quand il
+        /// a le focus) ; désactivé, il refuse avec un son.
+        /// </summary>
+        protected bool Item(Rect rect, bool enabled, out bool focused, out bool hover)
+        {
+            int index = _registered;
+            if (Event.current.type == EventType.Repaint) _registered++;
+
+            Vector2 mouse = Event.current.mousePosition;
+            hover = rect.Contains(mouse);
+            if (hover && Event.current.type == EventType.Repaint && (mouse - _lastMouse).sqrMagnitude > 0.5f)
+            {
+                if (_focus != index) Play(_tick);
+                _focus = index;
+            }
+
+            if (Event.current.type == EventType.Repaint) _lastMouse = mouse;
+
+            focused = _focus == index;
+
             bool clicked = Event.current.type == EventType.MouseDown && Event.current.button == 0 && hover;
             if (clicked) Event.current.Use();
 
@@ -395,6 +408,18 @@ namespace UberBagarre.UI
 
             Play(_ok);
             return true;
+        }
+
+        /// <summary>L'index de l'élément qui a le focus (pour l'aperçu de ce qu'on survole).</summary>
+        protected int FocusIndex
+        {
+            get { return _focus; }
+        }
+
+        /// <summary>Remet le focus sur le premier élément (changement d'onglet).</summary>
+        protected void ResetFocus()
+        {
+            _focus = 0;
         }
 
         /// <summary>Un message en bas de l'écran (vert : c'est fait ; rouge : impossible).</summary>

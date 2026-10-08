@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UberBagarre.Core;
 using UberBagarre.Story;
+using UberBagarre.View;
 using UnityEngine;
 
 namespace UberBagarre.World
@@ -16,6 +17,11 @@ namespace UberBagarre.World
     ///   devant ») ;
     /// - une maison, un appartement : on frappe, quelqu'un répond (ou pas) ;
     /// - le reste (mairie, caserne…) est fermé, et le dit.
+    ///
+    /// Il tient aussi les horaires (<see cref="ShopHours"/>) : un commerce fermé n'a plus de
+    /// vendeur derrière le comptoir, ses portes sont verrouillées (« Fermé · ouvre à 8 h »),
+    /// la carte le montre grisé ; si on est encore dedans à la fermeture, on nous prie de
+    /// sortir.
     /// </summary>
     public class ShopDirectory : MonoBehaviour
     {
@@ -30,6 +36,12 @@ namespace UberBagarre.World
         private string[] _ignore = { "North town/Nightclub" };
 
         private readonly List<Interactable> _wired = new List<Interactable>();
+        private readonly Dictionary<Shop, List<Interactable>> _fronts = new Dictionary<Shop, List<Interactable>>();
+        private readonly Dictionary<Shop, List<SwingDoor>> _doors = new Dictionary<Shop, List<SwingDoor>>();
+        private readonly Dictionary<Shop, bool> _state = new Dictionary<Shop, bool>();
+        private PlayerProgress _progress;
+        private float _nextHours;
+        private float _evictAt = -1f;
         private Shop _inside;
         private Vector3 _returnPosition;
         private Quaternion _returnRotation;
@@ -70,6 +82,7 @@ namespace UberBagarre.World
         {
             MapStreamer.Loaded += Wire;
             if (MapStreamer.Ready) Wire();
+            CityMap.Hours = HoursFor;
 
             for (int i = 0; i < _shops.Length; i++)
             {
@@ -82,6 +95,7 @@ namespace UberBagarre.World
         private void OnDisable()
         {
             MapStreamer.Loaded -= Wire;
+            if (CityMap.Hours == (CityMap.PlaceHours)HoursFor) CityMap.Hours = null;
             for (int i = 0; i < _shops.Length; i++)
             {
                 if (_shops[i] != null && _shops[i].Exit != null) _shops[i].Exit.Activated -= OnExit;
@@ -126,7 +140,15 @@ namespace UberBagarre.World
                     door.Label = "Entrer";
                     door.Hint = shop.DisplayName + " — " + ShopCatalog.Describe(shop.Kind);
                     MapStreamer.Entrance captured = entrance;
-                    door.Activated += s => Enter(shop, captured);
+                    door.Activated += s =>
+                    {
+                        if (shop.IsOpen || StoryNeeds(shop)) Enter(shop, captured);
+                        else Rattle(door);
+                    };
+
+                    List<Interactable> fronts;
+                    if (!_fronts.TryGetValue(shop, out fronts)) _fronts[shop] = fronts = new List<Interactable>();
+                    fronts.Add(door);
                     shops++;
                 }
                 else if (shop != null)
@@ -150,8 +172,178 @@ namespace UberBagarre.World
                 }
             }
 
+            // Les vraies portes (battantes) des magasins qui ont leur intérieur dans la ville :
+            // elles se verrouillent à la fermeture.
+            foreach (KeyValuePair<string, SwingDoor> pair in MapStreamer.AllDoors)
+            {
+                if (pair.Value == null) continue;
+                Shop shop = Find(CityRules.BuildingOf(pair.Key), pair.Key);
+                if (shop == null || shop.HasInterior) continue;
+                List<SwingDoor> list;
+                if (!_doors.TryGetValue(shop, out list)) _doors[shop] = list = new List<SwingDoor>();
+                list.Add(pair.Value);
+            }
+
+            _state.Clear();
+            _nextHours = 0f;
+
             Debug.Log("[UberBagarre] Portes de la ville : " + shops + " entrees de magasins, " + homes + " portes de maisons, " +
                       _shops.Length + " magasins.");
+        }
+
+        // ------------------------------------------------------------------ horaires
+
+        private float Hour
+        {
+            get { return WorldClock.Instance != null ? WorldClock.Instance.Hour : 12f; }
+        }
+
+        private int Weekday
+        {
+            get
+            {
+                if (_progress == null) _progress = FindAnyObjectByType<PlayerProgress>();
+                return ShopHours.Weekday(_progress != null ? _progress.Day : 1);
+            }
+        }
+
+        private CityMap _map;
+
+        /// <summary>
+        /// L'histoire a rendez-vous dans ce commerce (le GPS de la course y mène) : il reste
+        /// accessible même fermé — une scène de l'histoire ne doit jamais buter sur un horaire.
+        /// </summary>
+        public bool StoryNeeds(Shop shop)
+        {
+            if (shop == null) return false;
+            if (_map == null) _map = FindAnyObjectByType<CityMap>();
+            if (_map == null || !_map.HasWaypoint) return false;
+
+            Vector3 target = _map.WaypointPosition;
+            if (shop.Arrival != null && (shop.Arrival.position - target).sqrMagnitude < 30f * 30f) return true;
+            if (shop.Clerk != null && (shop.Clerk.transform.position - target).sqrMagnitude < 25f * 25f) return true;
+
+            List<Interactable> fronts;
+            if (_fronts.TryGetValue(shop, out fronts))
+            {
+                for (int i = 0; i < fronts.Count; i++)
+                {
+                    if (fronts[i] != null && (fronts[i].transform.position - target).sqrMagnitude < 12f * 12f) return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>« Ouvert · ferme à 22 h », « Fermé · ouvre à 8 h ».</summary>
+        public string HoursNote(Shop shop, out bool open)
+        {
+            return ShopHours.Describe(shop.Hours, Hour, Weekday, out open);
+        }
+
+        /// <summary>Pour la carte : les horaires d'un lieu, d'après son nom.</summary>
+        private bool HoursFor(string label, out bool open, out string note)
+        {
+            open = true;
+            note = null;
+            for (int i = 0; i < _shops.Length; i++)
+            {
+                Shop shop = _shops[i];
+                if (shop == null || shop.DisplayName != label) continue;
+                note = HoursNote(shop, out open);
+                return true;
+            }
+
+            return false;
+        }
+
+        private void Update()
+        {
+            if (Time.unscaledTime >= _nextHours)
+            {
+                _nextHours = Time.unscaledTime + 1f;
+                UpdateHours();
+            }
+
+            // Encore dans un magasin fermé : on sort, une fois la conversation finie.
+            if (_evictAt > 0f && Time.time >= _evictAt && !_busy)
+            {
+                if (_inside == null || _inside.IsOpen || StoryNeeds(_inside) || UberBagarre.UI.FullScreenPanel.AnyOpen)
+                {
+                    if (_inside == null || _inside.IsOpen || StoryNeeds(_inside)) _evictAt = -1f;
+                }
+                else
+                {
+                    _evictAt = -1f;
+                    MonoBehaviour host = _fader != null ? (MonoBehaviour)_fader : this;
+                    host.StartCoroutine(Pass(_inside, false));
+                }
+            }
+        }
+
+        private void UpdateHours()
+        {
+            float hour = Hour;
+            int weekday = Weekday;
+            Vector3 player = _player != null ? _player.transform.position : Vector3.zero;
+
+            for (int i = 0; i < _shops.Length; i++)
+            {
+                Shop shop = _shops[i];
+                if (shop == null) continue;
+
+                bool open;
+                string note = ShopHours.Describe(shop.Hours, hour, weekday, out open);
+                bool known;
+                bool was = _state.TryGetValue(shop, out known) ? known : !open;
+                bool changed = !_state.ContainsKey(shop) || was != open;
+                _state[shop] = open;
+
+                if (changed)
+                {
+                    shop.SetOpen(open);
+                    if (!open && _inside == shop && !StoryNeeds(shop))
+                    {
+                        if (shop.Clerk != null && shop.Clerk.gameObject.activeInHierarchy) shop.Clerk.Say(ShopTalk.Closing(shop.Kind, Random.Range(0, 100)));
+                        else if (_subtitles != null) _subtitles.Play(DialogueLine.Say("", "Le magasin ferme. Il est temps de sortir."));
+                        _evictAt = Time.time + 8f;
+                    }
+                }
+
+                // La porte de façade affiche l'état.
+                List<Interactable> fronts;
+                if (_fronts.TryGetValue(shop, out fronts))
+                {
+                    for (int k = 0; k < fronts.Count; k++)
+                    {
+                        if (fronts[k] == null) continue;
+                        fronts[k].Label = open || StoryNeeds(shop) ? "Entrer" : "Fermé";
+                        fronts[k].Hint = shop.DisplayName + " — " + (open ? ShopCatalog.Describe(shop.Kind) + " · " + note : note);
+                    }
+                }
+
+                // Les vraies portes : verrouillées quand c'est fermé — sauf si le joueur est
+                // encore dedans (on ne l'enferme pas).
+                List<SwingDoor> doors;
+                if (_doors.TryGetValue(shop, out doors))
+                {
+                    bool near = false;
+                    for (int k = 0; k < doors.Count && !near; k++)
+                    {
+                        if (doors[k] != null && (doors[k].transform.position - player).sqrMagnitude < 14f * 14f) near = true;
+                    }
+
+                    bool clerkNear = shop.Clerk != null && (shop.Clerk.transform.position - player).sqrMagnitude < 14f * 14f;
+                    bool lockIt = !open && !(near && clerkNear) && !StoryNeeds(shop);
+                    for (int k = 0; k < doors.Count; k++)
+                    {
+                        SwingDoor door = doors[k];
+                        if (door == null) continue;
+                        if (door.Locked != lockIt) door.SetLocked(lockIt, lockIt ? shop.DisplayName + " — " + note : null);
+                        if (lockIt && door.IsOpen) door.SetOpen(false, false);
+                    }
+                }
+            }
         }
 
         /// <summary>Une action sur la façade : visée sur le milieu de la porte, à bonne portée.</summary>
@@ -261,6 +453,12 @@ namespace UberBagarre.World
         {
             PlayKnock(door.transform.position);
             if (_subtitles != null && !string.IsNullOrEmpty(door.Hint)) _subtitles.Play(DialogueLine.Say("", door.Hint));
+        }
+
+        /// <summary>Le joueur est-il dans l'intérieur à part de ce magasin ?</summary>
+        public bool IsInside(Shop shop)
+        {
+            return shop != null && _inside == shop;
         }
 
         private void PlayKnock(Vector3 at)

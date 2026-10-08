@@ -12,11 +12,12 @@
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
-// La lumière d'URP sur une surface déjà calculée (espace monde). Pour une surface transparente,
-// définir _SURFACE_TYPE_TRANSPARENT (et _ALPHAPREMULTIPLY_ON pour un mélange prémultiplié)
-// avant d'inclure ce fichier.
-half4 UberShadeAlpha(float3 positionWS, float3 normalWS, float4 positionCS, float4 shadowCoordVS, half fogFactor,
-                     half3 albedo, half metallic, half smoothness, half occlusion, half3 emission, half alpha)
+// La lumière d'URP sur une surface déjà calculée (espace monde), SANS le brouillard : pour qui
+// ajoute sa propre lumière avant de brouiller (le feuillage, les cheveux). Pour une surface
+// transparente, définir _SURFACE_TYPE_TRANSPARENT (et _ALPHAPREMULTIPLY_ON pour un mélange
+// prémultiplié) avant d'inclure ce fichier.
+half4 UberShadeUnfogged(float3 positionWS, float3 normalWS, float4 positionCS, float4 shadowCoordVS,
+                        half3 albedo, half metallic, half smoothness, half occlusion, half3 emission, half alpha)
 {
     InputData inputData = (InputData)0;
     inputData.positionWS = positionWS;
@@ -32,7 +33,7 @@ half4 UberShadeAlpha(float3 positionWS, float3 normalWS, float4 positionCS, floa
     inputData.shadowCoord = float4(0, 0, 0, 0);
 #endif
 
-    inputData.fogCoord = fogFactor;
+    inputData.fogCoord = 0;
     inputData.bakedGI = SampleSH(inputData.normalWS);
     inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(positionCS);
     inputData.shadowMask = half4(1, 1, 1, 1);
@@ -48,8 +49,19 @@ half4 UberShadeAlpha(float3 positionWS, float3 normalWS, float4 positionCS, floa
     surface.normalTS = half3(0, 0, 1);
 
     half4 color = UniversalFragmentPBR(inputData, surface);
-    color.rgb = MixFog(color.rgb, inputData.fogCoord);
     color.a = alpha;
+    return color;
+}
+
+// La même, brouillard compris. Attention : la valeur « sans brouillard » de fogFactor dépend du
+// mode (1 en linéaire, 0 en exponentiel) — on ne passe jamais une constante, toujours celle
+// calculée au sommet (ComputeFogFactor).
+half4 UberShadeAlpha(float3 positionWS, float3 normalWS, float4 positionCS, float4 shadowCoordVS, half fogFactor,
+                     half3 albedo, half metallic, half smoothness, half occlusion, half3 emission, half alpha)
+{
+    half4 color = UberShadeUnfogged(positionWS, normalWS, positionCS, shadowCoordVS, albedo, metallic, smoothness, occlusion,
+                                    emission, alpha);
+    color.rgb = MixFog(color.rgb, fogFactor);
     return color;
 }
 
@@ -74,7 +86,7 @@ half4 UberShadeFoliage(float3 positionWS, float3 normalWS, float4 positionCS, fl
                        half3 albedo, half translucency)
 {
     half3 n = normalize(lerp(normalize(normalWS), half3(0, 1, 0), 0.55));
-    half4 color = UberShadeAlpha(positionWS, n, positionCS, shadowCoordVS, 0, albedo, 0, 0.04, 0.55, half3(0, 0, 0), 1);
+    half4 color = UberShadeUnfogged(positionWS, n, positionCS, shadowCoordVS, albedo, 0, 0.04, 0.55, half3(0, 0, 0), 1);
 
 #if defined(REQUIRES_VERTEX_SHADOW_COORD_INTERPOLATOR)
     float4 shadowCoord = shadowCoordVS;

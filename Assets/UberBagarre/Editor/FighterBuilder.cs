@@ -73,6 +73,22 @@ namespace UberBagarre.EditorTools
             /// <summary>Version légère (sans subdivision) pour le public du fond de salle.</summary>
             public bool Crowd;
 
+            /// <summary>Coupe imposée (sinon tirée au sort à la construction).</summary>
+            public bool HairSet;
+            public HairCut HairCut;
+            public BeardStyle Beard;
+            public Color HairColor;
+
+            /// <summary>Impose la coupe, la barbe et la couleur (index du catalogue du barbier).</summary>
+            public Skin WithHair(HairCut cut, BeardStyle beard, int color)
+            {
+                HairSet = true;
+                HairCut = cut;
+                Beard = beard;
+                HairColor = HairCatalog.ColorOf(color);
+                return this;
+            }
+
             public static Skin Player(BuildMaterials m)
             {
                 Skin s = new Skin();
@@ -231,6 +247,11 @@ namespace UberBagarre.EditorTools
             SerializedWiring.SetObject(result.Rig, "_rightArm", rightArm);
             SerializedWiring.SetObject(result.Rig, "_leftHand", leftArm.End.GetComponent<HandRig>());
             SerializedWiring.SetObject(result.Rig, "_rightHand", rightArm.End.GetComponent<HandRig>());
+
+            // Les cheveux et la barbe, sur l'os de la tête. Le joueur ne voit pas les siens
+            // (vue subjective) : seulement leur ombre, et au barbier.
+            HairProfiles.Attach(result.Body, data, head, !skin.Crowd, !withHead, skin.HairSet, skin.HairCut, skin.Beard,
+                skin.HairColor);
 
             result.Locomotion = result.Body.AddComponent<ProceduralLocomotion>();
             SerializedWiring.SetObject(result.Locomotion, "_rig", result.Rig);

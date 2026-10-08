@@ -222,7 +222,7 @@ namespace UberBagarre.UI
         private void Wear(int family, int index)
         {
             PlayerProgress.Outfit o = _progress.CurrentOutfit;
-            PlayerProgress.Outfit next = new PlayerProgress.Outfit { top = o.top, shirt = o.shirt, pants = o.pants, shoes = o.shoes };
+            PlayerProgress.Outfit next = o.Copy();
             switch (family)
             {
                 case 0: next.top = index; break;

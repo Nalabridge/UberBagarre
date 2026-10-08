@@ -155,15 +155,28 @@ namespace UberBagarre.EditorTools
                     GameObject go = EditorBuildUtility.CreateEmpty(spec.Name, root.transform, Vector3.zero);
                     Shop shop = go.AddComponent<Shop>();
 
-                    if (spec.Facade)
+                    Vector3 position = Vector3.zero;
+                    Quaternion rotation = Quaternion.identity;
+                    bool counter = !spec.Facade && FindCounter(city, spec.Building, out position, out rotation);
+
+                    // Un magasin de la carte dont on ne trouve pas le comptoir (bâtiment renommé,
+                    // intérieur vide) n'est pas abandonné : il reçoit un intérieur construit, comme
+                    // une façade. C'est ce qui manquait au barbier.
+                    if (spec.Facade || !counter)
                     {
+                        if (!spec.Facade)
+                        {
+                            Debug.LogWarning("[UberBagarre] Magasin « " + spec.Name + " » : comptoir introuvable dans la ville (" + spec.Building +
+                                             ") — un interieur est construit pour lui.");
+                        }
+
                         Vector3 origin = ShopInteriorsOrigin + new Vector3(facades * 40f, 0f, 0f);
                         facades++;
                         ShopInteriorBuilder.Result room = ShopInteriorBuilder.Build(spec.Kind, spec.Name, go.transform, origin, night);
                         ShopClerk clerk = BuildClerk(room.Root.transform, room.ClerkPosition, room.ClerkRotation, spec.Kind, seed++,
-                            materials, night, library, subtitles);
-                        Interactable counter = CounterOn(room.Counter.gameObject, spec);
-                        shop.Configure(spec.Name, spec.Kind, spec.Building, counter, screen, clerk, room.Root, room.Arrival, room.Exit, spec.Filter);
+                            materials, night, library, subtitles, spec.Name);
+                        Interactable counterOn = CounterOn(room.Counter.gameObject, spec);
+                        shop.Configure(spec.Name, spec.Kind, spec.Building, counterOn, screen, clerk, room.Root, room.Arrival, room.Exit, spec.Filter);
 
                         Vector3 front;
                         if (FacadePosition(city, spec, out front))
@@ -171,21 +184,18 @@ namespace UberBagarre.EditorTools
                             ShopFronts[spec.Name] = front;
                             marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(front.x, front.z), color = shopColor, icon = spec.Kind.ToString() });
                         }
-                    }
-                    else
-                    {
-                        Vector3 position;
-                        Quaternion rotation;
-                        if (!FindCounter(city, spec.Building, out position, out rotation))
+                        else if (!spec.Facade)
                         {
                             Debug.LogWarning("[UberBagarre] Magasin « " + spec.Name + " » : batiment introuvable dans la ville (" + spec.Building + ").");
                             Object.DestroyImmediate(go);
                             continue;
                         }
-
-                        ShopClerk clerk = BuildClerk(go.transform, position, rotation, spec.Kind, seed++, materials, night, library, subtitles);
-                        Interactable counter = CounterOn(clerk.gameObject, spec);
-                        shop.Configure(spec.Name, spec.Kind, spec.Building, counter, screen, clerk, null, null, null, spec.Filter);
+                    }
+                    else
+                    {
+                        ShopClerk clerk = BuildClerk(go.transform, position, rotation, spec.Kind, seed++, materials, night, library, subtitles, spec.Name);
+                        Interactable counterOn = CounterOn(clerk.gameObject, spec);
+                        shop.Configure(spec.Name, spec.Kind, spec.Building, counterOn, screen, clerk, null, null, null, spec.Filter);
                         marks.Add(new CityMap.Landmark { label = spec.Name, position = new Vector2(position.x, position.z), color = shopColor, icon = spec.Kind.ToString() });
                     }
 
@@ -206,7 +216,7 @@ namespace UberBagarre.EditorTools
                 Shop shop = go.AddComponent<Shop>();
                 ShopSpec spec = new ShopSpec("Vertigo", "Bar du Vertigo", ShopKind.BoiteDeNuit, false);
                 ShopClerk clerk = BuildClerk(bar, bar.TransformPoint(new Vector3(-1f, 0f, 0f)), Quaternion.LookRotation(bar.right, Vector3.up),
-                    spec.Kind, seed++, materials, night, library, subtitles);
+                    spec.Kind, seed++, materials, night, library, subtitles, spec.Name);
                 Interactable counter = CounterOn(clerk.gameObject, spec);
                 shop.Configure(spec.Name, spec.Kind, spec.Building, counter, screen, clerk, null, null, null, null);
                 EditorUtility.SetDirty(shop);
@@ -269,13 +279,14 @@ namespace UberBagarre.EditorTools
             Transform root = BuildingRoot(city, building);
             if (root == null) return false;
 
-            Transform stand = null, register = null;
+            Transform stand = null, register = null, chair = null;
             List<Transform> doors = new List<Transform>();
             Transform[] all = root.GetComponentsInChildren<Transform>(false);
             for (int i = 0; i < all.Length; i++)
             {
                 string n = all[i].name.ToLowerInvariant();
                 if (stand == null && (n.Contains("standpoint") || n.Contains("stand point"))) stand = all[i];
+                if (chair == null && n.StartsWith("barber chair")) chair = all[i];
                 if (register == null && (n == "cash register" || n == "cashcounter" || n == "counter" || n == "frontdesk" || n == "ornate desk")) register = all[i];
                 if (CityRules.IsDoorHinge(all[i])) doors.Add(all[i]);
             }
@@ -297,6 +308,24 @@ namespace UberBagarre.EditorTools
                 rotation = look.sqrMagnitude > 0.01f ? Quaternion.LookRotation(look.normalized, Vector3.up) : Quaternion.identity;
                 position = Ground(position + Vector3.up * 0.5f, position.y);
                 return true;
+            }
+
+            // Le barbier se tient à côté de son fauteuil, tourné vers la porte.
+            if (chair != null)
+            {
+                Vector3 toDoor = Flat(door - chair.position);
+                if (toDoor.sqrMagnitude < 0.01f) toDoor = -inward;
+                toDoor.Normalize();
+                Vector3 beside = Vector3.Cross(Vector3.up, toDoor);
+                float[] offsets = { 0.75f, -0.75f };
+                for (int k = 0; k < offsets.Length; k++)
+                {
+                    Vector3 p = Ground(chair.position + beside * offsets[k] - toDoor * 0.2f + Vector3.up * 0.5f, chair.position.y);
+                    if (Physics.CheckCapsule(p + Vector3.up * 0.35f, p + Vector3.up * 1.5f, 0.25f, ~0, QueryTriggerInteraction.Ignore)) continue;
+                    position = p;
+                    rotation = Quaternion.LookRotation(toDoor, Vector3.up);
+                    return true;
+                }
             }
 
             if (register != null)
@@ -390,7 +419,7 @@ namespace UberBagarre.EditorTools
         private static readonly string[] ClerkSilhouettes = { "Sec", "Athlete", "Costaud", "Sec" };
 
         private static ShopClerk BuildClerk(Transform parent, Vector3 position, Quaternion rotation, ShopKind kind, int n,
-            BuildMaterials materials, NightMaterialFactory.Palette night, MocapLibrary library, SubtitleDisplay subtitles)
+            BuildMaterials materials, NightMaterialFactory.Palette night, MocapLibrary library, SubtitleDisplay subtitles, string shopName)
         {
             GameObject go = new GameObject("Vendeur");
             go.transform.SetParent(parent, true);
@@ -429,7 +458,7 @@ namespace UberBagarre.EditorTools
             }
 
             ShopClerk clerk = go.AddComponent<ShopClerk>();
-            clerk.Configure(animator, library, subtitles, ShopCatalog.Describe(kind).ToUpperInvariant(), ShopCatalog.Greeting(kind), body.Locomotion);
+            clerk.Configure(animator, library, subtitles, ShopTalk.Speaker(kind, shopName), ShopCatalog.Greeting(kind), body.Locomotion);
             EditorUtility.SetDirty(clerk);
             return clerk;
         }
