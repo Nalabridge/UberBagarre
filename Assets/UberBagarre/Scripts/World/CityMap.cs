@@ -266,6 +266,8 @@ namespace UberBagarre.World
         private void Update()
         {
             if (_input != null && _input.MapPressed && !GameMenu.IsOpen) SetFull(!_full);
+            // Échap referme la carte (et n'ouvre pas la pause par-dessus : le menu la laisse faire).
+            else if (_full && _input != null && _input.ReleaseCursorPressed) SetFull(false);
             if (_full && (GameMenu.IsOpen || Hidden)) SetFull(false);
 
             if (_hasWaypoint && _waypointFollow != null) _waypoint = _waypointFollow.position;
@@ -286,6 +288,12 @@ namespace UberBagarre.World
                 bool show = distance > 9f;
                 if (_beam.activeSelf != show) _beam.SetActive(show);
             }
+        }
+
+        /// <summary>Ouvre la grande carte (depuis le menu pause, par exemple).</summary>
+        public void OpenFull()
+        {
+            SetFull(true);
         }
 
         /// <summary>

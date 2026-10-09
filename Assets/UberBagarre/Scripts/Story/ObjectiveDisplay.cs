@@ -88,7 +88,8 @@ namespace UberBagarre.Story
             // En haut à gauche, là où GTA met ses consignes (la mini-carte est en bas).
             float u = UiTheme.Unit;
             float x = 30f * u;
-            float y = 30f * u;
+            // Sous la fiche de course quand il y en a une.
+            float y = Mathf.Max(30f * u, UiTheme.TopLeftUsed);
             bool showCompleted = !string.IsNullOrEmpty(_completed) && _completedAge < _completedHold;
 
             if (showCompleted)

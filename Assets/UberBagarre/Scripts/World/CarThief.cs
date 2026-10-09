@@ -274,32 +274,28 @@ namespace UberBagarre.World
         {
             if (!string.IsNullOrEmpty(_flash) && Time.unscaledTime < _flashUntil && !Picking)
             {
-                DrawFlash(Mathf.Max(0.6f, Screen.height / 1080f));
+                DrawFlash(UiTheme.Unit);
             }
 
             if (!Picking || _car == null || GameMenu.IsOpen) return;
             GUI.depth = -30;
 
-            float u = Mathf.Max(0.6f, Screen.height / 1080f);
+            float u = UiTheme.Unit;
             float sw = Screen.width, sh = Screen.height;
             Rect panel = new Rect((sw - 560f * u) * 0.5f, (sh - 520f * u) * 0.5f, 560f * u, 520f * u);
 
-            GuiKit.Glow(panel, new Color(0f, 0f, 0f, 0.55f), 22f * u, 26f * u);
-            GuiKit.Rounded(panel, new Color(0.07f, 0.064f, 0.1f, 0.94f), 22f * u);
-            GuiKit.RoundedOutline(panel, new Color(1f, 1f, 1f, 0.07f), 22f * u, 1f);
+            UiTheme.DrawPanel(panel, 14f * u);
 
-            GUIStyle title = GuiKit.Text(Mathf.RoundToInt(26 * u), GuiKit.Weight.Black, TextAnchor.MiddleLeft);
-            GUIStyle small = GuiKit.Text(Mathf.RoundToInt(15 * u), GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
-            GUIStyle help = GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Medium, TextAnchor.MiddleCenter, true);
-            GuiKit.ShadowLabel(new Rect(panel.x + 30f * u, panel.y + 18f * u, panel.width, 36f * u), "CROCHETAGE", title, Color.white, 0.4f);
-            GuiKit.ShadowLabel(new Rect(panel.x + 30f * u, panel.y + 52f * u, panel.width, 22f * u), _car.DisplayName, small,
-                new Color(0.65f, 0.66f, 0.72f), 0.3f);
+            GUIStyle title = UiTheme.Title(26f);
+            GUIStyle small = UiTheme.Text(15f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            UiTheme.Label(new Rect(panel.x + 30f * u, panel.y + 18f * u, panel.width, 36f * u), "CROCHETAGE", title, UiTheme.Ink);
+            UiTheme.Label(new Rect(panel.x + 30f * u, panel.y + 52f * u, panel.width, 22f * u), _car.DisplayName, small, UiTheme.InkDim);
 
             // Les goupilles.
             for (int i = 0; i < _sweet.Length; i++)
             {
                 Rect pin = new Rect(panel.xMax - 30f * u - (_sweet.Length - i) * 34f * u, panel.y + 30f * u, 26f * u, 26f * u);
-                Color c = i < _pin ? new Color(0.36f, 0.95f, 0.52f) : i == _pin ? new Color(1f, 0.82f, 0.35f) : new Color(1f, 1f, 1f, 0.15f);
+                Color c = i < _pin ? UiTheme.Good : i == _pin ? UiTheme.Accent : new Color(1f, 1f, 1f, 0.15f);
                 GuiKit.Rounded(pin, c, 13f * u);
             }
 
@@ -335,13 +331,16 @@ namespace UberBagarre.World
             GuiKit.Rounded(wear, new Color(1f, 1f, 1f, 0.1f), 4f * u);
             GuiKit.Rounded(new Rect(wear.x, wear.y, Mathf.Max(wear.height, wear.width * _wear), wear.height),
                 Color.Lerp(new Color(1f, 0.82f, 0.35f), new Color(1f, 0.3f, 0.25f), _wear), 4f * u);
-            GuiKit.ShadowLabel(new Rect(wear.x, wear.y - 24f * u, wear.width, 20f * u),
+            UiTheme.Label(new Rect(wear.x, wear.y - 24f * u, wear.width, 20f * u),
                 "Crochet : " + (_wear > 0.66f ? "il va casser" : _wear > 0.3f ? "il force" : "intact") +
-                "      Crochets : " + (_progress != null ? _progress.Lockpicks : 0), small, new Color(0.8f, 0.8f, 0.85f), 0.3f);
+                "      Crochets : " + (_progress != null ? _progress.Lockpicks : 0), small, UiTheme.InkDim);
 
-            GuiKit.ShadowLabel(new Rect(panel.x + 20f * u, panel.yMax - 72f * u, panel.width - 40f * u, 56f * u),
-                "SOURIS ou ← →  placer le crochet     ESPACE ou CLIC  tourner (tension)\nE ou ÉCHAP  abandonner", help,
-                new Color(1f, 1f, 1f, 0.6f), 0.4f);
+            Core.InputBindings b = _input != null ? _input.Bindings : null;
+            float hy = panel.yMax - 50f * u;
+            float hx = panel.x + 30f * u;
+            hx = UiTheme.KeyHint(hx, hy, "Souris", "Placer le crochet", u);
+            hx = UiTheme.KeyHint(hx, hy, b != null ? UiTheme.KeyName(b.jump) : "Espace", "Tourner", u);
+            UiTheme.KeyHint(hx, hy, b != null ? UiTheme.KeyName(b.interact) : "E", "Abandonner", u);
         }
 
         private void Flash(string text)
@@ -352,10 +351,7 @@ namespace UberBagarre.World
 
         private void DrawFlash(float u)
         {
-            Rect r = new Rect(Screen.width * 0.5f - 200f * u, Screen.height * 0.3f, 400f * u, 40f * u);
-            GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.85f), 20f * u);
-            GuiKit.ShadowLabel(r, _flash, GuiKit.Text(Mathf.RoundToInt(18 * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter),
-                new Color(1f, 0.4f, 0.35f), 0.4f);
+            UiTheme.DrawToast(_flash, UiTheme.Bad, Screen.height * 0.3f, 1f);
         }
 
         private void Tell(string text)

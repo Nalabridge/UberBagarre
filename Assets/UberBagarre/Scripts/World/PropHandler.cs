@@ -60,9 +60,6 @@ namespace UberBagarre.World
         [SerializeField, Min(0f)] private float _throwLift = 1.6f;
         [SerializeField, Min(0f)] private float _glassBonusDamage = 7f;
 
-        [Header("Affichage")]
-        [SerializeField] private Color _accent = new Color(0.98f, 0.86f, 0.42f);
-
         private readonly RaycastHit[] _hits = new RaycastHit[12];
 
         private PhysicsProp _looked;
@@ -270,51 +267,29 @@ namespace UberBagarre.World
 
         private void OnGUI()
         {
-            string label;
-            string key;
+            if (GameMenu.IsOpen || ModalScreen.Active) return;
+            Core.InputBindings b = _input != null ? _input.Bindings : null;
+            string interact = b != null ? UiTheme.KeyName(b.interact) : "E";
 
             if (_held != null)
             {
-                key = "CLIC";
-                label = "Lancer   ·   E : lâcher";
+                UiTheme.DrawPrompt(b != null ? UiTheme.KeyName(b.attackStraight) : "Clic", "Lancer", interact + " : lâcher", 1f);
             }
             else if (_looked != null && (_interaction == null || _interaction.Focused == null))
             {
-                key = "E";
-                label = "Ramasser (" + Describe(_looked) + ")";
+                UiTheme.DrawPrompt(interact, "Ramasser", Describe(_looked), 1f);
             }
-            else
-            {
-                return;
-            }
-
-            GUIStyle style = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft);
-            float width = style.CalcSize(new GUIContent(label)).x + 74f;
-
-            float x = Screen.width * 0.5f - width * 0.5f;
-            float y = Screen.height * 0.5f + 46f;
-
-            GuiKit.Fill(new Rect(x, y, width, 34f), new Color(0f, 0f, 0f, 0.6f));
-
-            Rect keyRect = new Rect(x + 8f, y + 7f, 44f, 20f);
-            GuiKit.Fill(keyRect, new Color(1f, 1f, 1f, 0.12f));
-            GuiKit.Outline(keyRect, 1.5f, _accent);
-            GuiKit.OutlinedLabel(keyRect, key, GuiKit.Style(12, FontStyle.Bold, TextAnchor.MiddleCenter),
-                _accent, new Color(0f, 0f, 0f, 0.85f), 1f);
-
-            GuiKit.OutlinedLabel(new Rect(keyRect.xMax + 10f, y + 6f, width - 70f, 22f), label, style,
-                Color.white, new Color(0f, 0f, 0f, 0.85f), 1.2f);
         }
 
         private static string Describe(PhysicsProp prop)
         {
             switch (prop.Kind)
             {
-                case PhysicsProp.Matter.Verre: return "bouteille";
-                case PhysicsProp.Matter.Plastique: return "plastique";
-                case PhysicsProp.Matter.Metal: return "métal";
-                case PhysicsProp.Matter.Mou: return "sac";
-                default: return "bois";
+                case PhysicsProp.Matter.Verre: return "Une bouteille";
+                case PhysicsProp.Matter.Plastique: return "Du plastique";
+                case PhysicsProp.Matter.Metal: return "Du métal";
+                case PhysicsProp.Matter.Mou: return "Un sac";
+                default: return "Du bois";
             }
         }
     }

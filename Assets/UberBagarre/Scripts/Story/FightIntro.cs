@@ -315,9 +315,13 @@ namespace UberBagarre.Story
             if (!_playing)
             {
                 // Face-a-face dialogue : on rappelle discretement qu'on peut avancer.
-                GUIStyle skip = GuiKit.Style(Mathf.Max(10, Mathf.RoundToInt(18f * unit)), FontStyle.Normal, TextAnchor.MiddleRight);
-                GuiKit.OutlinedLabel(new Rect(sw - 420f * unit, sh - height * 0.5f - 15f * unit, 390f * unit, 30f * unit),
-                    "E : réplique suivante", skip, new Color(1f, 1f, 1f, 0.5f * _letterbox), new Color(0f, 0f, 0f, 0.9f * _letterbox), 1f);
+                if (!Core.GameSettings.KeyHints) return;
+                float u = UI.UiTheme.Unit;
+                string key = _input != null && _input.Bindings != null ? UI.UiTheme.KeyName(_input.Bindings.interact) : "E";
+                float previous = GuiKit.Alpha;
+                GuiKit.Alpha = previous * _letterbox * 0.85f;
+                UI.UiTheme.KeyHint(sw - 290f * unit, sh - height * 0.5f - 11f * u, key, "Réplique suivante", u);
+                GuiKit.Alpha = previous;
                 return;
             }
 
@@ -327,12 +331,13 @@ namespace UberBagarre.Story
                 float t = Mathf.Clamp01((_time - ShotA) / 0.3f) * Mathf.Clamp01((ShotB - _time) / 0.25f);
                 float slide = (1f - Mathf.SmoothStep(0f, 1f, t)) * 80f * unit;
 
-                GUIStyle name = GuiKit.Style(Mathf.Max(14, Mathf.RoundToInt(74f * unit)), FontStyle.Bold, TextAnchor.MiddleLeft);
-                GUIStyle line = GuiKit.Style(Mathf.Max(11, Mathf.RoundToInt(26f * unit)), FontStyle.Bold, TextAnchor.MiddleLeft);
+                GUIStyle name = GuiKit.Text(Mathf.Max(14, Mathf.RoundToInt(74f * unit)), GuiKit.Weight.Black, TextAnchor.MiddleLeft);
+                GUIStyle line = GuiKit.Text(Mathf.Max(11, Mathf.RoundToInt(26f * unit)), GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
 
                 Rect band = new Rect(90f * unit - slide, sh * 0.62f, sw * 0.6f, 150f * unit);
-                GuiKit.Fill(new Rect(band.x - 20f * unit, band.y + 10f * unit, 8f * unit, band.height - 20f * unit),
-                    new Color(1f, 0.2f, 0.55f, t));
+                Color accent = UI.UiTheme.Accent;
+                GuiKit.Fill(new Rect(band.x - 20f * unit, band.y + 10f * unit, 6f * unit, band.height - 20f * unit),
+                    new Color(accent.r, accent.g, accent.b, t));
 
                 GuiKit.OutlinedLabel(new Rect(band.x, band.y, band.width, 90f * unit), _title, name,
                     new Color(1f, 1f, 1f, t), new Color(0f, 0f, 0f, 0.9f * t), 2f);

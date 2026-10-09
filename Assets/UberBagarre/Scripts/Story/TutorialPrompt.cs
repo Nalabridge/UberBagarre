@@ -23,7 +23,7 @@ namespace UberBagarre.Story
         [SerializeField, Min(160f)] private float _width = 330f;
 
         [Header("Apparence")]
-        [SerializeField] private Color _accent = new Color(0.42f, 0.82f, 1f);
+        [SerializeField] private Color _accent = new Color(1f, 0.74f, 0.29f);
         [SerializeField] private Color _panelColor = new Color(0.03f, 0.05f, 0.08f, 0.82f);
         [SerializeField] private Color _keyColor = new Color(0.98f, 0.96f, 0.90f);
 
@@ -90,46 +90,47 @@ namespace UberBagarre.Story
 
             if (_visibility <= 0.01f || string.IsNullOrEmpty(_instruction)) return;
 
-            const float height = 62f;
-            float x = _margin.x;
-            float y = Screen.height - _margin.y - height;
+            // En haut à droite, sous l'argent et les étoiles : là où l'œil va chercher une aide,
+            // sans rien cacher du combat au centre ni de la carte en bas à gauche.
+            float u = UiTheme.Unit;
+            float width = Mathf.Max(_width, 330f) * u;
+            float pad = 16f * u;
+            GUIStyle keyStyle = UiTheme.Text(14f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
+            GUIStyle text = GuiKit.Text(UiTheme.Size(16f), GuiKit.Weight.Medium, TextAnchor.MiddleLeft, true);
 
-            Color panel = _panelColor;
-            panel.a *= _visibility;
-            GuiKit.Fill(new Rect(x, y, _width, height), panel);
-            GuiKit.Outline(new Rect(x, y, _width, height), 2f,
-                new Color(_accent.r, _accent.g, _accent.b, _visibility * (0.5f + 0.5f * _flash)));
+            float capWidth = Mathf.Max(32f * u, keyStyle.CalcSize(new GUIContent(_key ?? "")).x + 18f * u);
+            float textWidth = width - pad * 2f - capWidth - 14f * u;
+            float textHeight = Mathf.Max(30f * u, text.CalcHeight(new GUIContent(_instruction), textWidth));
+            float height = pad * 2f + textHeight + (_required > 0 ? 14f * u : 0f);
 
-            // La touche dans un cadre, comme sur un clavier : c'est reconnu sans légende.
-            Rect keyRect = new Rect(x + 12f, y + 12f, Mathf.Max(38f, 13f + _key.Length * 9f), 26f);
-            GuiKit.Fill(keyRect, new Color(1f, 1f, 1f, 0.10f * _visibility));
-            GuiKit.Outline(keyRect, 1.5f, new Color(_keyColor.r, _keyColor.g, _keyColor.b, _visibility * 0.8f));
+            float slide = (1f - UiTheme.EaseOut(_visibility)) * 20f * u;
+            Rect panel = new Rect(Screen.width - 30f * u - width + slide, UiTheme.TopRight(150f), width, height);
 
-            GuiKit.OutlinedLabel(keyRect, _key, GuiKit.Style(13, FontStyle.Bold, TextAnchor.MiddleCenter),
-                new Color(_keyColor.r, _keyColor.g, _keyColor.b, _visibility),
-                new Color(0f, 0f, 0f, 0.85f * _visibility), 1f);
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * _visibility;
+            UiTheme.DrawPanel(panel, 10f * u);
 
-            GUIStyle text = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft, true);
+            // Une réussite fait briller le bord : le coup a compté.
+            if (_flash > 0.01f) GuiKit.RoundedOutline(panel, new Color(_accent.r, _accent.g, _accent.b, _flash), 10f * u, 2f * u);
 
-            GuiKit.OutlinedLabel(new Rect(keyRect.xMax + 12f, y + 8f, _width - keyRect.width - 30f, 34f),
-                _instruction, text,
-                new Color(1f, 1f, 1f, _visibility), new Color(0f, 0f, 0f, 0.85f * _visibility), 1.2f);
+            Rect cap = new Rect(panel.x + pad, panel.y + pad + (textHeight - 30f * u) * 0.5f, capWidth, 30f * u);
+            GuiKit.Rounded(cap, new Color(1f, 1f, 1f, 0.92f), 5f * u);
+            UiTheme.Label(cap, _key, keyStyle, new Color(0.06f, 0.07f, 0.09f));
+            UiTheme.Label(new Rect(cap.xMax + 14f * u, panel.y + pad, textWidth, textHeight), _instruction, text, UiTheme.Ink);
 
-            if (_required <= 0) return;
-
-            // Des pastilles plutôt qu'un « 2 / 3 » : on lit combien il en reste d'un coup d'œil,
-            // sans avoir à faire la soustraction en plein combat.
-            float pipY = y + height - 14f;
-
-            for (int i = 0; i < _required; i++)
+            if (_required > 0)
             {
-                Rect pip = new Rect(x + 14f + i * 16f, pipY, 11f, 5f);
-                bool filled = i < _done;
-
-                GuiKit.Fill(pip, filled
-                    ? new Color(_accent.r, _accent.g, _accent.b, _visibility)
-                    : new Color(1f, 1f, 1f, 0.18f * _visibility));
+                // Des pastilles plutôt qu'un « 2 / 3 » : on lit combien il en reste d'un coup
+                // d'œil, sans avoir à faire la soustraction en plein combat.
+                float pipY = panel.yMax - pad - 4f * u;
+                for (int i = 0; i < _required; i++)
+                {
+                    Rect pip = new Rect(cap.xMax + 14f * u + i * 22f * u, pipY, 16f * u, 4f * u);
+                    GuiKit.Rounded(pip, i < _done ? _accent : new Color(1f, 1f, 1f, 0.16f), 2f * u);
+                }
             }
+
+            GuiKit.Alpha = previous;
         }
     }
 }

@@ -174,7 +174,9 @@ namespace UberBagarre.View
             // Dans l'editeur, c'est l'option « VSync » de la vue Game qui decide ; dans un jeu
             // compile, c'est ce reglage.
             QualitySettings.vSyncCount = _vSync ? 1 : 0;
-            Application.targetFrameRate = _vSync ? -1 : 240;
+            // Sans synchro, la limite d'images choisie dans les réglages (aucune par défaut).
+            int limit = Core.GameSettings.FrameLimit;
+            Application.targetFrameRate = _vSync || limit <= 0 ? -1 : limit;
         }
 
         /// <summary>

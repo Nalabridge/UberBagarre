@@ -206,23 +206,32 @@ namespace UberBagarre.Player
         private void OnGUI()
         {
             if (_chips.Count == 0 || ModalScreen.Active || GameMenu.IsOpen || FightIntroPlaying()) return;
+            if (Core.GameSettings.Hud == 2 || UberBagarre.View.ShotCamera.Active || FullScreenPanel.AnyOpen) return;
 
-            float u = Mathf.Max(0.6f, Screen.height / 1080f);
-            float w = 300f * u;
-            float h = 30f * u;
-            float x = Screen.width - w - 24f * u;
-            float y = 150f * u;
-            GUIStyle style = GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            float u = UiTheme.Unit;
+            float y = UiTheme.TopRight(140f);
+            for (int i = 0; i < _chips.Count; i++) y = DrawChip(_chips[i], _chipColors[i], null, y, u, 0f);
+        }
 
-            for (int i = 0; i < _chips.Count; i++)
-            {
-                Rect r = new Rect(x, y + i * (h + 6f * u), w, h);
-                Color c = _chipColors[i];
-                GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.82f), h * 0.5f);
-                GuiKit.RoundedOutline(r, new Color(c.r, c.g, c.b, 0.55f), h * 0.5f, 1f);
-                GuiKit.Rounded(new Rect(r.x + 10f * u, r.center.y - 4f * u, 8f * u, 8f * u), c, 4f * u);
-                GuiKit.ShadowLabel(new Rect(r.x + 26f * u, r.y, r.width - 34f * u, r.height), _chips[i], style, c, 0.5f);
-            }
+        /// <summary>
+        /// Une pastille d'état, alignée à droite sous l'argent : un point de couleur, le texte, et
+        /// éventuellement un minuteur. Rend le haut de la suivante.
+        /// </summary>
+        public static float DrawChip(string text, Color color, string right, float y, float u, float flash)
+        {
+            GUIStyle style = UiTheme.Text(13.5f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            GUIStyle timer = UiTheme.Text(13f, GuiKit.Weight.Medium, TextAnchor.MiddleRight);
+            float h = 26f * u;
+            float textWidth = style.CalcSize(new GUIContent(text)).x;
+            float timerWidth = string.IsNullOrEmpty(right) ? 0f : timer.CalcSize(new GUIContent(right)).x + 12f * u;
+            float w = textWidth + timerWidth + 38f * u;
+            Rect r = new Rect(Screen.width - 30f * u - w, y, w, h);
+
+            GuiKit.Rounded(r, new Color(0.04f, 0.045f, 0.06f, 0.72f + 0.2f * flash), 6f * u);
+            GuiKit.Rounded(new Rect(r.x + 12f * u, r.center.y - 3.5f * u, 7f * u, 7f * u), color, 3.5f * u);
+            UiTheme.Label(new Rect(r.x + 26f * u, r.y, textWidth + 4f, r.height), text, style, UiTheme.Ink);
+            if (timerWidth > 0f) UiTheme.Label(new Rect(r.xMax - 12f * u - timerWidth, r.y, timerWidth, r.height), right, timer, UiTheme.InkDim);
+            return r.yMax + 6f * u;
         }
 
         private static bool FightIntroPlaying()

@@ -186,6 +186,9 @@ namespace UberBagarre.Player
                                  " : utilisation des touches par defaut (non sauvegardees).", this);
             }
 
+            // Une copie, avec les touches choisies par le joueur : l'asset reste intact.
+            _bindings = KeyRemap.Prepare(_bindings);
+
             _provider = InputProviderFactory.Create(_preferredBackend);
         }
 

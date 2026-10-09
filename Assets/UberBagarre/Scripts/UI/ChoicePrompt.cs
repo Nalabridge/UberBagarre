@@ -102,53 +102,81 @@ namespace UberBagarre.UI
             if (_options == null) return;
             GUI.depth = -60;
 
-            float u = Mathf.Max(0.6f, Screen.height / 1080f);
+            float u = UiTheme.Unit;
             float sw = Screen.width, sh = Screen.height;
-            GuiKit.Fill(new Rect(0f, 0f, sw, sh), new Color(0f, 0f, 0f, 0.45f));
+            float appear = UiTheme.EaseOut((Time.unscaledTime - _openedAt) / 0.3f);
 
-            float width = Mathf.Min(sw - 80f * u, 760f * u);
-            float rowHeight = 58f * u;
-            float height = 140f * u + _options.Length * (rowHeight + 10f * u);
-            Rect panel = new Rect((sw - width) * 0.5f, sh * 0.5f - height * 0.5f, width, height);
+            // Le jeu reste visible : un voile qui ne fonce que le bas de l'écran, là où est le choix.
+            const int bands = 16;
+            for (int i = 0; i < bands; i++)
+            {
+                float t = i / (float)(bands - 1);
+                GuiKit.Fill(new Rect(0f, sh * (0.35f + 0.65f * i / bands), sw, sh * 0.65f / bands + 1f),
+                    new Color(0f, 0f, 0f, 0.62f * t * appear));
+            }
 
-            Color accent = new Color(1f, 0.2f, 0.55f);
-            GuiKit.Glow(panel, new Color(0f, 0f, 0f, 0.6f), 22f * u, 26f * u);
-            GuiKit.Rounded(panel, new Color(0.075f, 0.068f, 0.11f, 0.96f), 22f * u);
-            GuiKit.RoundedOutline(panel, new Color(1f, 1f, 1f, 0.08f), 22f * u, 1f);
+            float width = Mathf.Min(sw - 80f * u, 780f * u);
+            float rowHeight = 54f * u;
+            GUIStyle speaker = UiTheme.Text(13f, GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            GUIStyle question = GuiKit.Text(UiTheme.Size(22f), GuiKit.Weight.Medium, TextAnchor.UpperLeft, true);
+            GUIStyle option = GuiKit.Text(UiTheme.Size(18f), GuiKit.Weight.Medium, TextAnchor.MiddleLeft, true);
+            GUIStyle key = UiTheme.Text(14f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
 
-            GUIStyle speaker = GuiKit.Text(Mathf.RoundToInt(15 * u), GuiKit.Weight.Black, TextAnchor.MiddleLeft);
-            GUIStyle question = GuiKit.Text(Mathf.RoundToInt(22 * u), GuiKit.Weight.Bold, TextAnchor.UpperLeft, true);
-            GUIStyle option = GuiKit.Text(Mathf.RoundToInt(19 * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft, true);
-            GUIStyle key = GuiKit.Text(Mathf.RoundToInt(16 * u), GuiKit.Weight.Black, TextAnchor.MiddleCenter);
+            float pad = 30f * u;
+            float questionHeight = question.CalcHeight(new GUIContent(_question ?? ""), width - pad * 2f);
+            float headerHeight = (string.IsNullOrEmpty(_speaker) ? 0f : 24f * u) + questionHeight + 22f * u;
+            float height = pad + headerHeight + _options.Length * (rowHeight + 6f * u) + pad - 6f * u;
+            Rect panel = new Rect((sw - width) * 0.5f, sh * 0.62f - height * 0.5f + (1f - appear) * 20f * u, width, height);
 
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * appear;
+            UiTheme.DrawPanel(panel, 14f * u);
+
+            float y = panel.y + pad;
             if (!string.IsNullOrEmpty(_speaker))
-                GuiKit.ShadowLabel(new Rect(panel.x + 32f * u, panel.y + 20f * u, width, 22f * u), _speaker, speaker, accent, 0.3f);
-            GuiKit.ShadowLabel(new Rect(panel.x + 32f * u, panel.y + 46f * u, width - 64f * u, 70f * u), _question, question, Color.white, 0.4f);
+            {
+                UiTheme.Label(new Rect(panel.x + pad, y, width - pad * 2f, 20f * u), _speaker.ToUpperInvariant(), speaker, UiTheme.Accent);
+                y += 24f * u;
+            }
+
+            UiTheme.Label(new Rect(panel.x + pad, y, width - pad * 2f, questionHeight), _question, question, UiTheme.Ink);
+            y += questionHeight + 22f * u;
 
             Event e = Event.current;
             for (int i = 0; i < _options.Length; i++)
             {
-                Rect row = new Rect(panel.x + 24f * u, panel.y + 124f * u + i * (rowHeight + 10f * u), width - 48f * u, rowHeight);
+                Rect row = new Rect(panel.x + pad - 12f * u, y + i * (rowHeight + 6f * u), width - pad * 2f + 24f * u, rowHeight);
                 bool hover = row.Contains(e.mousePosition);
-                if (hover && e.type == EventType.MouseMove) _selected = i;
+                if (hover && UiTheme.MouseMoved) _selected = i;
                 bool selected = i == _selected;
 
-                GuiKit.Rounded(row, selected ? new Color(accent.r, accent.g, accent.b, 0.2f) : new Color(1f, 1f, 1f, 0.05f), 14f * u);
-                if (selected) GuiKit.RoundedOutline(row, accent, 14f * u, 1.5f * u);
+                if (selected)
+                {
+                    GuiKit.Rounded(row, new Color(1f, 1f, 1f, 0.08f), 8f * u);
+                    GuiKit.Rounded(new Rect(row.x, row.y + 12f * u, 3f * u, row.height - 24f * u), UiTheme.Accent, 1.5f * u);
+                }
+                else if (hover)
+                {
+                    GuiKit.Rounded(row, new Color(1f, 1f, 1f, 0.04f), 8f * u);
+                }
 
-                Rect cap = new Rect(row.x + 14f * u, row.center.y - 16f * u, 32f * u, 32f * u);
-                GuiKit.Rounded(cap, selected ? accent : new Color(1f, 1f, 1f, 0.12f), 8f * u);
-                GuiKit.ShadowLabel(cap, (i + 1).ToString(), key, Color.white, 0.2f);
-                GuiKit.ShadowLabel(new Rect(cap.xMax + 16f * u, row.y, row.width - 80f * u, row.height), _options[i], option,
-                    selected ? Color.white : new Color(0.8f, 0.8f, 0.85f), 0.4f);
+                // Le numéro dans un cabochon de touche : 1 à 4 au clavier.
+                Rect cap = new Rect(row.x + 16f * u, row.center.y - 13f * u, 26f * u, 26f * u);
+                GuiKit.Rounded(cap, selected ? new Color(1f, 1f, 1f, 0.92f) : new Color(1f, 1f, 1f, 0.12f), 5f * u);
+                UiTheme.Label(cap, (i + 1).ToString(), key, selected ? new Color(0.06f, 0.07f, 0.09f) : UiTheme.Ink);
+                UiTheme.Label(new Rect(cap.xMax + 16f * u, row.y, row.width - 80f * u, row.height), _options[i], option,
+                    selected ? UiTheme.Ink : UiTheme.InkDim);
 
                 if (hover && e.type == EventType.MouseDown && e.button == 0 && Time.unscaledTime - _openedAt > 0.35f)
                 {
                     e.Use();
+                    GuiKit.Alpha = previous;
                     Choose(i);
                     return;
                 }
             }
+
+            GuiKit.Alpha = previous;
         }
     }
 }

@@ -114,6 +114,26 @@ namespace UberBagarre.Core
         /// <summary>Balancement de la tête en marchant, 0 à 1.</summary>
         public static float HeadBob { get { return Mathf.Clamp01(GetFloat("balancement", 1f)); } set { Set("balancement", Mathf.Clamp01(value)); } }
 
+        /// <summary>Le champ de vision de la caméra du joueur, en degrés (verticalement).</summary>
+        public const float DefaultFieldOfView = 64f;
+
+        public static float FieldOfView
+        {
+            // L'ancien menu l'enregistrait sous une autre clé : on la reprend tant qu'il n'y a pas la nouvelle.
+            get { return Mathf.Clamp(GetFloat("fov", PlayerPrefs.GetFloat("UberBagarre.Menu.fov", DefaultFieldOfView)), 55f, 95f); }
+            set { Set("fov", Mathf.Clamp(Mathf.Round(value), 55f, 95f)); }
+        }
+
+        /// <summary>Le compteur d'images par seconde, en haut à gauche.</summary>
+        public static bool ShowFps
+        {
+            get { return GetInt("ips", PlayerPrefs.GetInt("UberBagarre.Menu.ips", 0)) == 1; }
+            set { Set("ips", value ? 1 : 0); }
+        }
+
+        /// <summary>Les rappels de touches (« E  Ouvrir », le pied de la carte…).</summary>
+        public static bool KeyHints { get { return GetInt("aides", 1) == 1; } set { Set("aides", value ? 1 : 0); } }
+
         // ------------------------------------------------------------------ sous-titres
 
         public static bool Subtitles { get { return GetInt("soustitres", 1) == 1; } set { Set("soustitres", value ? 1 : 0); } }
@@ -224,6 +244,9 @@ namespace UberBagarre.Core
 
         /// <summary>Flou de mouvement (URP), 0 à 1.</summary>
         public static float MotionBlur { get { return Mathf.Clamp01(GetFloat("flou", 0f)); } set { Set("flou", Mathf.Clamp01(value)); } }
+
+        /// <summary>L'ambiance de l'image choisie (préréglage du directeur graphique), -1 si retouchée à la main.</summary>
+        public static int LookPreset { get { return Mathf.Clamp(GetInt("ambiance", 3), -1, 3); } set { Set("ambiance", Mathf.Clamp(value, -1, 3)); } }
 
         /// <summary>Profondeur de champ dans les plans de caméra (magasins, cinématiques).</summary>
         public static bool DepthOfField { get { return GetInt("profondeur", 1) == 1; } set { Set("profondeur", value ? 1 : 0); } }

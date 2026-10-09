@@ -212,9 +212,6 @@ namespace UberBagarre.World
         private float _suspendedUntil;
         private StoryContract _story;
         private StoryContract _running;
-        private GUIStyle _banner;
-        private GUIStyle _small;
-        private GUIStyle _title;
 
         private string _repNotice;
         private float _repNoticeUntil;
@@ -1457,10 +1454,11 @@ namespace UberBagarre.World
 
         private void OnGUI()
         {
+            if (Event.current.type == EventType.Layout) UiTheme.TopLeftUsed = 0f;
             if (GameMenu.IsOpen || FightIntro.AnyPlaying || ModalScreen.Active) return;
-            EnsureStyles();
+            if (UberBagarre.View.ShotCamera.Active) return;
 
-            float unit = Screen.height / 1080f;
+            float unit = UiTheme.Unit;
             DrawContractPanel(unit);
             DrawReputationNotice(unit);
 
@@ -1472,44 +1470,55 @@ namespace UberBagarre.World
             else if (_stage == Stage.Offered)
             {
                 if (_phone != null && _phone.IsRaised && _phone.Current == PhoneDevice.Screen.Accueil) return;
+                Core.InputBindings b = _input != null ? _input.Bindings : null;
+                string phone = b != null ? UiTheme.KeyName(b.phone) : "T";
+                string accept = b != null ? UiTheme.KeyName(b.interact) : "E";
                 text = PlayerDriving.IsDriving
-                    ? "NOUVELLE COURSE — gare-toi et descends pour lire le téléphone"
-                    : "NOUVELLE COURSE — T pour sortir le téléphone, E pour accepter  (" + Mathf.CeilToInt(Mathf.Max(0f, _timer)) + " s)";
+                    ? "Nouvelle course — gare-toi et descends pour lire le téléphone"
+                    : "Nouvelle course — " + phone + " : sortir le téléphone, " + accept + " : accepter  (" +
+                      Mathf.CeilToInt(Mathf.Max(0f, _timer)) + " s)";
             }
             else if (_progress != null && _progress.Suspended && _suspendedUntil > 0f)
             {
-                text = "COMPTE SUSPENDU — " + Mathf.CeilToInt(Mathf.Max(0f, _suspendedUntil - Time.time)) + " s";
+                text = "Compte suspendu — encore " + Mathf.CeilToInt(Mathf.Max(0f, _suspendedUntil - Time.time)) + " s";
             }
 
             if (text == null) return;
 
-            float pulse = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * 5f);
-            Rect band = new Rect(Screen.width * 0.5f - 340f * unit, 24f * unit, 680f * unit, 38f * unit);
-            GuiKit.Glow(band, new Color(0f, 0f, 0f, 0.45f), 19f * unit, 10f * unit);
-            GuiKit.Rounded(band, new Color(0.07f, 0.064f, 0.1f, 0.85f), 19f * unit);
-            GuiKit.RoundedOutline(band, new Color(1f, 0.85f, 0.4f, 0.35f * pulse), 19f * unit, 1f);
-            GuiKit.ShadowLabel(band, text, _banner, new Color(1f, 0.85f, 0.4f, 0.6f + 0.4f * pulse), 0.5f);
+            // En haut au centre : le seul endroit libre du HUD, et celui où l'œil va en premier.
+            float pulse = 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 5f);
+            UiTheme.DrawToast(text, new Color(UiTheme.Accent.r, UiTheme.Accent.g, UiTheme.Accent.b, pulse), 26f * unit, 1f);
         }
 
         /// <summary>La course en cours, en haut à gauche : qui, où, le temps, la consigne.</summary>
         private void DrawContractPanel(float unit)
         {
             if (!Busy || _profile == null) return;
+            if (Core.GameSettings.Hud == 2) return;
 
-            float x = 24f * unit;
-            float y = 24f * unit;
+            float x = 30f * unit;
+            float y = 30f * unit;
             float w = 380f * unit;
             bool hasGoal = _objective != null && _objective.Goal != ContractGoal.Aucune;
-            float h = (hasGoal ? 104f : 70f) * unit;
+            float h = (hasGoal ? 118f : 78f) * unit;
 
             Rect card = new Rect(x, y, w, h);
-            GuiKit.Glow(card, new Color(0f, 0f, 0f, 0.45f), 14f * unit, 12f * unit);
-            GuiKit.Rounded(card, new Color(0.07f, 0.064f, 0.1f, 0.82f), 14f * unit);
-            GuiKit.RoundedOutline(card, new Color(1f, 1f, 1f, 0.07f), 14f * unit, 1f);
-            GuiKit.Rounded(new Rect(x + 6f * unit, y + 12f * unit, 4f * unit, h - 24f * unit), new Color(1f, 0.2f, 0.62f, 0.95f), 2f * unit);
+            UiTheme.DrawPanel(card, 10f * unit);
+            GuiKit.Rounded(new Rect(x, y + 14f * unit, 3f * unit, h - 28f * unit), UiTheme.Accent, 1.5f * unit);
+            UiTheme.TopLeftUsed = card.yMax + 10f * unit;
 
-            string header = "COURSE " + new string('★', Mathf.Clamp(_profile.stars, 1, 3)) + "  ·  " + _profile.name;
-            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 8f * unit, w - 28f * unit, 24f * unit), header, _title, Color.white, 0.5f);
+            // « COURSE » et sa difficulté en pastilles, puis le nom de la cible.
+            GUIStyle caption = UiTheme.Text(11f, GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            UiTheme.Label(new Rect(x + 18f * unit, y + 12f * unit, 80f * unit, 16f * unit), "COURSE", caption, UiTheme.Accent);
+            int stars = Mathf.Clamp(_profile.stars, 1, 3);
+            for (int i = 0; i < 3; i++)
+            {
+                float d = 7f * unit;
+                Rect dot = new Rect(x + 78f * unit + i * (d + 4f * unit), y + 16f * unit, d, d);
+                GuiKit.Rounded(dot, i < stars ? UiTheme.Accent : new Color(1f, 1f, 1f, 0.16f), d * 0.5f);
+            }
+
+            UiTheme.Label(new Rect(x + 18f * unit, y + 30f * unit, w - 30f * unit, 24f * unit), _profile.name, UiTheme.Heading(18f), UiTheme.Ink);
 
             string line = _spot != null ? _spot.name : "";
             if (_stage == Stage.EnRoute && _deadline > 0f)
@@ -1519,25 +1528,23 @@ namespace UberBagarre.World
             }
             else if (_stage == Stage.Proof)
             {
-                line = "PREUVE : une photo du sujet au sol";
+                line = "Preuve : une photo du sujet au sol";
             }
 
-            Color lineColor = _stage == Stage.EnRoute && _deadline > 0f && _deadline < 20f
-                ? new Color(1f, 0.35f, 0.3f)
-                : new Color(0.85f, 0.85f, 0.9f);
-            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 36f * unit, w - 28f * unit, 22f * unit), line, _small, lineColor, 0.5f);
+            Color lineColor = _stage == Stage.EnRoute && _deadline > 0f && _deadline < 20f ? UiTheme.Bad : UiTheme.InkDim;
+            GUIStyle small = UiTheme.Text(14f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            UiTheme.Label(new Rect(x + 18f * unit, y + 54f * unit, w - 30f * unit, 20f * unit), line, small, lineColor);
 
             if (!hasGoal) return;
 
-            string goal = "BONUS : " + _objective.Text + "  (+" + _objective.Bonus + " €, facultatif)";
-            GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 58f * unit, w - 28f * unit, 20f * unit), goal, _small,
-                new Color(1f, 0.8f, 0.35f), 0.5f);
+            string goal = "Bonus : " + _objective.Text + "  (+" + _objective.Bonus + " €, facultatif)";
+            UiTheme.Label(new Rect(x + 18f * unit, y + 76f * unit, w - 30f * unit, 20f * unit), goal, small, UiTheme.Accent);
 
-            string progress = _objective.Evaluated ? (_objective.Succeeded ? "Consigne tenue ✓" : "Consigne ratée ✗") : _objective.Progress;
+            string progress = _objective.Evaluated ? (_objective.Succeeded ? "Consigne tenue" : "Consigne ratée") : _objective.Progress;
             if (!string.IsNullOrEmpty(progress))
             {
-                GuiKit.ShadowLabel(new Rect(x + 20f * unit, y + 78f * unit, w - 28f * unit, 20f * unit), progress, _small,
-                    new Color(0.7f, 1f, 0.75f), 0.5f);
+                Color tone = _objective.Evaluated ? (_objective.Succeeded ? UiTheme.Good : UiTheme.Bad) : UiTheme.InkDim;
+                UiTheme.Label(new Rect(x + 18f * unit, y + 96f * unit, w - 30f * unit, 18f * unit), progress, small, tone);
             }
         }
 
@@ -1546,18 +1553,7 @@ namespace UberBagarre.World
             if (Time.unscaledTime > _repNoticeUntil || string.IsNullOrEmpty(_repNotice)) return;
 
             float a = Mathf.Clamp01((_repNoticeUntil - Time.unscaledTime) / 0.6f);
-            Rect r = new Rect(Screen.width * 0.5f - 270f * unit, 70f * unit, 540f * unit, 32f * unit);
-            Color tone = _repGood ? new Color(0.45f, 1f, 0.55f, a) : new Color(1f, 0.4f, 0.35f, a);
-            GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.8f * a), 16f * unit);
-            GuiKit.RoundedOutline(r, new Color(tone.r, tone.g, tone.b, 0.5f * a), 16f * unit, 1f);
-            GuiKit.ShadowLabel(r, _repNotice, _banner, tone, 0.5f);
-        }
-
-        private void EnsureStyles()
-        {
-            if (_banner == null) _banner = GuiKit.Style(18, FontStyle.Bold, TextAnchor.MiddleCenter);
-            if (_small == null) _small = GuiKit.Style(14, FontStyle.Bold, TextAnchor.MiddleLeft);
-            if (_title == null) _title = GuiKit.Style(17, FontStyle.Bold, TextAnchor.MiddleLeft);
+            UiTheme.DrawToast(_repNotice, _repGood ? UiTheme.Good : UiTheme.Bad, 72f * unit, a);
         }
     }
 }

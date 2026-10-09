@@ -51,9 +51,7 @@ namespace UberBagarre.World
         private bool _searching;
 
         [Header("Apparence")]
-        [SerializeField] private Color _neutral = new Color(0.85f, 0.88f, 0.92f);
         [SerializeField] private Color _targetColor = new Color(1f, 0.28f, 0.26f);
-        [SerializeField] private int _fontSize = 14;
 
         private CrowdMember[] _members = new CrowdMember[0];
         private CrowdMember _looked;
@@ -163,29 +161,26 @@ namespace UberBagarre.World
             Vector2 point;
             if (!GuiKit.WorldToGui(camera, member.LabelPoint, out point)) return;
 
+            float u = UI.UiTheme.Unit;
             float progress = Mathf.Clamp01(_lookTime / _identifyTime);
+            GUIStyle description = UI.UiTheme.Text(14f, GuiKit.Weight.Medium, TextAnchor.MiddleCenter);
+            GUIStyle caption = UI.UiTheme.Text(11f, GuiKit.Weight.Regular, TextAnchor.MiddleCenter);
 
-            const float width = 250f;
-            float x = point.x - width * 0.5f;
-            float y = point.y - 54f;
+            float width = Mathf.Max(220f * u, description.CalcSize(new GUIContent(member.Description)).x + 32f * u);
+            Rect panel = new Rect(point.x - width * 0.5f, point.y - 62f * u, width, 50f * u);
+            GuiKit.Rounded(panel, new Color(0.04f, 0.045f, 0.055f, 0.8f), 8f * u);
 
-            GuiKit.Fill(new Rect(x, y, width, 44f), new Color(0f, 0f, 0f, 0.6f));
-
-            GuiKit.OutlinedLabel(new Rect(x + 8f, y + 4f, width - 16f, 18f),
-                member.Description, GuiKit.Style(_fontSize, FontStyle.Bold, TextAnchor.MiddleCenter),
-                _neutral, new Color(0f, 0f, 0f, 0.9f), 1.2f);
-
-            GuiKit.OutlinedLabel(new Rect(x + 8f, y + 22f, width - 16f, 16f),
-                "comparer au signalement", GuiKit.Style(11, FontStyle.Italic, TextAnchor.MiddleCenter),
-                new Color(1f, 1f, 1f, 0.45f), new Color(0f, 0f, 0f, 0.85f), 1f);
+            UI.UiTheme.Label(new Rect(panel.x, panel.y + 6f * u, width, 20f * u), member.Description, description, UI.UiTheme.Ink);
+            UI.UiTheme.Label(new Rect(panel.x, panel.y + 25f * u, width, 14f * u), "comparer au signalement", caption, UI.UiTheme.InkFaint);
 
             // La jauge ne progresse QUE sur la cible. Sur les autres, elle reste vide : c'est
             // un retour honnête, il n'y a rien à reconnaître.
-            if (!member.IsTarget) return;
-
-            Rect bar = new Rect(x + 40f, y + 40f, width - 80f, 3f);
-            GuiKit.Fill(bar, new Color(1f, 1f, 1f, 0.2f));
-            GuiKit.Fill(new Rect(bar.x, bar.y, bar.width * progress, bar.height), _targetColor);
+            Rect bar = new Rect(panel.x + 24f * u, panel.yMax - 8f * u, width - 48f * u, 3f * u);
+            GuiKit.Rounded(bar, new Color(1f, 1f, 1f, 0.14f), 1.5f * u);
+            if (member.IsTarget && progress > 0f)
+            {
+                GuiKit.Rounded(new Rect(bar.x, bar.y, Mathf.Max(bar.height, bar.width * progress), bar.height), _targetColor, 1.5f * u);
+            }
         }
 
         private void DrawMarker(Camera camera, CrowdMember member)
@@ -193,23 +188,24 @@ namespace UberBagarre.World
             Vector2 point;
             if (!GuiKit.WorldToGui(camera, member.LabelPoint + Vector3.up * 0.28f, out point)) return;
 
-            float bob = Mathf.Sin(Time.unscaledTime * 3f) * 4f;
+            float u = UI.UiTheme.Unit;
+            float bob = Mathf.Sin(Time.unscaledTime * 3f) * 4f * u;
             float y = point.y + bob;
 
             // Un chevron, pas un rectangle : trois barres de largeur décroissante suffisent à
             // lire une pointe vers le bas, et ça ne ressemble à aucun autre élément du HUD.
             for (int i = 0; i < 4; i++)
             {
-                float w = 22f - i * 5f;
-
-                GuiKit.Fill(new Rect(point.x - w * 0.5f, y - 18f + i * 4f, w, 3f), _targetColor);
+                float w = (22f - i * 5f) * u;
+                GuiKit.Rounded(new Rect(point.x - w * 0.5f, y - 18f * u + i * 4f * u, w, 3f * u), _targetColor, 1.5f * u);
             }
 
             string name = _briefing != null ? _briefing.TargetName : member.DisplayName;
-
-            GuiKit.OutlinedLabel(new Rect(point.x - 140f, y - 44f, 280f, 20f),
-                name + "  —  CIBLE", GuiKit.Style(_fontSize, FontStyle.Bold, TextAnchor.MiddleCenter),
-                _targetColor, new Color(0f, 0f, 0f, 0.9f), 1.4f);
+            GUIStyle style = UI.UiTheme.Text(14f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
+            float tw = style.CalcSize(new GUIContent(name)).x + 26f * u;
+            Rect tag = new Rect(point.x - tw * 0.5f, y - 50f * u, tw, 24f * u);
+            GuiKit.Rounded(tag, new Color(0.04f, 0.045f, 0.055f, 0.8f), 6f * u);
+            UI.UiTheme.Label(tag, name, style, _targetColor);
         }
     }
 }

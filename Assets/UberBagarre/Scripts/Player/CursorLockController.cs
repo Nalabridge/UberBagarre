@@ -42,8 +42,6 @@ namespace UberBagarre.Player
 
         private bool _engaged;
         private float _nextRelock;
-        private GUIStyle _hintStyle;
-        private GUIStyle _subStyle;
 
         /// <summary>Le joueur a la main (il a cliqué dans le jeu et n'a pas appuyé sur Échap).</summary>
         public bool IsEngaged
@@ -137,24 +135,17 @@ namespace UberBagarre.Player
         {
             if (!_showHint) return;
             if (_engaged && Application.isFocused) return;
+            if (UI.GameMenu.IsOpen || UI.ModalScreen.Active) return;
 
-            if (_hintStyle == null)
-            {
-                _hintStyle = GuiKit.Style(26, FontStyle.Bold, TextAnchor.MiddleCenter);
-                _subStyle = GuiKit.Style(15, FontStyle.Normal, TextAnchor.MiddleCenter);
-            }
+            float u = UI.UiTheme.Unit;
+            float width = Mathf.Min(560f * u, Screen.width - 40f * u);
+            Rect panel = new Rect((Screen.width - width) * 0.5f, Screen.height * 0.5f - 46f * u, width, 92f * u);
+            UI.UiTheme.DrawPanel(panel, 12f * u);
 
-            float width = Mathf.Min(620f, Screen.width - 40f);
-            Rect band = new Rect((Screen.width - width) * 0.5f, Screen.height * 0.5f - 48f, width, 96f);
-
-            GuiKit.Fill(band, new Color(0f, 0f, 0f, 0.72f));
-
-            GuiKit.OutlinedLabel(new Rect(band.x, band.y + 12f, band.width, 40f),
-                "CLIQUE DANS LA FENÊTRE POUR JOUER", _hintStyle, Color.white, new Color(0f, 0f, 0f, 0.8f), 1.5f);
-
-            GuiKit.OutlinedLabel(new Rect(band.x, band.y + 54f, band.width, 28f),
-                "Échap libère la souris  ·  ZQSD / WASD pour bouger", _subStyle,
-                new Color(0.8f, 0.82f, 0.88f), new Color(0f, 0f, 0f, 0.8f), 1f);
+            UI.UiTheme.Label(new Rect(panel.x, panel.y + 14f * u, panel.width, 34f * u), "Clique dans la fenêtre pour jouer",
+                UI.UiTheme.Text(22f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter), UI.UiTheme.Ink);
+            UI.UiTheme.Label(new Rect(panel.x, panel.y + 52f * u, panel.width, 24f * u), "Échap : pause et réglages",
+                UI.UiTheme.Text(14f, GuiKit.Weight.Regular, TextAnchor.MiddleCenter), UI.UiTheme.InkDim);
         }
     }
 }

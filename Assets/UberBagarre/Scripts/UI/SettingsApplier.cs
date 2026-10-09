@@ -52,7 +52,7 @@ namespace UberBagarre.UI
             else if (key == "ips.max") ApplyFrameLimit();
             else if (key == "textures") ApplyTextures();
             else if (key == "distance" || key == "vegetation") ApplyWorld();
-            else ApplyGraphics();
+            else if (key == "rendu.echelle" || key == "ombres" || key == "ao" || key == "daltonisme" || key == "flou") ApplyGraphics();
         }
 
         private void Update()
@@ -94,8 +94,9 @@ namespace UberBagarre.UI
 
         private void ApplyFrameLimit()
         {
+            // Avec la synchro verticale, c'est l'écran qui cadence : la limite ne sert pas.
             int limit = GameSettings.FrameLimit;
-            Application.targetFrameRate = limit > 0 ? limit : -1;
+            Application.targetFrameRate = limit > 0 && QualitySettings.vSyncCount == 0 ? limit : -1;
         }
 
         private void ApplyTextures()

@@ -53,6 +53,7 @@ namespace UberBagarre.UI
         [SerializeField]
         [Tooltip("Optionnel (monde ouvert) : l'argent et le niveau, en haut a droite.")]
         private PlayerProgress _progress;
+        private PlayerInputReader _keys;
 
         [Header("Affichage")]
         [SerializeField]
@@ -390,8 +391,11 @@ namespace UberBagarre.UI
                     UiTheme.Text(13f, GuiKit.Weight.Medium, TextAnchor.MiddleCenter), UiTheme.InkDim, 0.6f);
             }
 
-            float hx = UiTheme.KeyHint(x, Screen.height - 40f * u, "Espace", "Frein à main", u);
-            UiTheme.KeyHint(hx, Screen.height - 40f * u, "Clic", "Klaxon", u);
+            if (!GameSettings.KeyHints) return;
+            if (_keys == null) _keys = FindAnyObjectByType<PlayerInputReader>();
+            Core.InputBindings b = _keys != null ? _keys.Bindings : null;
+            float hx = UiTheme.KeyHint(x, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.jump) : "Espace", "Frein à main", u);
+            UiTheme.KeyHint(hx, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.attackStraight) : "Clic", "Klaxon", u);
         }
 
         // ------------------------------------------------------------------ centre de l'écran

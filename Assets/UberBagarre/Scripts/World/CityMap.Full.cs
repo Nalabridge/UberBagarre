@@ -537,6 +537,7 @@ namespace UberBagarre.World
 
         private void DrawMapHints(Rect area, float unit)
         {
+            if (!Core.GameSettings.KeyHints) return;
             float y = area.yMax - 38f * unit;
             float x = area.x + 16f * unit;
             Rect back = new Rect(x - 8f * unit, y - 7f * unit, Mathf.Min(area.width - 200f * unit, 660f * unit), 36f * unit);
@@ -545,7 +546,7 @@ namespace UberBagarre.World
             x = UiTheme.KeyHint(x, y, "Clic droit", "Retirer", unit);
             x = UiTheme.KeyHint(x, y, "Molette", "Zoom", unit);
             x = UiTheme.KeyHint(x, y, "Glisser", "Déplacer", unit);
-            UiTheme.KeyHint(x, y, "M", "Fermer", unit);
+            UiTheme.KeyHint(x, y, _input != null && _input.Bindings != null ? UiTheme.KeyName(_input.Bindings.openMap) : "M", "Fermer", unit);
         }
 
         /// <summary>La fiche d'un lieu, à côté de son repère.</summary>

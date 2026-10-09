@@ -132,42 +132,8 @@ namespace UberBagarre.World
         private void OnGUI()
         {
             if (_visibility <= 0.01f || _focused == null) return;
-
-            string label = _focused.Label;
-            string hint = _focused.Hint;
-            float u = UI.UiTheme.Unit;
-            float previous = GuiKit.Alpha;
-            GuiKit.Alpha = _visibility;
-
             string keyText = _input != null && _input.Bindings != null ? UI.UiTheme.KeyName(_input.Bindings.interact) : "E";
-            GUIStyle keyStyle = UI.UiTheme.Text(13f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
-            GUIStyle labelStyle = UI.UiTheme.Text(16f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
-            GUIStyle hintStyle = UI.UiTheme.Text(12.5f, GuiKit.Weight.Regular, TextAnchor.MiddleLeft);
-
-            float keyW = Mathf.Max(26f * u, keyStyle.CalcSize(new GUIContent(keyText)).x + 14f * u);
-            float textW = Mathf.Max(labelStyle.CalcSize(new GUIContent(label)).x,
-                string.IsNullOrEmpty(hint) ? 0f : Mathf.Min(420f * u, hintStyle.CalcSize(new GUIContent(hint)).x));
-            float width = keyW + textW + 34f * u;
-            float height = string.IsNullOrEmpty(hint) ? 38f * u : 56f * u;
-
-            // Sous le réticule, jamais dessus : l'invite ne doit pas masquer ce qu'on vise.
-            float x = Screen.width * 0.5f - width * 0.5f;
-            float y = Screen.height * 0.5f + 44f * u + (1f - _visibility) * 8f * u;
-            Rect panel = new Rect(x, y, width, height);
-            GuiKit.Glow(panel, new Color(0f, 0f, 0f, 0.3f), 8f * u, 10f * u);
-            GuiKit.Rounded(panel, new Color(0.04f, 0.045f, 0.055f, 0.82f), 8f * u);
-
-            Rect key = new Rect(x + 10f * u, y + 9f * u, keyW, 22f * u);
-            GuiKit.Rounded(key, new Color(1f, 1f, 1f, 0.92f), 4f * u);
-            UI.UiTheme.Label(key, keyText, keyStyle, new Color(0.06f, 0.07f, 0.09f));
-            UI.UiTheme.Label(new Rect(key.xMax + 12f * u, y + 8f * u, textW + 8f, 24f * u), label, labelStyle, UI.UiTheme.Ink);
-
-            if (!string.IsNullOrEmpty(hint))
-            {
-                UI.UiTheme.Label(new Rect(key.xMax + 12f * u, y + 31f * u, textW + 8f, 18f * u), hint, hintStyle, UI.UiTheme.InkDim);
-            }
-
-            GuiKit.Alpha = previous;
+            UI.UiTheme.DrawPrompt(keyText, _focused.Label, _focused.Hint, _visibility);
         }
     }
 }

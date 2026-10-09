@@ -123,28 +123,19 @@ namespace UberBagarre.Player
         private void OnGUI()
         {
             if (_active.Count == 0 || ModalScreen.Active || GameMenu.IsOpen) return;
+            if (Core.GameSettings.Hud == 2 || UberBagarre.View.ShotCamera.Active || FullScreenPanel.AnyOpen) return;
 
-            float u = Mathf.Max(0.6f, Screen.height / 1080f);
-            float w = 300f * u;
-            float h = 30f * u;
-            float x = Screen.width - w - 24f * u;
-            float y = 150f * u + PlayerCondition.ChipCount * (h + 6f * u);
-            Color green = new Color(0.36f, 0.95f, 0.52f);
+            // Sous les pastilles d'état (faim, blessures), avec le temps qui reste.
+            float u = UiTheme.Unit;
+            float y = UiTheme.TopRight(140f) + PlayerCondition.ChipCount * 32f * u;
+            Color green = UiTheme.Good;
 
             for (int i = 0; i < _active.Count; i++)
             {
                 Active a = _active[i];
                 float left = Mathf.Max(0f, a.until - Time.time);
                 string time = Mathf.FloorToInt(left / 60f) + ":" + Mathf.FloorToInt(left % 60f).ToString("00");
-                Rect r = new Rect(x, y + i * (h + 6f * u), w, h);
-
-                GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.78f + 0.2f * _flash), h * 0.5f);
-                GuiKit.RoundedOutline(r, new Color(green.r, green.g, green.b, 0.45f), h * 0.5f, 1f);
-                GuiKit.Rounded(new Rect(r.x + 10f * u, r.center.y - 4f * u, 8f * u, 8f * u), green, 4f * u);
-                GuiKit.ShadowLabel(new Rect(r.x + 26f * u, r.y, r.width - 96f * u, r.height), a.label,
-                    GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft), Color.white, 0.5f);
-                GuiKit.ShadowLabel(new Rect(r.xMax - 74f * u, r.y, 60f * u, r.height), time,
-                    GuiKit.Text(Mathf.RoundToInt(14 * u), GuiKit.Weight.Medium, TextAnchor.MiddleRight), new Color(1f, 1f, 1f, 0.7f), 0.5f);
+                y = PlayerCondition.DrawChip(a.label, green, time, y, u, _flash);
             }
         }
     }

@@ -155,6 +155,94 @@ namespace UberBagarre.UI
             return name;
         }
 
+        /// <summary>
+        /// La hauteur occupée en haut à gauche par la fiche de course (l'objectif se range
+        /// dessous). Remise à zéro par celui qui la dessine, à chaque image.
+        /// </summary>
+        public static float TopLeftUsed;
+
+        /// <summary>
+        /// L'invite d'action sous le réticule : une touche, ce qu'elle fait, et une précision
+        /// facultative. Jamais sur le réticule : elle ne doit pas masquer ce qu'on vise.
+        /// </summary>
+        public static void DrawPrompt(string keyText, string label, string hint, float visibility)
+        {
+            float u = Unit;
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * visibility;
+
+            GUIStyle keyStyle = Text(13f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
+            GUIStyle labelStyle = Text(16f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            GUIStyle hintStyle = Text(12.5f, GuiKit.Weight.Regular, TextAnchor.MiddleLeft);
+
+            float keyW = Mathf.Max(26f * u, keyStyle.CalcSize(new GUIContent(keyText)).x + 14f * u);
+            float textW = Mathf.Max(labelStyle.CalcSize(new GUIContent(label)).x,
+                string.IsNullOrEmpty(hint) ? 0f : Mathf.Min(420f * u, hintStyle.CalcSize(new GUIContent(hint)).x));
+            float width = keyW + textW + 34f * u;
+            float height = string.IsNullOrEmpty(hint) ? 38f * u : 56f * u;
+
+            float x = Screen.width * 0.5f - width * 0.5f;
+            float y = Screen.height * 0.5f + 44f * u + (1f - visibility) * 8f * u;
+            Rect panel = new Rect(x, y, width, height);
+            GuiKit.Glow(panel, new Color(0f, 0f, 0f, 0.3f), 8f * u, 10f * u);
+            GuiKit.Rounded(panel, new Color(0.04f, 0.045f, 0.055f, 0.82f), 8f * u);
+
+            Rect key = new Rect(x + 10f * u, y + 9f * u, keyW, 22f * u);
+            GuiKit.Rounded(key, new Color(1f, 1f, 1f, 0.92f), 4f * u);
+            Label(key, keyText, keyStyle, new Color(0.06f, 0.07f, 0.09f));
+            Label(new Rect(key.xMax + 12f * u, y + 8f * u, textW + 8f, 24f * u), label, labelStyle, Ink);
+
+            if (!string.IsNullOrEmpty(hint))
+            {
+                Label(new Rect(key.xMax + 12f * u, y + 31f * u, textW + 8f, 18f * u), hint, hintStyle, InkDim);
+            }
+
+            GuiKit.Alpha = previous;
+        }
+
+        /// <summary>Un message bref au centre haut de l'écran (refus, alerte) : une pastille, un point de couleur.</summary>
+        public static void DrawToast(string text, Color tone, float y, float alpha)
+        {
+            float u = Unit;
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = previous * alpha;
+            GUIStyle style = Text(16f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            float w = Mathf.Min(Screen.width - 60f * u, style.CalcSize(new GUIContent(text)).x + 52f * u);
+            Rect r = new Rect((Screen.width - w) * 0.5f, y, w, 38f * u);
+            GuiKit.Glow(r, new Color(0f, 0f, 0f, 0.3f), 8f * u, 10f * u);
+            GuiKit.Rounded(r, new Color(0.04f, 0.045f, 0.055f, 0.86f), 8f * u);
+            GuiKit.Rounded(new Rect(r.x + 16f * u, r.center.y - 4f * u, 8f * u, 8f * u), tone, 4f * u);
+            Label(new Rect(r.x + 34f * u, r.y, w - 44f * u, r.height), text, style, Ink);
+            GuiKit.Alpha = previous;
+        }
+
+        private static Vector2 _mouseLast;
+        private static int _mouseFrame = -1;
+        private static bool _mouseMoved;
+
+        /// <summary>
+        /// La souris a bougé depuis l'image précédente : le survol peut prendre la sélection
+        /// (sans voler celle du clavier quand la souris est immobile sous la liste).
+        /// </summary>
+        public static bool MouseMoved
+        {
+            get
+            {
+                Event e = Event.current;
+                if (e == null) return false;
+                if (e.type == EventType.MouseMove || e.type == EventType.MouseDrag) return true;
+                if (e.type == EventType.Repaint && Time.frameCount != _mouseFrame)
+                {
+                    Vector2 m = GUIUtility.GUIToScreenPoint(e.mousePosition);
+                    _mouseMoved = (m - _mouseLast).sqrMagnitude > 0.25f;
+                    _mouseLast = m;
+                    _mouseFrame = Time.frameCount;
+                }
+
+                return _mouseMoved && Time.frameCount == _mouseFrame;
+            }
+        }
+
         /// <summary>Courbe d'animation : départ vif, arrivée en douceur.</summary>
         public static float EaseOut(float t)
         {

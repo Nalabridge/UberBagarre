@@ -41,12 +41,12 @@ namespace UberBagarre.UI
             {
                 new Step { Key = b != null ? Keys(b.moveForward, b.moveLeft, b.moveBackward, b.moveRight) : "ZQSD", Text = "Se déplacer" },
                 new Step { Key = "Souris", Text = "Regarder" },
-                new Step { Key = b != null ? b.interact.ToString() : "E", Text = "Interagir (portes, gens, objets)" },
-                new Step { Key = b != null ? b.phone.ToString() : "T", Text = "Sortir le téléphone" },
-                new Step { Key = b != null ? b.openMap.ToString() : "M", Text = "La carte (clic : poser un point)" },
-                new Step { Key = b != null ? b.sprint.ToString() : "Maj", Text = "Courir" },
+                new Step { Key = b != null ? UiTheme.KeyName(b.interact) : "E", Text = "Interagir (portes, gens, objets)" },
+                new Step { Key = b != null ? UiTheme.KeyName(b.phone) : "T", Text = "Sortir le téléphone" },
+                new Step { Key = b != null ? UiTheme.KeyName(b.openMap) : "M", Text = "La carte (clic : poser un point)" },
+                new Step { Key = b != null ? UiTheme.KeyName(b.sprint) : "Maj", Text = "Courir" },
                 new Step { Key = "Clics", Text = "Frapper (gauche : direct, droit : crochet)" },
-                new Step { Key = b != null ? b.guard.ToString() : "Ctrl", Text = "Se protéger (garde)" }
+                new Step { Key = b != null ? UiTheme.KeyName(b.guard) : "Ctrl", Text = "Se protéger (garde)" }
             };
             _moved = 0f;
             _looked = 0f;
@@ -55,7 +55,21 @@ namespace UberBagarre.UI
 
         private static string Keys(Core.InputBinding up, Core.InputBinding left, Core.InputBinding down, Core.InputBinding right)
         {
-            return up.ToString() + left + down + right;
+            // En AZERTY, ce sont les touches de secours (Z, Q) qui tombent sous les doigts.
+            return Name(up) + Name(left) + Name(down) + Name(right);
+        }
+
+        private static string Name(Core.InputBinding binding)
+        {
+            if (binding.source == Core.InputSource.Key && binding.alternateKey != KeyCode.None && IsAzerty()) return UiTheme.KeyName(binding.alternateKey);
+            return UiTheme.KeyName(binding);
+        }
+
+        /// <summary>Le clavier du système est-il en AZERTY ? (la langue de Windows en est un bon indice)</summary>
+        private static bool IsAzerty()
+        {
+            SystemLanguage language = Application.systemLanguage;
+            return language == SystemLanguage.French;
         }
 
         private void Update()
@@ -101,25 +115,26 @@ namespace UberBagarre.UI
         {
             if (!_active || _steps == null || Event.current.type != EventType.Repaint) return;
             if (GameMenu.IsOpen || ModalScreen.Active || FightIntro.AnyPlaying || LoadingScreen.Visible) return;
+            if (View.ShotCamera.Active || FullScreenPanel.AnyOpen) return;
             if (_fader != null && !_fader.IsClear) return;
 
-            float u = Mathf.Max(0.6f, Screen.height / 1080f);
-            GUIStyle title = GuiKit.Text(Mathf.RoundToInt(15 * u), GuiKit.Weight.Black, TextAnchor.MiddleLeft);
-            GUIStyle text = GuiKit.Text(Mathf.RoundToInt(16 * u), GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
-            GUIStyle key = GuiKit.Text(Mathf.RoundToInt(13 * u), GuiKit.Weight.Black, TextAnchor.MiddleCenter);
+            float u = UiTheme.Unit;
+            GUIStyle title = UiTheme.Text(12f, GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            GUIStyle text = UiTheme.Text(15f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
+            GUIStyle key = UiTheme.Text(12.5f, GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
 
-            // Les lignes cochées restent un instant (vertes), puis s'effacent.
+            // Les lignes cochées restent un instant, puis s'effacent.
             int shown = 0;
             for (int i = 0; i < _steps.Length; i++) if (!_steps[i].Done || Time.unscaledTime - _steps[i].DoneAt < 1.5f) shown++;
             if (shown == 0) return;
 
-            float row = 34f * u;
-            float width = 380f * u;
-            float height = 46f * u + shown * row;
-            Rect panel = new Rect(24f * u, Screen.height - height - 150f * u, width, height);
-            GuiKit.Rounded(panel, new Color(0.06f, 0.055f, 0.09f, 0.82f), 14f * u);
-            GuiKit.ShadowLabel(new Rect(panel.x + 18f * u, panel.y + 10f * u, width, 24f * u), "PREMIERS PAS", title,
-                new Color(1f, 0.25f, 0.6f), 0.3f);
+            // À gauche, sous l'objectif : loin de la mini-carte et du centre de l'écran.
+            float row = 32f * u;
+            float width = 360f * u;
+            float height = 48f * u + shown * row;
+            Rect panel = new Rect(30f * u, Mathf.Max(170f * u, Screen.height * 0.24f), width, height);
+            UiTheme.DrawPanel(panel, 10f * u);
+            UiTheme.Label(new Rect(panel.x + 18f * u, panel.y + 12f * u, width, 20f * u), "PREMIERS PAS", title, UiTheme.Accent);
 
             float y = panel.y + 40f * u;
             for (int i = 0; i < _steps.Length; i++)
@@ -129,13 +144,15 @@ namespace UberBagarre.UI
                 if (s.Done && age >= 1.5f) continue;
 
                 float alpha = s.Done ? Mathf.Clamp01(1.5f - age) : 1f;
-                Color ink = s.Done ? new Color(0.45f, 1f, 0.55f, alpha) : new Color(1f, 1f, 1f, 0.92f);
+                float previous = GuiKit.Alpha;
+                GuiKit.Alpha = previous * alpha;
 
-                float capWidth = Mathf.Max(34f * u, key.CalcSize(new GUIContent(s.Key)).x + 16f * u);
+                float capWidth = Mathf.Max(30f * u, key.CalcSize(new GUIContent(s.Key)).x + 14f * u);
                 Rect cap = new Rect(panel.x + 18f * u, y + 4f * u, capWidth, row - 8f * u);
-                GuiKit.Rounded(cap, s.Done ? new Color(0.3f, 0.8f, 0.4f, 0.5f * alpha) : new Color(1f, 1f, 1f, 0.16f), 6f * u);
-                GuiKit.ShadowLabel(cap, s.Key, key, ink, 0.2f);
-                GuiKit.ShadowLabel(new Rect(cap.xMax + 12f * u, y, width - capWidth - 40f * u, row), (s.Done ? "✓  " : "") + s.Text, text, ink, 0.35f);
+                GuiKit.Rounded(cap, s.Done ? new Color(UiTheme.Good.r, UiTheme.Good.g, UiTheme.Good.b, 0.9f) : new Color(1f, 1f, 1f, 0.9f), 5f * u);
+                UiTheme.Label(cap, s.Key, key, new Color(0.06f, 0.07f, 0.09f));
+                UiTheme.Label(new Rect(cap.xMax + 12f * u, y, width - capWidth - 44f * u, row), s.Text, text, s.Done ? UiTheme.Good : UiTheme.Ink);
+                GuiKit.Alpha = previous;
                 y += row;
             }
         }
