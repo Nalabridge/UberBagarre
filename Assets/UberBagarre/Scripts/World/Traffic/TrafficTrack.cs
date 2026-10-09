@@ -247,6 +247,44 @@ namespace UberBagarre.World
             return Wrap(bestS);
         }
 
+        private Dictionary<long, List<int>> _cells;
+
+        /// <summary>La distance (à plat) de <paramref name="position"/> à la route la plus proche, jusqu'à 8 m (au-delà : 8).</summary>
+        public float DistanceToRoad(Vector3 position)
+        {
+            if (_cells == null)
+            {
+                _cells = new Dictionary<long, List<int>>();
+                for (int i = 0; i < _count; i++)
+                {
+                    long key = Cell(_points[i], 4f);
+                    List<int> list;
+                    if (!_cells.TryGetValue(key, out list)) _cells[key] = list = new List<int>();
+                    list.Add(i);
+                }
+            }
+
+            float best = 64f;
+            int cx = Mathf.FloorToInt(position.x / 4f);
+            int cz = Mathf.FloorToInt(position.z / 4f);
+            for (int dx = -2; dx <= 2; dx++)
+            {
+                for (int dz = -2; dz <= 2; dz++)
+                {
+                    List<int> list;
+                    if (!_cells.TryGetValue(Key(cx + dx, cz + dz), out list)) continue;
+                    for (int k = 0; k < list.Count; k++)
+                    {
+                        Vector3 d = _points[list[k]] - position;
+                        float d2 = d.x * d.x + d.z * d.z;
+                        if (d2 < best) best = d2;
+                    }
+                }
+            }
+
+            return Mathf.Sqrt(best);
+        }
+
         /// <summary>L'écart latéral (signé, + à droite) de <paramref name="position"/> à la route en <paramref name="s"/>.</summary>
         public float Lateral(Vector3 position, float s)
         {

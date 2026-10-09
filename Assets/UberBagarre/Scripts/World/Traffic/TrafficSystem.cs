@@ -57,6 +57,67 @@ namespace UberBagarre.World
             return flow;
         }
 
+        /// <summary>La distance à la chaussée de la circulation la plus proche (8 m au plus ; 8 s'il n'y a pas de circulation).</summary>
+        public static float RoadDistance(Vector3 position)
+        {
+            if (_instance == null) return 8f;
+            float best = 8f;
+            for (int f = 0; f < _instance._list.Count; f++) best = Mathf.Min(best, _instance._list[f].Track.DistanceToRoad(position));
+            return best;
+        }
+
+        /// <summary>
+        /// Une voiture arrive-t-elle sur <paramref name="point"/> dans les <paramref name="seconds"/>
+        /// secondes (la circulation, ou celle du joueur) ? Ce que regarde un piéton avant de
+        /// traverser.
+        /// </summary>
+        public static bool CarComing(Vector3 point, float seconds)
+        {
+            if (_instance != null)
+            {
+                for (int f = 0; f < _instance._list.Count; f++)
+                {
+                    TrafficFlow flow = _instance._list[f];
+                    TrafficTrack track = flow.Track;
+                    for (int a = 0; a < flow.Agents.Count; a++)
+                    {
+                        TrafficAgent agent = flow.Agents[a];
+                        if (agent.Speed < 0.8f) continue;
+                        Vector3 car = track.Point(agent.S);
+                        Vector3 to = point - car;
+                        to.y = 0f;
+                        float distance = to.magnitude;
+                        if (distance > 35f) continue;
+                        Vector3 heading = track.Tangent(agent.S);
+                        float along = to.x * heading.x + to.z * heading.z;
+                        if (along < -2f) continue;
+                        float lateral = Mathf.Abs(to.x * heading.z - to.z * heading.x);
+                        // Sur sa trajectoire (ou dans le virage qui y mène), et là bientôt.
+                        if (lateral > 6f && along < 8f) continue;
+                        if (distance / Mathf.Max(1f, agent.Speed) < seconds) return true;
+                    }
+                }
+            }
+
+            DrivableCar driven = DrivableCar.Driven;
+            if (driven != null && driven.Body != null)
+            {
+                Vector3 v = driven.Body.linearVelocity;
+                v.y = 0f;
+                float speed = v.magnitude;
+                if (speed > 1.5f)
+                {
+                    Vector3 to = point - driven.transform.position;
+                    to.y = 0f;
+                    float along = Vector3.Dot(to, v / speed);
+                    float lateral = (to - v / speed * along).magnitude;
+                    if (along > -2f && lateral < 5f && along / speed < seconds) return true;
+                }
+            }
+
+            return false;
+        }
+
         private static long Key(Vector3[] path)
         {
             unchecked
