@@ -596,7 +596,8 @@ namespace UberBagarre.World
 
                 float along = 0f;
                 if (!w.front) along += drive / driven;
-                if (braking) along -= Mathf.Sign(longitudinal) * _brakeForce / _wheels.Length;
+                // Frein dosé : la pédale à fond (le clavier) freine à fond ; la circulation dose.
+                if (braking) along -= Mathf.Sign(longitudinal) * _brakeForce * Mathf.Clamp01(Mathf.Abs(_throttle)) / _wheels.Length;
                 if (_handbrake && !w.front) along -= Mathf.Sign(longitudinal) * Mathf.Min(_brakeForce * 0.3f, Mathf.Abs(longitudinal) * share / dt);
                 along -= longitudinal * _rollingResistance / _wheels.Length;
                 // Garée, ou arrêtée par son conducteur (feu, bouchon) : elle ne roule pas toute seule.

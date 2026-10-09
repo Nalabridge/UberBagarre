@@ -140,7 +140,7 @@ namespace UberBagarre.EditorTools
             // pour de vrai (volant, pédales), un conducteur assis au volant.
             GameObject garage = new GameObject("=== Modeles de voitures ===");
             CityVehicles vehicles = CityVehicles.Load(garage.transform, night);
-            GameObject traffic = BuildCityTraffic(vehicles, driveLoops, new[] { 7, 5, 5 });
+            GameObject traffic = BuildCityTraffic(vehicles, driveLoops, new[] { 16, 6, 6 });
             GameObject parked = new GameObject("=== Voitures garees ===");
             VehicleCatalog catalog = BuildParkedCars(vehicles, map, parked, progress);
             // --- le directeur des courses

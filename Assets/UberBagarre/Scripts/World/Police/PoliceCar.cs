@@ -30,7 +30,22 @@ namespace UberBagarre.World
         private float _leaveSince;
         private readonly RaycastHit[] _hits = new RaycastHit[8];
 
+        // L'itinéraire par les rues jusqu'au joueur (recalculé quand il bouge).
+        private static RoadGraph _graph;
+        private static bool _graphSearched;
+        private readonly System.Collections.Generic.List<Vector2> _route = new System.Collections.Generic.List<Vector2>();
+        private Vector3 _routeTo;
+        private float _routeAt = -10f;
+        private int _routeIndex;
+
         public bool OnDuty { get { return _duty; } }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            _graph = null;
+            _graphSearched = false;
+        }
 
         public void Begin(PoliceSystem police)
         {
@@ -131,9 +146,21 @@ namespace UberBagarre.World
                 return;
             }
 
+            // Loin, ou sans le voir : par les rues (pas à travers les maisons). Tout près et en
+            // vue : droit sur lui.
+            float corner = 0f;
+            bool direct = sees && distance < 28f;
+            if (!direct)
+            {
+                Vector3 waypoint;
+                if (FollowRoute(target, out waypoint, out corner)) target = waypoint;
+            }
+
             float steer = Avoid(Steer(target));
             float speed = _car.ForwardSpeed;
             float wanted = Mathf.Lerp(6f, _topSpeed, Mathf.InverseLerp(10f, 60f, distance));
+            // Ralentir avant les virages de l'itinéraire, comme un vrai conducteur.
+            wanted = Mathf.Min(wanted, Mathf.Lerp(_topSpeed, 6.5f, Mathf.InverseLerp(15f, 85f, corner)));
             if (Mathf.Abs(steer) > 0.6f) wanted = Mathf.Min(wanted, 9f);
             float throttle = Mathf.Clamp((wanted - speed) * 0.35f + 0.2f, -1f, 1f);
             _car.SetInput(throttle, steer, false);
@@ -144,6 +171,75 @@ namespace UberBagarre.World
                 _stuckFor = 0f;
                 _reverseFor = 1.4f;
             }
+        }
+
+        /// <summary>
+        /// Le point de l'itinéraire à viser (quelques mètres devant), et l'angle du prochain
+        /// virage (pour ralentir). Faux s'il n'y a pas de graphe des rues.
+        /// </summary>
+        private bool FollowRoute(Vector3 goal, out Vector3 waypoint, out float corner)
+        {
+            waypoint = goal;
+            corner = 0f;
+
+            if (!_graphSearched)
+            {
+                _graphSearched = true;
+                CityMap map = FindAnyObjectByType<CityMap>();
+                if (map != null) _graph = map.Graph;
+            }
+
+            if (_graph == null) return false;
+
+            Vector3 position = transform.position;
+            if (Time.time - _routeAt > 1.2f || PoliceSystem.Flat(goal - _routeTo).magnitude > 8f || _route.Count < 2)
+            {
+                _routeAt = Time.time;
+                _routeTo = goal;
+                _graph.Find(new Vector2(position.x, position.z), new Vector2(goal.x, goal.z), _route);
+                _routeIndex = 0;
+            }
+
+            if (_route.Count < 2) return false;
+
+            // Le point de l'itinéraire le plus proche, en avançant seulement.
+            Vector2 here = new Vector2(position.x, position.z);
+            float best = float.MaxValue;
+            for (int i = _routeIndex; i < Mathf.Min(_route.Count, _routeIndex + 12); i++)
+            {
+                float d = (_route[i] - here).sqrMagnitude;
+                if (d < best)
+                {
+                    best = d;
+                    _routeIndex = i;
+                }
+            }
+
+            // Viser plus loin quand on va vite.
+            float ahead = 6f + Mathf.Abs(_car.ForwardSpeed) * 0.5f;
+            int target = _routeIndex;
+            float travelled = 0f;
+            while (target + 1 < _route.Count && travelled < ahead)
+            {
+                travelled += (_route[target + 1] - _route[target]).magnitude;
+                target++;
+            }
+
+            Vector2 w = _route[target];
+            waypoint = new Vector3(w.x, position.y, w.y);
+
+            // Le plus fort changement de cap dans les 25 m à venir.
+            travelled = 0f;
+            for (int i = _routeIndex + 1; i + 1 < _route.Count && travelled < 25f; i++)
+            {
+                Vector2 a = _route[i] - _route[i - 1];
+                Vector2 b = _route[i + 1] - _route[i];
+                travelled += a.magnitude;
+                if (a.sqrMagnitude < 0.01f || b.sqrMagnitude < 0.01f) continue;
+                corner = Mathf.Max(corner, Vector2.Angle(a, b));
+            }
+
+            return true;
         }
 
         private float Steer(Vector3 target)

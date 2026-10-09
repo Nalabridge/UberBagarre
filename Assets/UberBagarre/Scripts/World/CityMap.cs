@@ -362,6 +362,16 @@ namespace UberBagarre.World
             else _missionRoute.Clear();
         }
 
+        /// <summary>Le graphe des rues (pour le GPS, et pour la police qui poursuit par les rues).</summary>
+        public RoadGraph Graph
+        {
+            get
+            {
+                if (_graph == null && _roadPoints != null && _roadPoints.Length > 1) _graph = new RoadGraph(_roadPoints, _roadLoops);
+                return _graph;
+            }
+        }
+
         /// <summary>Recalcule un itinéraire si on s'est éloigné du dernier départ, ou si la destination a bougé.</summary>
         private void Route(List<Vector2> route, ref Vector3 lastFrom, ref Vector3 lastTo, Vector3 from, Vector3 to)
         {
