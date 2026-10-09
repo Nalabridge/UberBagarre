@@ -126,7 +126,7 @@ namespace UberBagarre.UI
         private void OnGUI()
         {
             // Pas de chiffres qui volent : voir WorldHealthBar.ArcadeHud.
-            if (!WorldHealthBar.ArcadeHud) return;
+            if (!WorldHealthBar.ArcadeHud && !Core.GameSettings.DamageNumbers) return;
 
             _camera = GuiKit.ActiveCamera(_camera);
 

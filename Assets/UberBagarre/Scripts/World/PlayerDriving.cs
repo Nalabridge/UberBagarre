@@ -317,7 +317,7 @@ namespace UberBagarre.World
             }
 
             _doorSource.transform.position = at;
-            _doorSource.PlayOneShot(_doorClip, 0.8f);
+            _doorSource.PlayOneShot(_doorClip, 0.8f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         public void OnSpawned(Vector3 position, Quaternion rotation)

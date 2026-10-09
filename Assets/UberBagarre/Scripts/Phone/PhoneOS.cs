@@ -166,7 +166,7 @@ namespace UberBagarre.Phone
             _notifyText = text;
             _notifyTime = Time.unscaledTime;
 
-            if (_uiSource != null && _buzz != null) _uiSource.PlayOneShot(_buzz, _ringVolume * 0.8f);
+            if (_uiSource != null && _buzz != null) _uiSource.PlayOneShot(_buzz, _ringVolume * 0.8f * Core.GameSettings.Volume(Core.AudioChannel.Interface));
 
             // Telephone en main : la notification tombe en haut de l'ecran, comme sur un vrai.
             if (_device != null && _device.IsRaised) ShowToast(title + " — " + text);
@@ -1025,13 +1025,13 @@ namespace UberBagarre.Phone
                 _ringSource.Stop();
             }
 
-            _ringSource.volume = _ringVolume;
+            _ringSource.volume = _ringVolume * Core.GameSettings.Volume(Core.AudioChannel.Interface);
             if (!_ringSource.isPlaying) _ringSource.Play();
         }
 
         private void Play(AudioClip clip)
         {
-            if (_uiSource != null && clip != null) _uiSource.PlayOneShot(clip, _uiVolume);
+            if (_uiSource != null && clip != null) _uiSource.PlayOneShot(clip, _uiVolume * Core.GameSettings.Volume(Core.AudioChannel.Interface));
         }
 
         private const int SampleRate = 22050;

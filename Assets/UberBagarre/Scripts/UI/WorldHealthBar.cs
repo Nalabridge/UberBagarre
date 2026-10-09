@@ -128,7 +128,7 @@ namespace UberBagarre.UI
 
         private void OnGUI()
         {
-            if (!ArcadeHud) return;
+            if (!ArcadeHud && !Core.GameSettings.EnemyHealthBars) return;
 
             // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
             if (FightIntro.AnyPlaying) return;

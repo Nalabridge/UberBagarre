@@ -719,29 +719,33 @@ namespace UberBagarre.World
             }
         }
 
-        /// <summary>Les étoiles, sous la minicarte ; elles clignotent rouge et bleu quand on est vu.</summary>
+        /// <summary>
+        /// Les étoiles, en haut à droite sous l'argent, comme dans GTA : pleines pour le niveau
+        /// de recherche, elles clignotent rouge et bleu quand on est vu ; dessous, où on en est.
+        /// </summary>
         private void DrawStars(float u)
         {
             if (_stars <= 0) return;
+            u = UI.UiTheme.Unit;
 
-            float w = 250f * u, h = 44f * u;
-            Rect r = new Rect(Screen.width - w - 24f * u, 110f * u, w, h);
+            float right = Screen.width - 32f * u;
+            float y = UI.UiTheme.TopRight(96f);
             bool blink = Seen && Mathf.Repeat(Time.unscaledTime * 2.5f, 1f) < 0.5f;
-            Color siren = blink ? new Color(1f, 0.25f, 0.25f) : new Color(0.3f, 0.55f, 1f);
+            Color siren = blink ? new Color(1f, 0.3f, 0.28f) : new Color(0.4f, 0.62f, 1f);
 
-            GuiKit.Glow(r, new Color(siren.r, siren.g, siren.b, 0.25f + 0.4f * _flash), h * 0.5f, 12f * u);
-            GuiKit.Rounded(r, new Color(0.07f, 0.064f, 0.1f, 0.88f), h * 0.5f);
-            GuiKit.RoundedOutline(r, new Color(siren.r, siren.g, siren.b, 0.7f), h * 0.5f, 1.5f * u);
+            GUIStyle stars = GuiKit.Text(Mathf.RoundToInt(26 * u), GuiKit.Weight.Black, TextAnchor.MiddleRight);
+            string full = new string('★', _stars);
+            string empty = new string('★', 5 - _stars);
+            float emptyWidth = stars.CalcSize(new GUIContent(empty)).x;
+            GuiKit.ShadowLabel(new Rect(right - 300f * u, y, 300f * u, 30f * u), empty, stars, new Color(1f, 1f, 1f, 0.22f), 0.5f);
+            GuiKit.ShadowLabel(new Rect(right - 300f * u - emptyWidth, y, 300f * u, 30f * u), full, stars,
+                Seen ? Color.Lerp(Color.white, siren, 0.35f + 0.4f * _flash) : new Color(1f, 1f, 1f, 0.8f), 0.6f);
 
-            GUIStyle stars = GuiKit.Text(Mathf.RoundToInt(24 * u), GuiKit.Weight.Black, TextAnchor.MiddleCenter);
-            string text = new string('★', _stars) + new string('☆', 5 - _stars);
-            GuiKit.ShadowLabel(new Rect(r.x, r.y - 1f * u, r.width, r.height), text, stars, Seen ? Color.white : new Color(1f, 1f, 1f, 0.55f), 0.4f);
-
-            GUIStyle small = GuiKit.Text(Mathf.RoundToInt(13 * u), GuiKit.Weight.Bold, TextAnchor.MiddleCenter);
-            string state = Seen ? "ILS TE VOIENT" : Flat(PlayerPosition - _lastSeen).magnitude > SearchRadius
-                ? "HORS DU CERCLE  ·  " + Mathf.RoundToInt(Mathf.Clamp01(_escape / (18f + 7f * _stars)) * 100f) + " %"
-                : "RECHERCHE EN COURS  ·  sors du cercle";
-            GuiKit.ShadowLabel(new Rect(r.x, r.yMax + 2f * u, r.width, 20f * u), state, small, siren, 0.6f);
+            GUIStyle small = GuiKit.Text(Mathf.RoundToInt(13 * u), GuiKit.Weight.Medium, TextAnchor.MiddleRight);
+            string state = Seen ? "Ils te voient" : Flat(PlayerPosition - _lastSeen).magnitude > SearchRadius
+                ? "Hors du cercle  ·  " + Mathf.RoundToInt(Mathf.Clamp01(_escape / (18f + 7f * _stars)) * 100f) + " %"
+                : "Recherche en cours  ·  sors du cercle";
+            GuiKit.ShadowLabel(new Rect(right - 400f * u, y + 30f * u, 400f * u, 18f * u), state, small, Seen ? siren : UI.UiTheme.InkDim, 0.6f);
         }
 
         /// <summary>Au-dessus des témoins qui appellent : un combiné et l'appel qui avance.</summary>
@@ -798,7 +802,7 @@ namespace UberBagarre.World
 
         private void Radio(string line)
         {
-            if (_radio != null && _radioClip != null) _radio.PlayOneShot(_radioClip, 0.35f);
+            if (_radio != null && _radioClip != null) _radio.PlayOneShot(_radioClip, 0.35f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
             Say("RADIO", line);
         }
 

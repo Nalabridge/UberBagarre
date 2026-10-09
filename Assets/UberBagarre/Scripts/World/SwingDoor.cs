@@ -141,7 +141,7 @@ namespace UberBagarre.World
             if (_locked)
             {
                 if (_rattle == null) _rattle = Rattle();
-                if (_source != null) _source.PlayOneShot(_rattle, 0.6f);
+                if (_source != null) _source.PlayOneShot(_rattle, 0.6f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
                 return;
             }
 
@@ -162,7 +162,7 @@ namespace UberBagarre.World
                 return;
             }
 
-            if (_source != null && _sound != null) _source.PlayOneShot(_sound, 0.5f);
+            if (_source != null && _sound != null) _source.PlayOneShot(_sound, 0.5f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         private void Update()

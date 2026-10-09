@@ -390,7 +390,7 @@ namespace UberBagarre.World
             if (Hidden || _player == null) return;
 
             EnsureStyles();
-            float unit = Screen.height / 1080f;
+            float unit = UiTheme.Unit;
             bool showFull = _anim > 0.001f;
 
             // La grande carte écoute la souris ; le reste ne fait que se dessiner.
@@ -414,16 +414,16 @@ namespace UberBagarre.World
         /// <summary>Le cadre de la mini-carte (la grande carte s'ouvre à partir de lui).</summary>
         private Rect MiniFrame(float unit)
         {
-            float size = _miniSize * unit;
-            return new Rect(Screen.width - size - 24f * unit, 24f * unit, size, size);
+            return UiTheme.MinimapRect();
         }
 
         private void DrawMini(float unit)
         {
+            if (!Core.GameSettings.Minimap || Core.GameSettings.Hud == 2) return;
             Rect frame = MiniFrame(unit);
 
-            GuiKit.Glow(frame, new Color(0f, 0f, 0f, 0.4f), 4f * unit, 10f * unit);
-            GuiKit.Fill(new Rect(frame.x - 2f, frame.y - 2f, frame.width + 4f, frame.height + 4f), new Color(0.02f, 0.025f, 0.03f, 0.9f));
+            GuiKit.Glow(frame, new Color(0f, 0f, 0f, 0.35f), 3f * unit, 10f * unit);
+            GuiKit.Fill(new Rect(frame.x - 2f, frame.y - 2f, frame.width + 4f, frame.height + 4f), new Color(0.02f, 0.025f, 0.03f, 0.92f));
 
             float scale = _miniScale * unit;
             Vector2 center = new Vector2(_player.position.x, _player.position.z);
@@ -459,32 +459,31 @@ namespace UberBagarre.World
             UiTheme.Label(north, "N", UiTheme.Text(11f, GuiKit.Weight.Black, TextAnchor.MiddleCenter), UiTheme.Ink);
             GUI.EndGroup();
 
-            float line = frame.yMax + 6f * unit;
-            if (_hasWaypoint)
-            {
-                line = MiniTag(frame, line, unit, _waypointColor, _waypointLabel, Flat(_player.position - _waypoint));
-            }
-
+            // Les destinations, empilées au-dessus de la mini-carte.
+            float line = frame.y - 6f * unit;
             if (_hasUserPoint)
             {
                 string label = string.IsNullOrEmpty(_userPointLabel) ? "Ton point" : _userPointLabel;
                 line = MiniTag(frame, line, unit, UserColor, label, Flat(_player.position - _userPoint));
             }
 
-            UiTheme.KeyHint(frame.x, line + 2f * unit, "M", "Carte", unit);
+            if (_hasWaypoint)
+            {
+                line = MiniTag(frame, line, unit, _waypointColor, _waypointLabel, Flat(_player.position - _waypoint));
+            }
         }
 
-        /// <summary>Une étiquette sous la mini-carte : une pastille de couleur, la destination, la distance.</summary>
-        private float MiniTag(Rect frame, float y, float unit, Color color, string label, float distance)
+        /// <summary>Une étiquette au-dessus de la mini-carte : une pastille de couleur, la destination, la distance.</summary>
+        private float MiniTag(Rect frame, float bottom, float unit, Color color, string label, float distance)
         {
-            Rect tag = new Rect(frame.x, y, frame.width, 24f * unit);
+            Rect tag = new Rect(frame.x, bottom - 24f * unit, frame.width, 24f * unit);
             GuiKit.Rounded(tag, new Color(0.03f, 0.035f, 0.045f, 0.82f), 4f * unit);
             GuiKit.Fill(new Rect(tag.x, tag.y, 3f * unit, tag.height), color);
             GUIStyle text = UiTheme.Text(12.5f, GuiKit.Weight.Medium, TextAnchor.MiddleLeft);
             GUIStyle dist = UiTheme.Text(12.5f, GuiKit.Weight.Bold, TextAnchor.MiddleRight);
             UiTheme.Label(new Rect(tag.x + 10f * unit, tag.y, tag.width - 70f * unit, tag.height), Ellipsis(label, text, tag.width - 74f * unit), text, UiTheme.Ink);
             UiTheme.Label(new Rect(tag.x, tag.y, tag.width - 8f * unit, tag.height), FormatDistance(distance), dist, color);
-            return tag.yMax + 4f * unit;
+            return tag.y - 4f * unit;
         }
 
         /// <summary>Les lieux autour du joueur, en petits pictogrammes, sur la mini-carte.</summary>

@@ -294,7 +294,7 @@ namespace UberBagarre.World
             if (clip == null) return;
 
             _source.pitch = UnityEngine.Random.Range(0.9f, 1.12f);
-            _source.PlayOneShot(clip, _volume * strength);
+            _source.PlayOneShot(clip, _volume * strength * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         /// <summary>

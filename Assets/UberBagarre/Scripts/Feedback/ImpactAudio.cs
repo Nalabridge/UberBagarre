@@ -164,7 +164,7 @@ namespace UberBagarre.Feedback
             if (clip == null || _source == null) return;
 
             _source.pitch = 1f + Random.Range(-_pitchVariation, _pitchVariation);
-            _source.PlayOneShot(clip, volume);
+            _source.PlayOneShot(clip, volume * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         // ------------------------------------------------------------------ synthèse

@@ -464,7 +464,7 @@ namespace UberBagarre.World
         private void PlayKnock(Vector3 at)
         {
             if (_knock == null) _knock = KnockClip();
-            AudioSource.PlayClipAtPoint(_knock, at, 0.8f);
+            AudioSource.PlayClipAtPoint(_knock, at, 0.8f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         /// <summary>Trois coups de phalanges sur du bois.</summary>

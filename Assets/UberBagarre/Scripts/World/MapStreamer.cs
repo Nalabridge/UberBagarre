@@ -374,6 +374,9 @@ namespace UberBagarre.World
         /// </summary>
         public static float ViewDistance = 1f;
 
+        /// <summary>Densité de l'herbe choisie dans les réglages (-1 : celle de la scène).</summary>
+        public static float GrassDensity = -1f;
+
         private Scene _tunedScene;
 
         /// <summary>Réapplique la distance d'affichage (appelé quand l'option change).</summary>
@@ -412,7 +415,8 @@ namespace UberBagarre.World
                 for (int i = 0; i < terrains.Length; i++)
                 {
                     terrains[i].detailObjectDistance = Mathf.Min(250f, _grassDistance * k);
-                    terrains[i].detailObjectDensity = _grassDensity;
+                    terrains[i].detailObjectDensity = GrassDensity >= 0f ? Mathf.Clamp01(GrassDensity) : _grassDensity;
+                    terrains[i].drawTreesAndFoliage = true;
                     terrains[i].treeDistance = _treeDistance * k;
                     terrains[i].treeBillboardDistance = 160f * k;
                     terrains[i].treeCrossFadeLength = 20f;

@@ -130,7 +130,7 @@ namespace UberBagarre.Combat
             }
 
             if (_crack == null) _crack = Crack();
-            _source.PlayOneShot(_crack, 0.9f);
+            _source.PlayOneShot(_crack, 0.9f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
 
             Action<TargetInjuries, string> handler = Fractured;
             if (handler != null) handler(this, what);

@@ -151,7 +151,7 @@ namespace UberBagarre.World
             _duck = Mathf.MoveTowards(_duck, duckTarget, dt * 2.5f);
 
             float gain = _fade * (1f - _duck);
-            _bed.volume = _volume * gain;
+            _bed.volume = _volume * gain * Core.GameSettings.Volume(Core.AudioChannel.Ambience);
 
             if (_events == null || _events.Length == 0) return;
             if (Time.unscaledTime < _nextEvent) return;
@@ -160,7 +160,7 @@ namespace UberBagarre.World
 
             _oneShots.panStereo = Random.Range(-0.75f, 0.75f);
             _oneShots.pitch = Random.Range(0.94f, 1.06f);
-            _oneShots.PlayOneShot(clip, _eventVolume * gain * Random.Range(0.6f, 1f));
+            _oneShots.PlayOneShot(clip, _eventVolume * gain * Random.Range(0.6f, 1f) * Core.GameSettings.Volume(Core.AudioChannel.Ambience));
 
             ScheduleNextEvent(1f);
         }

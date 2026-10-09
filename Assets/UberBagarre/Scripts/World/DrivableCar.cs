@@ -839,7 +839,7 @@ namespace UberBagarre.World
             {
                 _engine.pitch = Mathf.Lerp(0.55f, 1.9f, _rpm) * (1f - _shiftDip * 0.12f);
                 _engine.volume = Mathf.Lerp(0.28f, 0.62f, Mathf.Abs(_throttle)) * (0.75f + 0.25f * _rpm) *
-                                 (_occupied ? 1f : 0.55f);
+                                 (_occupied ? 1f : 0.55f) * Core.GameSettings.Volume(Core.AudioChannel.Effects);
             }
 
             if (_tires != null)
@@ -850,8 +850,8 @@ namespace UberBagarre.World
                     if (_wheels[i] != null && _wheels[i].grounded) slip = Mathf.Max(slip, _wheels[i].slip);
                 }
 
-                float volume = Mathf.Clamp01((slip - 2f) / 6f) * 0.7f;
-                if (_handbrake && Mathf.Abs(speed) > 4f) volume = Mathf.Max(volume, 0.45f);
+                float volume = Mathf.Clamp01((slip - 2f) / 6f) * 0.7f * Core.GameSettings.Volume(Core.AudioChannel.Effects);
+                if (_handbrake && Mathf.Abs(speed) > 4f) volume = Mathf.Max(volume, 0.45f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
                 _tires.volume = Mathf.MoveTowards(_tires.volume, volume, Time.deltaTime * 3f);
                 if (_tires.volume > 0.01f && !_tires.isPlaying) _tires.Play();
                 if (_tires.volume <= 0.01f && _tires.isPlaying) _tires.Stop();
@@ -872,7 +872,7 @@ namespace UberBagarre.World
 
             if (_impacts == null || impact < 2.5f) return;
             _impacts.pitch = UnityEngine.Random.Range(0.8f, 1.1f);
-            _impacts.PlayOneShot(_thumpClip, Mathf.Clamp01(impact / 14f));
+            _impacts.PlayOneShot(_thumpClip, Mathf.Clamp01(impact / 14f) * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         // ------------------------------------------------------------------ sons fabriqués

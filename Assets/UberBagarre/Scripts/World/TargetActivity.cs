@@ -184,7 +184,7 @@ namespace UberBagarre.World
                     _prop = Block("Telephone", new Vector3(0.07f, 0.145f, 0.009f), Kit(k => k.Phone));
                     _audio.clip = Murmur(_kind == Kind.Dispute);
                     _audio.loop = true;
-                    _audio.volume = _kind == Kind.Dispute ? 0.55f : 0.3f;
+                    Core.ChannelSource.Attach(_audio, Core.AudioChannel.Ambience, _kind == Kind.Dispute ? 0.55f : 0.3f);
                     _audio.Play();
                     break;
 
@@ -197,7 +197,7 @@ namespace UberBagarre.World
                     _fx = Smoke(Kit(k => k.SprayColor, new Color(1f, 0.2f, 0.55f, 0.7f)));
                     _audio.clip = Hiss();
                     _audio.loop = true;
-                    _audio.volume = 0.25f;
+                    Core.ChannelSource.Attach(_audio, Core.AudioChannel.Effects, 0.25f);
                     PlaceTag();
                     break;
 

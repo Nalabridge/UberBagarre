@@ -77,7 +77,7 @@ namespace UberBagarre.Player
 
             // Le pas vertical va deux fois plus vite que le balancement latéral :
             // un cycle de marche = deux appuis au sol, mais un seul aller-retour du bassin.
-            float weight = _currentWeight * amplitudeScale;
+            float weight = _currentWeight * amplitudeScale * Core.GameSettings.HeadBob;
             float vertical = Mathf.Sin(_phase * 2f) * _verticalAmplitude * weight;
             float horizontal = Mathf.Sin(_phase) * _horizontalAmplitude * weight;
             float roll = -Mathf.Sin(_phase) * _rollAmplitude * weight;

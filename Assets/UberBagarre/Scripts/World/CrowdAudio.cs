@@ -76,7 +76,7 @@ namespace UberBagarre.World
             EnsureClips();
 
             _murmur.clip = _murmurClip;
-            _murmur.volume = _murmurVolume;
+            _murmur.volume = _murmurVolume * Core.GameSettings.Volume(Core.AudioChannel.Ambience);
             _murmur.Play();
         }
 
@@ -102,7 +102,7 @@ namespace UberBagarre.World
 
             // Le brouhaha monte avec l'excitation : une salle chauffée ne redevient pas
             // silencieuse entre deux coups.
-            if (_murmur != null) _murmur.volume = _murmurVolume * (0.7f + 0.8f * _excitement);
+            if (_murmur != null) _murmur.volume = _murmurVolume * (0.7f + 0.8f * _excitement) * Core.GameSettings.Volume(Core.AudioChannel.Ambience);
         }
 
         /// <summary>Fait rugir la foule, par exemple au début d'un combat.</summary>
@@ -152,7 +152,7 @@ namespace UberBagarre.World
             if (_voice == null || clip == null) return;
 
             _voice.pitch = pitch;
-            _voice.PlayOneShot(clip, volume);
+            _voice.PlayOneShot(clip, volume * Core.GameSettings.Volume(Core.AudioChannel.Ambience));
         }
 
         // ------------------------------------------------------------------ synthèse

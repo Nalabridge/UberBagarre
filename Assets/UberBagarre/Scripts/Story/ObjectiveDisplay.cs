@@ -80,19 +80,21 @@ namespace UberBagarre.Story
             // La cinematique d'avant-combat prend l'ecran : pas d'interface de jeu par-dessus.
             if (FightIntro.AnyPlaying) return;
 
-            // Un écran plein (armoire, ordinateur) ou le menu : l'objectif s'efface derrière.
-            if (UI.ModalScreen.Active || UI.GameMenu.IsOpen) return;
-
+            // Un écran plein (armoire, ordinateur, comptoir) ou le menu : l'objectif s'efface derrière.
+            if (UI.ModalScreen.Active || UI.GameMenu.IsOpen || View.ShotCamera.Active) return;
+            if (Core.GameSettings.Hud == 2) return;
             if (_visibility <= 0.01f) return;
 
-            float y = _margin.y;
+            // En haut à gauche, là où GTA met ses consignes (la mini-carte est en bas).
+            float u = UiTheme.Unit;
+            float x = 30f * u;
+            float y = 30f * u;
             bool showCompleted = !string.IsNullOrEmpty(_completed) && _completedAge < _completedHold;
 
             if (showCompleted)
             {
                 float fade = Mathf.Clamp01((_completedHold - _completedAge) * 2f) * _visibility;
-                DrawRow(_margin.x, y, _completed, _doneColor, fade, true, 1f);
-                y += 28f;
+                y = DrawRow(x, y, _completed, _doneColor, fade, true, 1f, u) + 8f * u;
             }
 
             if (string.IsNullOrEmpty(_objective)) return;
@@ -103,35 +105,37 @@ namespace UberBagarre.Story
                 ? 1f + 0.25f * Mathf.Abs(Mathf.Sin(_appearAge * 9f)) * (1f - _appearAge / 1.2f)
                 : 1f;
 
-            DrawRow(_margin.x, y, _objective, _accent, _visibility, false, pulse);
+            DrawRow(x, y, _objective, _accent, _visibility, false, pulse, u);
         }
 
-        private void DrawRow(float x, float y, string text, Color color, float alpha, bool struck, float pulse)
+        private float DrawRow(float x, float y, string text, Color color, float alpha, bool struck, float pulse, float u)
         {
-            GUIStyle style = GuiKit.Style(_fontSize, FontStyle.Bold, TextAnchor.MiddleLeft, true);
+            float width = Mathf.Min(_width, 380f) * u;
+            GUIStyle caption = UiTheme.Text(11f, GuiKit.Weight.Bold, TextAnchor.MiddleLeft);
+            GUIStyle style = GuiKit.Text(UiTheme.Size(15.5f), GuiKit.Weight.Medium, TextAnchor.UpperLeft, true);
 
-            float textWidth = _width - 34f;
-            float height = Mathf.Max(24f, style.CalcHeight(new GUIContent(text), textWidth) + 8f);
+            float textWidth = width - 32f * u;
+            float textHeight = style.CalcHeight(new GUIContent(text), textWidth);
+            float height = textHeight + 34f * u;
+            Rect panel = new Rect(x, y, width, height);
 
-            Rect panel = new Rect(x, y, _width, height);
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = alpha;
+            GuiKit.Rounded(panel, new Color(0.03f, 0.035f, 0.045f, 0.62f), 8f * u);
+            GuiKit.Fill(new Rect(panel.x, panel.y + 9f * u, 3f * u, panel.height - 18f * u), new Color(color.r, color.g, color.b, Mathf.Min(1f, pulse)));
 
-            Color background = _panelColor;
-            background.a *= alpha;
-            GuiKit.Rounded(panel, background, 10f);
+            UiTheme.Label(new Rect(x + 16f * u, y + 7f * u, width, 14f * u), struck ? "FAIT" : "OBJECTIF", caption, color);
+            Rect textRect = new Rect(x + 16f * u, y + 23f * u, textWidth, textHeight);
+            GuiKit.ShadowLabel(textRect, text, style, struck ? UiTheme.InkDim : UiTheme.Ink, 0.4f);
 
-            // La pastille : elle dit « voici ce qu'il faut faire » sans un mot de plus.
-            Color mark = new Color(color.r, color.g, color.b, alpha * pulse);
-            GuiKit.Rounded(new Rect(x + 10f, y + height * 0.5f - 5f, 10f, 10f), mark, 5f);
+            if (struck)
+            {
+                GuiKit.Fill(new Rect(textRect.x, textRect.y + Mathf.Min(textHeight, 20f * u) * 0.5f, Mathf.Min(textWidth, style.CalcSize(new GUIContent(text)).x), 1.5f * u),
+                    new Color(color.r, color.g, color.b, 0.9f));
+            }
 
-            Rect textRect = new Rect(x + 28f, y + 4f, textWidth, height - 8f);
-
-            GuiKit.ShadowLabel(textRect, text, style, new Color(color.r, color.g, color.b, alpha), 0.6f);
-
-            if (!struck) return;
-
-            GuiKit.Fill(new Rect(textRect.x, textRect.y + textRect.height * 0.5f - 1f,
-                Mathf.Min(textWidth, style.CalcSize(new GUIContent(text)).x), 2f),
-                new Color(color.r, color.g, color.b, alpha * 0.9f));
+            GuiKit.Alpha = previous;
+            return panel.yMax;
         }
     }
 }

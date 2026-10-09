@@ -93,7 +93,7 @@ namespace UberBagarre.Story
             if (clip == null) return 0f;
 
             _source.clip = clip;
-            _source.volume = _level;
+            _source.volume = _level * Core.GameSettings.Volume(Core.AudioChannel.Voices);
             _source.Play();
             return clip.length;
         }

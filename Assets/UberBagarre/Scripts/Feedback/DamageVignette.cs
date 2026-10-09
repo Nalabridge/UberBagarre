@@ -146,6 +146,9 @@ namespace UberBagarre.Feedback
                 intensity = Mathf.Max(intensity, _lowHealthIntensity * lowHealth * pulse);
             }
 
+            // Accessibilité : moins d'éclairs rouges si le joueur le demande.
+            intensity *= Mathf.Lerp(1f, 0.45f, Core.GameSettings.ReduceFlashes ? 1f : 0f);
+
             Rect fullScreen = new Rect(0f, 0f, Screen.width, Screen.height);
             Color previous = GUI.color;
 

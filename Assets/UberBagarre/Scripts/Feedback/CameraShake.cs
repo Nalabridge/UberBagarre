@@ -69,7 +69,7 @@ namespace UberBagarre.Feedback
             _trauma = Mathf.Max(0f, _trauma - _decayPerSecond * Time.unscaledDeltaTime);
 
             // Le carre est ce qui separe nettement un petit coup d'un gros.
-            float shake = _trauma * _trauma;
+            float shake = _trauma * _trauma * Core.GameSettings.CameraShake;
             float t = Time.unscaledTime * _frequency;
 
             Vector3 offset = new Vector3(

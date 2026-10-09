@@ -134,7 +134,7 @@ namespace UberBagarre.World
             if (!success || car == null) return;
 
             car.Unlock(true);
-            _audio.PlayOneShot(_open, 0.8f);
+            _audio.PlayOneShot(_open, 0.8f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
             Crimes.Report(Crime.VolDeVoiture, car.transform.position, car.gameObject);
 
             if (Random.value < _alarmChance) StartCoroutine(Alarm(car));
@@ -182,7 +182,7 @@ namespace UberBagarre.World
                 }
                 else if (allowed >= 0.999f && _turn >= 0.98f)
                 {
-                    _audio.PlayOneShot(_set, 0.7f);
+                    _audio.PlayOneShot(_set, 0.7f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
                     _pin++;
                     _turn = 0f;
                     if (_pin >= _sweet.Length)
@@ -204,7 +204,7 @@ namespace UberBagarre.World
                 float near = 1f - Mathf.Clamp01(error / 60f);
                 _nextTick = Time.unscaledTime + Mathf.Lerp(0.16f, 0.05f, near);
                 _audio.pitch = Mathf.Lerp(0.8f, 1.35f, near);
-                _audio.PlayOneShot(_tick, Mathf.Lerp(0.25f, 0.7f, near));
+                _audio.PlayOneShot(_tick, Mathf.Lerp(0.25f, 0.7f, near) * Core.GameSettings.Volume(Core.AudioChannel.Effects));
             }
         }
 
@@ -213,7 +213,7 @@ namespace UberBagarre.World
             _wear = 0f;
             _turn = 0f;
             _audio.pitch = 1f;
-            _audio.PlayOneShot(_snap, 0.9f);
+            _audio.PlayOneShot(_snap, 0.9f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
             if (_progress != null) _progress.UseLockpick();
             Flash("Le crochet casse.");
 

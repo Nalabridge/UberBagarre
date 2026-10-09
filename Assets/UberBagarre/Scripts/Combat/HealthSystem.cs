@@ -20,6 +20,13 @@ namespace UberBagarre.Combat
         [SerializeField] private bool _logDamage;
 
         private float _current;
+        private int _faction = -1;
+
+        private int FactionOf()
+        {
+            Combatant combatant = GetComponentInParent<Combatant>();
+            return combatant != null ? (int)combatant.Faction : (int)Faction.Neutral;
+        }
 
         public event Action<DamageInfo> Damaged;
         public event Action<DamageInfo> Died;
@@ -75,6 +82,11 @@ namespace UberBagarre.Combat
             }
 
             if (!IsAlive || _invulnerable || GodMode || info.Amount <= 0f) return;
+
+            // La difficulté choisie : les coups reçus par le joueur, et les siens.
+            if (_faction < 0) _faction = FactionOf();
+            if (_faction == (int)Faction.Player) info.Amount *= Core.GameSettings.DamageTaken;
+            else if (info.AttackerFaction == Faction.Player) info.Amount *= Core.GameSettings.DamageDealt;
 
             _current = Mathf.Max(0f, _current - info.Amount);
 

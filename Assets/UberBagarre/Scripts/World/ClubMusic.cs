@@ -100,7 +100,7 @@ namespace UberBagarre.World
             if (_clip == null) _clip = Build();
 
             _source.clip = _clip;
-            _source.volume = _volume;
+            Core.ChannelSource.Attach(_source, Core.AudioChannel.Music, _volume);
             _source.Play();
         }
 

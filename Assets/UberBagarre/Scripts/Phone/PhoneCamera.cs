@@ -249,7 +249,7 @@ namespace UberBagarre.Phone
             _flash = 1f;
             _captureAge = 0f;
 
-            if (_audio != null && _shutter != null) _audio.PlayOneShot(_shutter, 0.7f);
+            if (_audio != null && _shutter != null) _audio.PlayOneShot(_shutter, 0.7f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
 
             _lastCapture = Capture();
             if (_lastCapture != null)

@@ -60,7 +60,19 @@ namespace UberBagarre.View
         private static object _vignette;
         private static object _grain;
         private static object _aberration;
+        private static object _mixer;
+        private static object _motionBlur;
+        private static object _depthOfField;
         private static Material _terrainMaterial;
+
+        // Les réglages du joueur (menu Réglages) appliqués au pipeline.
+        private static float _renderScale = 1f;
+        private static int _shadowQuality = 2;
+        private static bool _ambientOcclusion = true;
+        private static int _colorBlind;
+        private static float _motionBlurAmount;
+        private static bool _focus;
+        private static float _focusDistance = 2f;
 
         /// <summary>Vrai quand le rendu actif est URP.</summary>
         public static bool Active
@@ -191,6 +203,9 @@ namespace UberBagarre.View
             _vignette = AddOverride("UnityEngine.Rendering.Universal.Vignette");
             _grain = AddOverride("UnityEngine.Rendering.Universal.FilmGrain");
             _aberration = AddOverride("UnityEngine.Rendering.Universal.ChromaticAberration");
+            _mixer = AddOverride("UnityEngine.Rendering.Universal.ChannelMixer");
+            _motionBlur = AddOverride("UnityEngine.Rendering.Universal.MotionBlur");
+            _depthOfField = AddOverride("UnityEngine.Rendering.Universal.DepthOfField");
         }
 
         private static object AddOverride(string typeName)
@@ -238,6 +253,145 @@ namespace UberBagarre.View
             SetParameter(_aberration, "intensity", Mathf.Clamp01(_look.Aberration * 0.25f));
 
             SetMember(_volume, "weight", _look.Post ? 1f : 0f);
+
+            PushColorBlind();
+            SetParameter(_motionBlur, "intensity", _motionBlurAmount * 0.6f);
+            SetParameter(_motionBlur, "quality", _motionBlurAmount > 0f ? "Medium" : "Low");
+            SetActive(_motionBlur, _motionBlurAmount > 0.01f);
+
+            // Profondeur de champ : seulement dans les plans de caméra (le comptoir, le barbier).
+            SetParameter(_depthOfField, "mode", "Bokeh");
+            SetParameter(_depthOfField, "focusDistance", _focusDistance);
+            SetParameter(_depthOfField, "focalLength", 62f);
+            SetParameter(_depthOfField, "aperture", 3.2f);
+            SetActive(_depthOfField, _focus);
+        }
+
+        // ------------------------------------------------------------------ réglages du joueur
+
+        /// <summary>
+        /// Les réglages graphiques du joueur : résolution de rendu, ombres, occlusion ambiante,
+        /// filtre pour daltoniens, flou de mouvement.
+        /// </summary>
+        public static void ApplySettings(float renderScale, int shadowQuality, bool ambientOcclusion, int colorBlind, float motionBlur)
+        {
+            _renderScale = Mathf.Clamp(renderScale, 0.5f, 1f);
+            _shadowQuality = Mathf.Clamp(shadowQuality, 0, 3);
+            _ambientOcclusion = ambientOcclusion;
+            _colorBlind = Mathf.Clamp(colorBlind, 0, 3);
+            _motionBlurAmount = Mathf.Clamp01(motionBlur);
+            if (!Active) return;
+
+            Boot();
+            EnsureVolume();
+            PushPipeline();
+            PushVolume();
+        }
+
+        /// <summary>La mise au point d'un plan de caméra (null : plus de profondeur de champ).</summary>
+        public static void SetFocus(bool on, float distance)
+        {
+            _focus = on;
+            _focusDistance = Mathf.Max(0.3f, distance);
+            if (!Active || _depthOfField == null) return;
+            SetParameter(_depthOfField, "focusDistance", _focusDistance);
+            SetActive(_depthOfField, _focus);
+        }
+
+        private static void PushPipeline()
+        {
+            RenderPipelineAsset pipeline = GraphicsSettings.currentRenderPipeline;
+            if (pipeline == null) return;
+
+            SetMember(pipeline, "renderScale", _renderScale);
+
+            int[] resolutions = { 1024, 2048, 4096, 4096 };
+            float[] distances = { 60f, 110f, 150f, 220f };
+            int[] cascades = { 2, 3, 4, 4 };
+            SetMember(pipeline, "shadowDistance", distances[_shadowQuality]);
+            SetMember(pipeline, "shadowCascadeCount", cascades[_shadowQuality]);
+            SetMember(pipeline, "mainLightShadowmapResolution", resolutions[_shadowQuality]);
+            SetMember(pipeline, "additionalLightsShadowmapResolution", resolutions[Mathf.Max(0, _shadowQuality - 1)]);
+            SetMember(pipeline, "supportsSoftShadows", _shadowQuality >= 1);
+
+            // L'occlusion ambiante est une « fonction » du moteur de rendu (SSAO).
+            FieldInfo list = FindField(pipeline.GetType(), "m_RendererDataList");
+            Array renderers = list != null ? list.GetValue(pipeline) as Array : null;
+            for (int i = 0; renderers != null && i < renderers.Length; i++)
+            {
+                object data = renderers.GetValue(i);
+                if (data == null) continue;
+                PropertyInfo features = FindProperty(data.GetType(), "rendererFeatures");
+                System.Collections.IList featureList = features != null ? features.GetValue(data, null) as System.Collections.IList : null;
+                for (int k = 0; featureList != null && k < featureList.Count; k++)
+                {
+                    ScriptableObject feature = featureList[k] as ScriptableObject;
+                    if (feature == null || !feature.GetType().Name.Contains("AmbientOcclusion")) continue;
+                    MethodInfo setActive = feature.GetType().GetMethod("SetActive", new[] { typeof(bool) });
+                    if (setActive != null) setActive.Invoke(feature, new object[] { _ambientOcclusion });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Les filtres pour daltoniens : une correction (« daltonisation ») qui reporte sur les
+        /// couleurs encore perçues l'écart que l'œil ne voit pas.
+        /// </summary>
+        private static void PushColorBlind()
+        {
+            if (_mixer == null) return;
+            if (_colorBlind == 0)
+            {
+                SetActive(_mixer, false);
+                return;
+            }
+
+            // Simulation (Machado et al., sévérité 1) puis correction de Fidaner.
+            float[,] sim = _colorBlind == 1
+                ? new float[,] { { 0.152f, 1.053f, -0.205f }, { 0.115f, 0.786f, 0.099f }, { -0.004f, -0.048f, 1.052f } }
+                : _colorBlind == 2
+                    ? new float[,] { { 0.367f, 0.861f, -0.228f }, { 0.280f, 0.673f, 0.047f }, { -0.012f, 0.043f, 0.969f } }
+                    : new float[,] { { 1.256f, -0.077f, -0.179f }, { -0.078f, 0.931f, 0.148f }, { 0.005f, 0.691f, 0.304f } };
+            float[,] shift = { { 0f, 0f, 0f }, { 0.7f, 1f, 0f }, { 0.7f, 0f, 1f } };
+
+            float[,] m = new float[3, 3];
+            for (int r = 0; r < 3; r++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    // corrigé = I + S × (I − sim)
+                    float sum = 0f;
+                    for (int k = 0; k < 3; k++) sum += shift[r, k] * ((k == c ? 1f : 0f) - sim[k, c]);
+                    m[r, c] = (r == c ? 1f : 0f) + sum;
+                }
+            }
+
+            string[] rows = { "red", "green", "blue" };
+            string[] cols = { "Red", "Green", "Blue" };
+            for (int r = 0; r < 3; r++)
+            {
+                for (int c = 0; c < 3; c++) SetParameter(_mixer, rows[r] + "Out" + cols[c] + "In", Mathf.Clamp(m[r, c] * 100f, -200f, 200f));
+            }
+
+            SetActive(_mixer, true);
+        }
+
+        /// <summary>Allume ou éteint un effet du volume.</summary>
+        private static void SetActive(object component, bool active)
+        {
+            if (component == null) return;
+            SetMember(component, "active", active);
+        }
+
+        private static FieldInfo FindField(Type type, string name)
+        {
+            for (Type t = type; t != null; t = t.BaseType)
+            {
+                FieldInfo field = t.GetField(name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+                if (field != null) return field;
+            }
+
+            return null;
         }
 
         // ------------------------------------------------------------------ terrain

@@ -162,8 +162,10 @@ namespace UberBagarre.Feedback
             _position = Vector3.ClampMagnitude(_position, _maxOffset);
             _euler = Vector3.ClampMagnitude(_euler, _maxAngle);
 
-            transform.localPosition = _position;
-            transform.localRotation = Quaternion.Euler(_euler);
+            // Réglage du joueur : secousses de caméra.
+            float shake = Core.GameSettings.CameraShake;
+            transform.localPosition = _position * shake;
+            transform.localRotation = Quaternion.Euler(_euler * shake);
 
             if (_fovHoldTimer > 0f) _fovHoldTimer -= dt;
             float fovTarget = _fovHoldTimer > 0f ? _fovHold : 0f;

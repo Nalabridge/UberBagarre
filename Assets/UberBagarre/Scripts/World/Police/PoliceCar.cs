@@ -44,7 +44,7 @@ namespace UberBagarre.World
             _siren.spatialBlend = 1f;
             _siren.minDistance = 6f;
             _siren.maxDistance = 140f;
-            _siren.volume = 0.55f;
+            Core.ChannelSource.Attach(_siren, Core.AudioChannel.Effects, 0.55f);
             _sirenClip = Siren();
             _siren.clip = _sirenClip;
             _siren.Play();

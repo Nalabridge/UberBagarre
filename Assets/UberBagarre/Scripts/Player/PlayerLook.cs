@@ -99,11 +99,12 @@ namespace UberBagarre.Player
 
             Vector2 rawDelta = _input.LookDelta * (_sensitivity * Mathf.Clamp(SensitivityScale, 0.05f, 4f) * _userSensitivity);
 
-            if (_smoothingTime > 0.0001f)
+            float smoothing = Mathf.Max(_smoothingTime, Core.GameSettings.MouseSmoothing * 0.06f);
+            if (smoothing > 0.0001f)
             {
                 // Lissage exponentiel indépendant du framerate.
                 // unscaledDeltaTime : la visée doit rester nette même pendant un ralenti d'impact.
-                float t = 1f - Mathf.Exp(-Time.unscaledDeltaTime / _smoothingTime);
+                float t = 1f - Mathf.Exp(-Time.unscaledDeltaTime / smoothing);
                 _smoothedDelta = Vector2.Lerp(_smoothedDelta, rawDelta, t);
             }
             else
@@ -112,7 +113,8 @@ namespace UberBagarre.Player
             }
 
             Yaw += _smoothedDelta.x;
-            Pitch += _invertVertical ? _smoothedDelta.y : -_smoothedDelta.y;
+            bool invert = _invertVertical != Core.GameSettings.InvertY;
+            Pitch += invert ? _smoothedDelta.y : -_smoothedDelta.y;
             Pitch = Mathf.Clamp(Pitch, _minPitch, _maxPitch);
 
             ApplyRotations();

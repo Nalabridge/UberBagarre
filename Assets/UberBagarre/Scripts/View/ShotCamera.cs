@@ -88,6 +88,7 @@ namespace UberBagarre.View
             shot._done = null;
             shot._camera.enabled = true;
             source.enabled = false;
+            shot.Focus();
         }
 
         /// <summary>Change de cadrage pendant le plan (gros plan, plan large), en glissant.</summary>
@@ -100,6 +101,7 @@ namespace UberBagarre.View
             _instance.Aim(position, lookAt, follow, fov);
             _instance._duration = Mathf.Max(0.01f, duration);
             _instance._t = 0f;
+            _instance.Focus();
         }
 
         /// <summary>Revient à la caméra du joueur, puis appelle <paramref name="done"/>.</summary>
@@ -119,6 +121,7 @@ namespace UberBagarre.View
             shot._t = 0f;
             shot._returning = true;
             shot._done = done;
+            UrpBridge.SetFocus(false, 2f);
         }
 
         /// <summary>Coupe tout de suite (une scène qui s'interrompt).</summary>
@@ -191,8 +194,16 @@ namespace UberBagarre.View
             if (_returning && _t >= 1f) Finish();
         }
 
+        /// <summary>La mise au point sur le sujet du plan (profondeur de champ, si elle est voulue).</summary>
+        private void Focus()
+        {
+            Vector3 look = _follow != null ? _follow.position + _followOffset : _lookAt;
+            UrpBridge.SetFocus(Core.GameSettings.DepthOfField, Vector3.Distance(_toPosition, look));
+        }
+
         private void Finish()
         {
+            UrpBridge.SetFocus(false, 2f);
             _camera.enabled = false;
             if (_source != null) _source.enabled = true;
             _returning = false;

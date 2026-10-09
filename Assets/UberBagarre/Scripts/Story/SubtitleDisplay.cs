@@ -120,44 +120,45 @@ namespace UberBagarre.Story
         private void OnGUI()
         {
             if (_visibility <= 0.01f || !_hasCurrent) return;
+            if (!Core.GameSettings.Subtitles) return;
 
-            float width = Screen.width * _widthFraction;
+            float u = UiTheme.Unit;
+            float scale = Core.GameSettings.SubtitleScale;
+            float width = Mathf.Min(Screen.width * _widthFraction, 1100f * u * scale);
             float x = (Screen.width - width) * 0.5f;
+            float pad = 18f * u;
 
-            GUIStyle textStyle = GuiKit.Style(_fontSize, FontStyle.Normal, TextAnchor.UpperCenter, true);
+            GUIStyle textStyle = GuiKit.Text(Mathf.RoundToInt(19f * u * scale), GuiKit.Weight.Medium, TextAnchor.UpperCenter, true);
+            GUIStyle speakerStyle = GuiKit.Text(Mathf.RoundToInt(12.5f * u * scale), GuiKit.Weight.Bold, TextAnchor.UpperCenter);
 
-            float textHeight = textStyle.CalcHeight(new GUIContent(_current.Text), width - 28f);
-            float speakerHeight = string.IsNullOrEmpty(_current.Speaker) ? 0f : 20f;
-            float height = textHeight + speakerHeight + 22f;
-
+            bool showSpeaker = Core.GameSettings.SubtitleSpeaker && !string.IsNullOrEmpty(_current.Speaker);
+            float textHeight = textStyle.CalcHeight(new GUIContent(_current.Text), width - pad * 2f);
+            float speakerHeight = showSpeaker ? 18f * u * scale : 0f;
+            float height = textHeight + speakerHeight + 20f * u;
             float y = Screen.height * (1f - _bottomMargin) - height;
 
-            Color panel = _panelColor;
-            panel.a *= _visibility;
-            GuiKit.Fill(new Rect(x, y, width, height), panel);
-
-            // Un filet coloré à gauche : il rattache visuellement le bloc à celui qui parle,
-            // et suffit à distinguer deux interlocuteurs sans changer la couleur du texte.
-            GuiKit.Fill(new Rect(x, y, 3f, height), new Color(_speakerColor.r, _speakerColor.g,
-                _speakerColor.b, _visibility * 0.9f));
-
-            float inner = y + 8f;
-
-            if (speakerHeight > 0f)
+            // Le fond : de transparent à opaque selon le réglage ; serré autour du texte.
+            float measured = Mathf.Min(width, textStyle.CalcSize(new GUIContent(_current.Text)).x + pad * 2f);
+            Rect panel = new Rect((Screen.width - measured) * 0.5f, y, measured, height);
+            float background = Core.GameSettings.SubtitleBackground;
+            if (background > 0.01f)
             {
-                GuiKit.OutlinedLabel(new Rect(x + 14f, inner, width - 28f, 20f),
-                    _current.Speaker.ToUpperInvariant(),
-                    GuiKit.Style(12, FontStyle.Bold, TextAnchor.UpperLeft),
-                    new Color(_speakerColor.r, _speakerColor.g, _speakerColor.b, _visibility),
-                    new Color(0f, 0f, 0f, 0.85f * _visibility), 1f);
+                GuiKit.Rounded(panel, new Color(0f, 0f, 0f, background * 0.85f * _visibility), 8f * u);
+            }
 
+            float inner = y + 10f * u;
+            float previous = GuiKit.Alpha;
+            GuiKit.Alpha = _visibility;
+            if (showSpeaker)
+            {
+                GuiKit.ShadowLabel(new Rect(x, inner, width, speakerHeight), _current.Speaker.ToUpperInvariant(), speakerStyle,
+                    _speakerColor, background > 0.3f ? 0.2f : 0.7f);
                 inner += speakerHeight;
             }
 
-            GuiKit.OutlinedLabel(new Rect(x + 14f, inner, width - 28f, textHeight),
-                _current.Text, textStyle,
-                new Color(_textColor.r, _textColor.g, _textColor.b, _visibility),
-                new Color(0f, 0f, 0f, 0.9f * _visibility), 1.2f);
+            GuiKit.ShadowLabel(new Rect(x + pad, inner, width - pad * 2f, textHeight), _current.Text, textStyle, _textColor,
+                background > 0.3f ? 0.3f : 0.8f);
+            GuiKit.Alpha = previous;
         }
     }
 }

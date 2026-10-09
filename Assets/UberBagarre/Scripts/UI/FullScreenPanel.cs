@@ -453,7 +453,7 @@ namespace UberBagarre.UI
 
         private void Play(AudioClip clip)
         {
-            if (_audio != null && clip != null) _audio.PlayOneShot(clip, 0.5f);
+            if (_audio != null && clip != null) _audio.PlayOneShot(clip, 0.5f * Core.GameSettings.Volume(Core.AudioChannel.Interface));
         }
 
         // ------------------------------------------------------------------ sons

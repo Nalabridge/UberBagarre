@@ -368,7 +368,7 @@ namespace UberBagarre.Story
 
         private void Play(AudioClip clip, float volume)
         {
-            if (_audio != null && clip != null) _audio.PlayOneShot(clip, volume * _volume);
+            if (_audio != null && clip != null) _audio.PlayOneShot(clip, volume * _volume * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         private const int SampleRate = 22050;

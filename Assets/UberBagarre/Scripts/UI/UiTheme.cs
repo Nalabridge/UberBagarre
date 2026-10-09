@@ -33,8 +33,24 @@ namespace UberBagarre.UI
         public static readonly Color Bad = new Color(0.94f, 0.3f, 0.28f, 1f);
         public static readonly Color Info = new Color(0.4f, 0.7f, 1f, 1f);
 
-        /// <summary>L'échelle de l'écran : 1 en 1080p.</summary>
-        public static float Unit { get { return Screen.height / 1080f; } }
+        /// <summary>L'échelle de l'interface : 1 en 1080p, multipliée par la taille choisie dans les réglages.</summary>
+        public static float Unit { get { return Screen.height / 1080f * Core.GameSettings.UiScale; } }
+
+        // ------------------------------------------------------------------ disposition du HUD
+
+        /// <summary>La mini-carte : en bas à gauche, en paysage, comme dans GTA.</summary>
+        public static Rect MinimapRect()
+        {
+            float u = Unit;
+            float w = 300f * u, h = 188f * u;
+            return new Rect(30f * u, Screen.height - 30f * u - 18f * u - h, w, h);
+        }
+
+        /// <summary>Le coin haut droit : l'argent, puis ce qui s'empile dessous (niveau, étoiles).</summary>
+        public static float TopRight(float line)
+        {
+            return 26f * Unit + line * Unit;
+        }
 
         /// <summary>Une taille de texte à l'échelle de l'écran (en pixels 1080p).</summary>
         public static int Size(float px)
@@ -82,6 +98,61 @@ namespace UberBagarre.UI
             float aw = actionStyle.CalcSize(new GUIContent(action)).x;
             Label(new Rect(cap.xMax + 7f * unit, y, aw + 4f, h), action, actionStyle, InkDim);
             return cap.xMax + 7f * unit + aw + 22f * unit;
+        }
+
+        /// <summary>Le nom court d'une touche, en français (« Maj », « Espace », « Clic droit »).</summary>
+        public static string KeyName(Core.InputBinding binding)
+        {
+            if (binding.source == Core.InputSource.MouseButton)
+            {
+                switch (binding.mouseButton)
+                {
+                    case 0: return "Clic";
+                    case 1: return "Clic droit";
+                    case 2: return "Molette";
+                    default: return "Souris " + binding.mouseButton;
+                }
+            }
+
+            KeyCode key = binding.key != KeyCode.None ? binding.key : binding.alternateKey;
+            return KeyName(key);
+        }
+
+        public static string KeyName(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.None: return "—";
+                case KeyCode.Space: return "Espace";
+                case KeyCode.LeftShift: return "Maj";
+                case KeyCode.RightShift: return "Maj D";
+                case KeyCode.LeftControl: return "Ctrl";
+                case KeyCode.RightControl: return "Ctrl D";
+                case KeyCode.LeftAlt: return "Alt";
+                case KeyCode.RightAlt: return "Alt Gr";
+                case KeyCode.Escape: return "Échap";
+                case KeyCode.Return: return "Entrée";
+                case KeyCode.KeypadEnter: return "Entrée";
+                case KeyCode.Backspace: return "Retour";
+                case KeyCode.Tab: return "Tab";
+                case KeyCode.UpArrow: return "↑";
+                case KeyCode.DownArrow: return "↓";
+                case KeyCode.LeftArrow: return "←";
+                case KeyCode.RightArrow: return "→";
+                case KeyCode.Mouse0: return "Clic";
+                case KeyCode.Mouse1: return "Clic droit";
+                case KeyCode.Mouse2: return "Molette";
+                case KeyCode.Equals: return "=";
+                case KeyCode.Minus: return "-";
+                case KeyCode.CapsLock: return "Verr. Maj";
+                case KeyCode.Delete: return "Suppr";
+                case KeyCode.Insert: return "Inser";
+            }
+
+            string name = key.ToString();
+            if (name.StartsWith("Alpha")) return name.Substring(5);
+            if (name.StartsWith("Keypad")) return "Pavé " + name.Substring(6);
+            return name;
         }
 
         /// <summary>Courbe d'animation : départ vif, arrivée en douceur.</summary>

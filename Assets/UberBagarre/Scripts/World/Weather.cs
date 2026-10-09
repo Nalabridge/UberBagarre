@@ -483,7 +483,7 @@ namespace UberBagarre.World
             _sheltered = Mathf.MoveTowards(_sheltered, shelter ? 1f : 0f, Time.unscaledDeltaTime * 2f);
             _lowpass.cutoffFrequency = Mathf.Lerp(22000f, 900f, _sheltered);
 
-            float volume = Mathf.Clamp01(_intensity * 1.1f) * Mathf.Lerp(0.55f, 0.28f, _sheltered);
+            float volume = Mathf.Clamp01(_intensity * 1.1f) * Mathf.Lerp(0.55f, 0.28f, _sheltered) * Core.GameSettings.Volume(Core.AudioChannel.Ambience);
             if (GameMenu.IsPaused) volume = 0f;
             _audio.volume = Mathf.MoveTowards(_audio.volume, volume, Time.unscaledDeltaTime * 0.5f);
 
@@ -561,7 +561,7 @@ namespace UberBagarre.World
             if (_thunderAt > 0f && now >= _thunderAt)
             {
                 _thunderAt = -1f;
-                if (_audio != null && _thunder != null) _audio.PlayOneShot(_thunder, Mathf.Lerp(0.9f, 0.5f, _sheltered));
+                if (_audio != null && _thunder != null) _audio.PlayOneShot(_thunder, Mathf.Lerp(0.9f, 0.5f, _sheltered) * Core.GameSettings.Volume(Core.AudioChannel.Ambience));
             }
         }
 
