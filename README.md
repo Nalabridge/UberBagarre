@@ -165,7 +165,9 @@ Dans l'ordre :
 | Clic dans la vue | Recapturer le curseur |
 
 Toutes les touches sont dans un seul asset : `Assets/UberBagarre/Settings/InputBindings.asset`.
-Tu peux les changer sans toucher à une ligne de code.
+Tu peux les changer sans toucher à une ligne de code — ou **en jeu** : **Échap → Réglages →
+COMMANDES**, un clic sur l'action puis la nouvelle touche (deux touches par action ; une touche déjà
+prise par une autre action lui est échangée). C'est sauvegardé ; **Par défaut** revient à l'asset.
 
 ---
 
@@ -431,10 +433,14 @@ joueur ; les portes vitrées de la concession et des stations coulissent seules.
 
 **Les voitures** sont celles de la ville : la compacte (ta caisse, devant le motel), la berline, le
 SUV, le pick-up, le coupé de la concession. Les véhicules garés de la carte sont remplacés par des
-copies qu'on peut conduire. **La circulation conduit pour de vrai** : chaque voiture a un conducteur
-assis au volant qui tient le volant et les pédales de la même voiture que la tienne (poursuite pure
-sur sa voie, freinage avant les virages et pour ce qui est devant, marche arrière s'il est coincé) ;
-on peut lui prendre sa voiture quand elle est arrêtée. On achète une autre voiture à la concession
+copies qu'on peut conduire. **La circulation conduit pour de vrai**, et sans accident : chaque boucle
+de circulation est préparée une fois (virages arrondis à un rayon qu'une voiture peut prendre,
+vitesse calculée pour chaque mètre selon la courbure), les voitures se suivent à bonne distance
+(modèle IDM : elles freinent tôt et doucement, jamais en dernière seconde), réservent chaque
+carrefour avant d'y entrer (premier arrivé, premier passé ; on ne s'engage que si la sortie est
+libre), font demi-tour en trois manœuvres dans les impasses, et ralentissent pour un piéton, un
+obstacle ou ta voiture. Au volant, un conducteur assis tient le volant et les pédales de la même
+voiture que la tienne. On peut lui prendre sa voiture quand elle est arrêtée. On achète une autre voiture à la concession
 (Hyland Auto) : elle remplace la tienne devant le motel.
 
 **Les magasins** : chaque commerce a un vendeur, un comptoir (E) et un usage — manger et se soigner
@@ -443,7 +449,13 @@ on peut lui prendre sa voiture quand elle est arrêtée. On achète une autre vo
 réputation (barbier, tatoueur, avocat, laverie), jouer (casino, arcade), s'entraîner (salle de boxe,
 stand de tir), le courrier et les colis (poste), acheter une maison (agence) ou une voiture
 (concession). Ceux que la carte a meublés s'ouvrent par leur vraie porte ; ceux dont la carte n'a
-que la façade mènent (fondu au noir) à un intérieur construit pour eux. Les boosts achetés durent
+que la façade mènent (fondu au noir) à un intérieur construit pour eux, **meublé selon le métier** :
+la cave a ses vins et ses tonneaux, le diner son long comptoir à tabourets, ses banquettes et son
+passe-plat, la pizzeria son four à bois, le Dragon d'Or ses lanternes et son aquarium, le bar son
+billard et sa rangée de bouteilles devant le miroir, le casino ses machines à sous, sa roulette et sa
+caisse grillagée, l'arcade ses bornes, ses flippers et ses machines à pince, la salle de boxe son ring
+et ses sacs, le stand de tir ses pas de tir derrière une vitre, la pharmacie sa croix verte… (détail
+dans `Docs/ARCHITECTURE.md`, §33). Les boosts achetés durent
 quelques minutes et s'affichent en haut à droite. Les magasins sont sur la carte (M), en jaune ; les
 portes des maisons, on y frappe.
 
@@ -463,8 +475,11 @@ plus géant.
   noir), les fils sous le volant, parfois l'alarme ; une voiture de la circulation arrêtée, on en
   sort le conducteur (plus rapide, beaucoup plus grave). Descendre de voiture est animé. La
   circulation respecte les carrefours.
-- **Les passants** : on peut les provoquer (E) ou les frapper sans raison ; chacun son tempérament
-  (le timide s'enfuit, le sanguin se met en garde). K.O., on fouille ses poches.
+- **Les passants** : plus nombreux, ils marchent pour de vrai (pas des glissades) et ne traversent
+  plus les murs : chaque pas est testé contre le décor, ils contournent, se décalent à droite pour
+  se croiser, contournent qui est arrêté, regardent avant de traverser, s'arrêtent pour téléphoner,
+  discuter entre eux, regarder une vitrine. On peut les provoquer (E) ou les frapper sans raison ; chacun son tempérament (le
+  timide s'enfuit, le sanguin se met en garde). K.O., on fouille ses poches.
 - **La police** : un témoin qui voit une bagarre en plein découvert, un vol, une agression sort
   son téléphone — file hors de sa vue ou va lui « parler » avant 15 s. Une à cinq étoiles
   (patrouilles à pied, voitures, la brigade de Brandt) ; hors de vue, un **cercle de recherche** sur
@@ -994,12 +1009,22 @@ gauche avec un souffle, et sur l'écran titre **la caméra s'avance et tourne** 
 entre dans un sous-menu, puis recule au retour. La ligne choisie respire et un reflet la balaie.
 
 **Échap en jeu = pause** : le temps, le son, les dialogues, la cinématique et le téléphone se figent
-vraiment. Reprendre, Chapitres, Graphismes, Commandes, Menu principal, Quitter.
+vraiment. La pause montre l'état de la partie (jour, heure, argent, niveau, réputation, la course en
+cours) : Reprendre, Réglages, Menu principal, Quitter.
 
-**Graphismes** : préréglage (Sobre / Cinéma / Bâtard), qualité, plein écran, résolution, synchro
-verticale, anticrénelage (aucun, FXAA, TAA, MSAA), reflets du sol et leur finesse, lumière dans l'air,
-luminosité, halo, contraste, saturation, vignette, grain — puis **champ de vision**, **sensibilité de
-la souris**, **volume** et un **compteur d'images**. Tout est sauvegardé.
+**Réglages** — sept onglets, chaque ligne expliquée en bas de l'écran, tout sauvegardé :
+
+- **JEU** : difficulté, champ de vision, profondeur de champ, sensibilité, inversion de l'axe vertical.
+- **INTERFACE** : interface complète / discrète / masquée, mini-carte, réticule, zone visée, chiffres
+  de dégâts, barres de vie des adversaires, rappels de touches, taille de l'interface, compteur
+  d'images.
+- **GRAPHISMES** : mode d'affichage (plein écran, sans bordure, fenêtré — un changement se confirme
+  sous 15 s, sinon il est annulé), résolution, synchro verticale, limite d'images, qualité générale,
+  anticrénelage, ombres, textures, occlusion ambiante, reflets du sol, distance d'affichage…
+- **IMAGE** : ambiance (préréglages), luminosité, contraste, saturation, halo, vignette, grain.
+- **SON** : volume général, musique, effets, voix, ambiance ; couper le son en arrière-plan.
+- **COMMANDES** : toutes les touches, réassignables (voir plus haut).
+- **ACCESSIBILITÉ** : sous-titres (taille, nom de qui parle), mode daltonien, réduire les flashs.
 
 Au clavier : **↑ ↓** choisir, **← →** régler, **Entrée** valider, **Échap** retour. À la souris :
 survol, clic, clic ou glisser sur une barre, molette pour défiler.

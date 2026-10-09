@@ -172,7 +172,7 @@ namespace UberBagarre.EditorTools
 
                         Vector3 origin = ShopInteriorsOrigin + new Vector3(facades * 40f, 0f, 0f);
                         facades++;
-                        ShopInteriorBuilder.Result room = ShopInteriorBuilder.Build(spec.Kind, spec.Name, go.transform, origin, night);
+                        ShopInteriorBuilder.Result room = ShopInteriorBuilder.Build(spec.Kind, spec.Name, go.transform, origin);
                         ShopClerk clerk = BuildClerk(room.Root.transform, room.ClerkPosition, room.ClerkRotation, spec.Kind, seed++,
                             materials, night, library, subtitles, spec.Name);
                         Interactable counterOn = CounterOn(room.Counter.gameObject, spec);

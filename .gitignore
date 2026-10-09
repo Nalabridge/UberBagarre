@@ -58,3 +58,7 @@ Assets/UberBagarre/Art/Ville/Generes.meta
 # Rendu URP cree par « Uber Bagarre > 0 - Passer sous URP » (propre a chaque machine)
 Assets/UberBagarre/Settings/Rendu/
 Assets/UberBagarre/Settings/Rendu.meta
+
+# Interieurs des magasins (maillages, materiaux et textures regeneres par InteriorRealizer)
+Assets/UberBagarre/Art/Interieurs/Generes/
+Assets/UberBagarre/Art/Interieurs/Generes.meta

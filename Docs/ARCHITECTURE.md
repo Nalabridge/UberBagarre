@@ -2756,3 +2756,119 @@ matériaux de la carte doivent être **ceux du jeu d'origine**.
   resté sur le matériau intégré passe sur celui d'URP.
 - `TimeOfDay` sous URP : la lumière de la scène de Schedule 1 (soleil 2,76, ombres 0,95, ambiante
   *Trilight*, brume linéaire 0–200 m, reflets 0,25) mélangée à la nuit et à la pluie comme avant.
+
+## 33. Une ville qui tient debout : interfaces, conduite, passants, intérieurs
+
+Le retour de test tenait en une liste : HUD « arcade », menus incomplets, voitures qui s'emboutissent,
+passants qui traversent les murs, intérieurs de magasins vides. Rien de cela ne se réglait par un
+paramètre : chaque point a demandé de reprendre la structure.
+
+### 33.1 Interfaces : un thème, des réglages centralisés, des touches réassignables
+
+- **Un seul thème** (`UI/UiTheme.cs`) : unité de taille (qui suit « Taille de l'interface »),
+  palette, panneaux, rappels de touche (`KeyHint` lit la touche **réellement assignée**), invites
+  (`DrawPrompt`), notifications (`DrawToast`), emplacement de la mini-carte. Tous les écrans (pause,
+  réglages, magasins, choix, tutoriel, objectifs, vol de voiture, cible, carte) le lisent : plus de
+  styles recopiés dans chaque script, plus de couleurs qui divergent.
+- **Les réglages** (`Core/GameSettings.cs`) : un seul endroit, `PlayerPrefs` préfixées, un événement
+  `Changed`. `UI/SettingsApplier.cs` applique au moteur (qualité, ombres, résolution, limite d'images,
+  volumes par canal) ; les scripts de jeu lisent les valeurs (champ de vision, réticule, rappels…).
+- **Les touches** (`Core/KeyRemap.cs`) : une **copie** de l'asset `InputBindings` est faite au
+  démarrage (`PlayerInputReader.Awake`) et reçoit les réassignations sauvegardées — l'asset du projet
+  n'est jamais modifié en jeu. Deux touches par action, souris comprise ; une touche déjà prise est
+  **échangée** (on ne crée jamais deux actions sur la même touche dans un même contexte : jeu ou menus).
+- **Les réglages à onglets** (`UI/SettingsPage.cs`) se dessinent dans la pause et dans le menu
+  principal : la même page, deux hôtes. Un changement de mode d'affichage se confirme sous 15 s.
+
+### 33.2 La conduite : préparer la route une fois, réguler à chaque pas
+
+Le premier conducteur visait un point devant lui sur la ligne des nœuds (poursuite pure) : il coupait
+les virages (jusqu'à 1,5 m d'écart, assez pour accrocher une voiture en face), freinait tard, et deux
+voitures pouvaient s'engager ensemble dans un carrefour. Trois couches le remplacent :
+
+- **`World/Traffic/TrafficTrack`** — la boucle préparée **une fois** : les angles des nœuds arrondis
+  (congés de rayon atteignable), la ligne relaxée puis rééchantillonnée au mètre, une vitesse permise
+  pour chaque mètre (accélération latérale 2,3 m/s², freinage 2,1 m/s², propagée en arrière pour
+  qu'on ralentisse **avant** le virage), les **zones** de conflit (là où la boucle se recroise : les
+  carrefours) et les **demi-tours** (impasses) faits en trois manœuvres.
+- **`TrafficFlow`** — le régulateur, à chaque pas de physique, **avant** les conducteurs
+  (`DefaultExecutionOrder(-30)`) : suivi de la voiture de devant au modèle **IDM** (temps
+  d'intervalle 1,3 s, arrêt à 2,4 m, freinage confortable 2,2 m/s²) ; **réservation** des zones,
+  premier arrivé premier servi, et l'entrée seulement si la **sortie est libre** (on ne bloque jamais
+  un carrefour) ; une zone n'est libérée que quand l'arrière de la voiture en est sorti. Le joueur à
+  pied au milieu d'un carrefour, ou au volant engagé dedans, le bloque (`TrafficSystem`).
+- **`World/TrafficDriver`** — le conducteur ne décide plus rien : il suit sa position sur la
+  piste avec un contrôleur de **Stanley** (gain 4, adoucissement 1 ; l'anticipation de courbure
+  dégradait le suivi), et applique l'accélération demandée au volant et aux pédales de la vraie
+  voiture (`DrivableCar`, freinage proportionnel). Les capteurs (raycasts le long de la piste, pas
+  devant le capot) voient piétons, obstacles et voiture du joueur ; une voiture arrêtée « dort »
+  (cinématique) et se réveille d'un rien.
+
+Tout a été mesuré **hors Unity** (le même code compilé contre de faux types Unity, la carte de la
+ville réelle) : 0 chevauchement à 14, 24 et 32 voitures sur 20 minutes simulées, écart latéral au
+99e centile de 0,53 m. La police suit les mêmes rues (`PoliceCar` via le `RoadGraph`).
+
+### 33.3 Les passants : chaque pas testé contre le décor
+
+`World/MocapWalker.cs`, réécrit :
+
+- **Le pas** : un balayage de capsule à la taille du corps (`SafeStep`) avant chaque déplacement ; s'il
+  touche, le passant **glisse** le long de l'obstacle (la composante tangente) au lieu de s'y arrêter
+  ou de le traverser. Les pentes praticables (normale > 0,55 vers le haut) ne comptent pas comme des
+  murs.
+- **Les autres** : évitement social (on se décale à droite pour se croiser, on contourne qui est
+  arrêté), attente au bord du trottoir tant qu'une voiture arrive (`TrafficSystem.CarComing`),
+  activités (téléphoner, discuter à deux, regarder une vitrine),
+  regard et posture superposés à la marche capturée, téléphone tenu par une vraie IK de main
+  (`View/HandFrame.cs`). Ils sont plus nombreux, et partent dans les deux sens.
+
+### 33.4 Les intérieurs : un plan, un décorateur, un constructeur
+
+Les anciennes pièces de magasin étaient une boîte, un comptoir et trois meubles. Les nouvelles sont
+décrites par un **plan** et construites en trois étapes séparées, chacune testable à part :
+
+1. **`Editor/Interiors/InteriorPlan`** — la description pure : des pièces (boîtes, cylindres ou
+   ovales, sphères) avec leur matériau, des lampes (points, projecteurs), des repères (`arrivee`,
+   `porte`, `comptoir` avec sa longueur, `vendeur`) et des enseignes. Les meubles se dessinent dans
+   leur propre repère (`Push`/`Pop` : position et cap relatifs) ; une boîte « invisible » (`Block`)
+   sert de collision à un meuble fait de cent petites pièces.
+2. **`InteriorDesigner`** (cinq fichiers partiels) — le décorateur. La coque (sol, murs à
+   soubassement, cimaise, plinthes, corniche, vitrine à stores vénitiens avec la rue floue derrière,
+   porte vitrée, paillasson, panneau « sortie »), l'éclairage selon le style (dalles, suspensions,
+   lustres, rails de spots, baladeuses, cloches industrielles, tubes néon), puis **un plan par métier**
+   (`Commerces`, `Loisirs`) bâti avec une bibliothèque de meubles (`Meubles`, `Mobilier`,
+   `Equipements`) : comptoirs (magasin, bar, bureau, vitrine, guichet vitré ou grillagé, caisses de
+   bois) avec caisse enregistreuse, terminal et présentoir ; gondoles et étagères **garnies** par
+   « facings » (deux à cinq fois le même produit côte à côte, un produit parfois manquant) ; frigos
+   vitrés éclairés ; banquettes, tables dressées selon le lieu (sauces au diner, nappes et bougies au
+   restaurant, bières au bar) ; bornes d'arcade, machines à sous, roulette, tables de cartes, billard,
+   juke-box, ring, sacs de frappe, casiers, machines de laverie, fauteuils de barbier, poste de
+   tatoueur, voiture d'exposition sur plateau tournant… Le nom du lieu nuance le plan (un diner et une
+   pizzeria sont deux « Restaurant » ; la station-service a son coin café ; le magasin de skate ses
+   planches au mur). Tout est tiré d'une graine dérivée du nom : un magasin reste le même d'une
+   construction à l'autre.
+3. **`InteriorMesher`** puis **`InteriorRealizer`** — les pièces deviennent des maillages fusionnés
+   **par matériau et par case de 4 m** : le rendu Forward d'URP n'éclaire un objet qu'avec ses huit
+   lampes les plus fortes, et un sol de 16 m d'un seul tenant sous seize lustres en perdrait la moitié,
+   par plaques. Les grandes boîtes droites sont coupées à la taille des cases (le placage triplanaire,
+   calculé dans le monde, ne montre aucune couture). Les maillages d'un lieu sont rangés dans un seul
+   asset (`Art/Interieurs/Generes`, ignoré par git, régénéré à chaque construction) ; les collisions
+   sont regroupées par orientation (plusieurs `BoxCollider` par objet) ; la lampe la plus centrale
+   porte des ombres ; une sonde de reflets en boîte est rendue à l'entrée dans le lieu.
+
+**Les matériaux** : le shader `UberBagarre/Interieur` (triplanaire en coordonnées monde, échelle
+réelle — un carreau de 30 cm reste un carreau de 30 cm sur un sol de 14 m comme sur une tablette de
+40 cm —, brillance modulée par l'alpha de la texture : le joint est mat, le carreau brille ; émission
+pour les écrans, néons et vitres de frigo). Les quinze textures (`InteriorTextures` : carrelage,
+damier, parquet, brique, plâtre, moquette, dalles de plafond, bois, béton, lino, lambris, métal brossé,
+papier peint, feutre, cuir) sont **calculées** (bruit périodique, sans couture) avec leur carte de
+relief, une fois, puis gardées en assets. Les verres clairs sont en URP Lit transparent ; les
+matériaux identiques sont partagés entre les lieux (le nom porte une empreinte des réglages).
+
+**Vérifié hors Unity** : le décorateur et le maillage ne dépendent que des types de base d'Unity ; un
+banc d'essai les compile contre de faux types, contrôle chaque plan (matériaux inconnus, repères
+manquants) et en fait un rendu Cycles (même géométrie, mêmes textures, mêmes lampes) avant livraison.
+Ordres de grandeur : 450 à 8 000 pièces, 100 à 280 lots, 10 000 à 300 000 triangles selon le lieu.
+
+**Ce qui n'a pas changé** : les magasins que la carte meuble elle-même (ceux où l'on entre par la vraie
+porte) gardent leur intérieur d'origine ; les logements gardent leurs meubles (`HouseBuilder`).
