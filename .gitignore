@@ -62,3 +62,7 @@ Assets/UberBagarre/Settings/Rendu.meta
 # Interieurs des magasins (maillages, materiaux et textures regeneres par InteriorRealizer)
 Assets/UberBagarre/Art/Interieurs/Generes/
 Assets/UberBagarre/Art/Interieurs/Generes.meta
+
+# Ville de Schedule 1 (pack de la carte, installe a la main : ne jamais la publier)
+/Assets/Schedule1/
+/Assets/Schedule1.meta
