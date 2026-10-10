@@ -465,6 +465,9 @@ namespace UberBagarre.Phone
         /// <summary>Déclencheur : un clic sec, un souffle de rideau, un second clic.</summary>
         private static AudioClip ShutterSound()
         {
+            AudioClip real = Core.SoundBank.Real("Telephone/appareil_photo");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = Mathf.RoundToInt(0.16f * rate);
             float[] data = new float[length];

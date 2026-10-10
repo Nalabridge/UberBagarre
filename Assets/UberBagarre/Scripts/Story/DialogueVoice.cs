@@ -65,7 +65,7 @@ namespace UberBagarre.Story
         {
             foreach (AudioClip clip in _babbles.Values)
             {
-                if (clip != null) Destroy(clip);
+                Core.SoundBank.Release(clip);
             }
 
             _babbles.Clear();

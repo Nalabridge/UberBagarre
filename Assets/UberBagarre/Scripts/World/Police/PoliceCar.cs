@@ -67,7 +67,7 @@ namespace UberBagarre.World
 
         private void OnDestroy()
         {
-            if (_sirenClip != null) Destroy(_sirenClip);
+            Core.SoundBank.Release(_sirenClip);
         }
 
         public void StandDown()
@@ -280,18 +280,44 @@ namespace UberBagarre.World
         /// <summary>La sirène « deux tons » à la française : 435 Hz / 580 Hz, en alternance.</summary>
         private static AudioClip Siren()
         {
-            const int rate = 22050;
-            int length = rate * 2;
+            AudioClip real = Core.SoundBank.Real("Police/sirene");
+            if (real != null) return real;
+
+            // Une sirène « wail » : une note qui monte et redescend (650 → 1 450 Hz) toutes les
+            // deux secondes, jouée par un haut-parleur à pavillon — une onde riche (harmoniques
+            // impaires), la résonance du pavillon, un peu de saturation. La fréquence est
+            // ajustée pour que la boucle contienne un nombre entier de périodes : pas de clic.
+            const int rate = 32000;
+            int length = rate * 4;
             float[] data = new float[length];
-            float phase = 0f;
+            float[] freq = new float[length];
+            double cycles = 0.0;
             for (int n = 0; n < length; n++)
             {
-                float t = n / (float)rate;
-                float f = (t % 1f) < 0.5f ? 435f : 580f;
-                phase += f / rate;
-                phase -= Mathf.Floor(phase);
-                float square = Mathf.Sin(phase * Mathf.PI * 2f) + 0.35f * Mathf.Sin(phase * Mathf.PI * 6f);
-                data[n] = square * 0.32f;
+                float t = (n / (float)rate) % 2f;
+                float u = t < 1.25f ? Mathf.SmoothStep(0f, 1f, t / 1.25f) : 1f - Mathf.SmoothStep(0f, 1f, (t - 1.25f) / 0.75f);
+                freq[n] = Mathf.Lerp(650f, 1450f, u);
+                cycles += freq[n] / rate;
+            }
+
+            float fix = (float)(System.Math.Round(cycles) / cycles);
+            float phase = 0f;
+            float horn1 = 0f, horn2 = 0f, low = 0f;
+            for (int pass = 0; pass < 2; pass++)
+            {
+                for (int n = 0; n < length; n++)
+                {
+                    phase += freq[n] * fix / rate;
+                    phase -= Mathf.Floor(phase);
+                    float w = phase * Mathf.PI * 2f;
+                    float tone = Mathf.Sin(w) + Mathf.Sin(3f * w) / 3f + Mathf.Sin(5f * w) / 5f + Mathf.Sin(7f * w) / 7f;
+                    // Le pavillon : une résonance large vers 1,8 kHz (filtre à deux pôles), et le grave adouci.
+                    horn2 = horn2 * 0.82f + (tone - horn1) * 0.3f;
+                    horn1 += horn2 * 0.35f;
+                    low = low + (tone - low) * 0.35f;
+                    float y = horn1 * 0.9f + low * 0.5f;
+                    data[n] = (float)System.Math.Tanh(y * 1.6f) * 0.5f;
+                }
             }
 
             AudioClip clip = AudioClip.Create("Sirene", length, 1, rate, false);

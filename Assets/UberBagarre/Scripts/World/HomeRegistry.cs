@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UberBagarre.Story;
 using UberBagarre.UI;
 using UnityEngine;
@@ -254,6 +255,19 @@ namespace UberBagarre.World
                 {
                     SwingDoor door = MapStreamer.Door(home.doors[d]);
                     if (door != null) door.SetLocked(!owned, "À vendre : l'ordinateur, appli Immobilier.");
+                }
+
+                // Les autres portes du même logement (la baie vitrée du bungalow, une porte de
+                // derrière) : fermées tant qu'on ne l'a pas acheté, sinon on entrait par là.
+                if (home.doors.Length > 0)
+                {
+                    string building = CityRules.BuildingOf(home.doors[0]) + "/";
+                    foreach (KeyValuePair<string, SwingDoor> pair in MapStreamer.AllDoors)
+                    {
+                        if (pair.Value == null || !pair.Key.StartsWith(building)) continue;
+                        if (System.Array.IndexOf(home.doors, pair.Key) >= 0) continue;
+                        pair.Value.SetLocked(!owned, "À vendre : l'ordinateur, appli Immobilier.");
+                    }
                 }
 
                 for (int o = 0; o < home.openForOwner.Length; o++)

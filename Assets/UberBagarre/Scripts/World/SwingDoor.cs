@@ -39,6 +39,15 @@ namespace UberBagarre.World
         private Vector3 _leaf;
         private float _openTarget;
 
+        // Baie vitrée : le battant glisse au lieu de pivoter (repères « Closed » / « Open »).
+        private bool _slide;
+        private Vector3 _slideClosed;
+        private Vector3 _slideOpen;
+        private float _slideT;
+
+        // L'autre battant d'une porte double : il s'ouvre et se ferme avec celui-ci.
+        private SwingDoor _partner;
+
         /// <summary>Celui qui pousse les portes (le joueur) : elles s'ouvrent loin de lui.</summary>
         public static Transform Viewer { get; set; }
 
@@ -88,6 +97,47 @@ namespace UberBagarre.World
             return door;
         }
 
+        /// <summary>
+        /// Pose une baie vitrée : le battant glisse de sa place jusqu'au décalage entre les repères
+        /// « Closed » et « Open » ; E l'ouvre et la ferme, et elle se verrouille comme une porte.
+        /// </summary>
+        public static SwingDoor InstallSliding(Transform panel, Transform closed, Transform open)
+        {
+            if (panel == null || closed == null || open == null || panel.parent == null) return null;
+
+            SwingDoor door = Install(panel, 0f, false);
+            door._slide = true;
+            door._slideClosed = panel.localPosition;
+            door._slideOpen = panel.localPosition + panel.parent.InverseTransformVector(open.position - closed.position);
+            door._slideT = 0f;
+            return door;
+        }
+
+        /// <summary>Les deux battants d'une porte double : ouvrir l'un ouvre l'autre.</summary>
+        public static void Pair(SwingDoor a, SwingDoor b)
+        {
+            if (a == null || b == null || a == b) return;
+            a._partner = b;
+            b._partner = a;
+        }
+
+        /// <summary>Le battant d'en face (porte double), ou null.</summary>
+        public SwingDoor Partner { get { return _partner; } }
+
+        /// <summary>
+        /// Le battant mesuré (repère du monde) : centre et taille de ses rendus — ce qui sert à
+        /// reconnaître les deux battants d'une porte double.
+        /// </summary>
+        public Bounds LeafBounds
+        {
+            get
+            {
+                bool any;
+                Bounds b = CityRules.RendererBounds(transform, out any);
+                return any ? b : new Bounds(transform.position, Vector3.zero);
+            }
+        }
+
         private void Awake()
         {
             Prepare();
@@ -132,8 +182,8 @@ namespace UberBagarre.World
         private void OnDestroy()
         {
             if (_interactable != null) _interactable.Activated -= OnActivated;
-            if (_ownsSound && _sound != null) Destroy(_sound);
-            if (_rattle != null) Destroy(_rattle);
+            if (_ownsSound) Core.SoundBank.Release(_sound);
+            Core.SoundBank.Release(_rattle);
         }
 
         private void OnActivated(Interactable source)
@@ -146,27 +196,52 @@ namespace UberBagarre.World
             }
 
             SetOpen(!_open, false);
+
+            // Porte double : l'autre battant suit (chacun s'ouvre loin du joueur, donc en miroir).
+            if (_partner != null && !_partner._locked && _partner._open != _open) _partner.SetOpen(_open, false, false);
         }
 
         public void SetOpen(bool open, bool instant)
         {
+            SetOpen(open, instant, true);
+        }
+
+        private void SetOpen(bool open, bool instant, bool sound)
+        {
             Prepare();
-            if (open && !_open && _awayFromViewer) _openTarget = AwayAngle();
+            if (open && !_open && _awayFromViewer && !_slide) _openTarget = AwayAngle();
             _open = open;
             RefreshLabel();
 
             if (instant)
             {
+                if (_slide)
+                {
+                    _slideT = open ? 1f : 0f;
+                    transform.localPosition = Vector3.Lerp(_slideClosed, _slideOpen, _slideT);
+                    return;
+                }
+
                 _angle = open ? _openTarget : 0f;
                 transform.localRotation = _closed * Quaternion.AngleAxis(_angle, _axis);
                 return;
             }
 
-            if (_source != null && _sound != null) _source.PlayOneShot(_sound, 0.5f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
+            if (sound && _source != null && _sound != null) _source.PlayOneShot(_sound, 0.5f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
         }
 
         private void Update()
         {
+            if (_slide)
+            {
+                float goal = _open ? 1f : 0f;
+                if (Mathf.Approximately(_slideT, goal)) return;
+                _slideT = Mathf.MoveTowards(_slideT, goal, Time.deltaTime * 1.6f);
+                float eased = _slideT * _slideT * (3f - 2f * _slideT);
+                transform.localPosition = Vector3.Lerp(_slideClosed, _slideOpen, eased);
+                return;
+            }
+
             float target = _open ? _openTarget : 0f;
             if (Mathf.Approximately(_angle, target)) return;
 
@@ -212,21 +287,52 @@ namespace UberBagarre.World
         /// <summary>Un grincement de gond, synthétisé une fois.</summary>
         private static AudioClip Creak()
         {
-            const int rate = 22050;
-            int length = rate / 2;
-            float[] data = new float[length];
-            float phase = 0f;
+            AudioClip real = Core.SoundBank.Real("Portes/grincement");
+            if (real != null) return real;
 
+            // Un vrai grincement est un frottement qui accroche et lâche (stick-slip) : une suite
+            // d'à-coups irréguliers dont le rythme glisse, qui font chanter le bois du battant
+            // (trois résonances). Précédé du déclic de la poignée et suivi du souffle de l'air.
+            const int rate = 32000;
+            int length = Mathf.RoundToInt(rate * 0.9f);
+            float[] data = new float[length];
+            System.Random random = new System.Random(19);
+            float[] modes = { 310f, 760f, 1480f };
+            float[] state1 = new float[3];
+            float[] state2 = new float[3];
+            float next = 0.06f * rate;
             for (int n = 0; n < length; n++)
             {
                 float t = n / (float)rate;
-                float pitch = 240f + 60f * Mathf.Sin(t * 23f) + 30f * Mathf.Sin(t * 57f);
-                phase += pitch / rate;
-                phase -= Mathf.Floor(phase);
+                float excite = 0f;
 
-                float envelope = Mathf.Clamp01(t * 30f) * Mathf.Clamp01((0.5f - t) * 6f);
-                float saw = phase * 2f - 1f;
-                data[n] = saw * envelope * 0.12f * (0.6f + 0.4f * Mathf.Sin(t * 140f));
+                // Le déclic du pêne.
+                if (t < 0.018f) excite += (float)(random.NextDouble() * 2.0 - 1.0) * (1f - t / 0.018f) * 0.8f;
+
+                // Les à-coups du gond, de plus en plus rapprochés puis qui ralentissent.
+                if (n >= next && t < 0.78f)
+                {
+                    float progress = t / 0.78f;
+                    float rateHz = 70f + 260f * Mathf.Sin(progress * Mathf.PI) * (0.8f + 0.4f * Mathf.Sin(t * 17f));
+                    next = n + rate / Mathf.Max(40f, rateHz) * (0.85f + 0.3f * (float)random.NextDouble());
+                    excite += 0.7f + 0.3f * (float)random.NextDouble();
+                }
+
+                float y = 0f;
+                for (int m = 0; m < 3; m++)
+                {
+                    // Résonateur à deux pôles (fréquence du mode, amortissement modéré).
+                    float w = 2f * Mathf.PI * modes[m] / rate;
+                    float r = 0.993f - m * 0.002f;
+                    float v = excite + 2f * r * Mathf.Cos(w) * state1[m] - r * r * state2[m];
+                    state2[m] = state1[m];
+                    state1[m] = v;
+                    y += v * (m == 0 ? 0.05f : m == 1 ? 0.035f : 0.02f);
+                }
+
+                float air = t > 0.2f ? (float)(random.NextDouble() * 2.0 - 1.0) * 0.015f * Mathf.Sin(Mathf.Clamp01((t - 0.2f) / 0.7f) * Mathf.PI) : 0f;
+                float envelope = Mathf.Clamp01((0.9f - t) * 8f);
+                data[n] = Mathf.Clamp((y + air) * envelope, -1f, 1f) * 0.6f;
             }
 
             AudioClip clip = AudioClip.Create("Porte (gond)", length, 1, rate, false);
@@ -237,6 +343,9 @@ namespace UberBagarre.World
         /// <summary>La poignée qu'on secoue : trois claquements secs de pêne.</summary>
         private static AudioClip Rattle()
         {
+            AudioClip real = Core.SoundBank.Real("Portes/verrouillee");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = (int)(rate * 0.42f);
             float[] data = new float[length];

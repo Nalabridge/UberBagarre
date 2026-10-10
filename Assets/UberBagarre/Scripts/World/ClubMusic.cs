@@ -112,13 +112,16 @@ namespace UberBagarre.World
 
         private void OnDestroy()
         {
-            if (_clip != null) Destroy(_clip);
+            Core.SoundBank.Release(_clip);
         }
 
         // ------------------------------------------------------------------ synthèse
 
         private AudioClip Build()
         {
+            AudioClip real = Core.SoundBank.Real("Musique/club");
+            if (real != null) return real;
+
             _samplesPerBeat = Mathf.RoundToInt(SampleRate * 60f / _bpm);
             int length = _samplesPerBeat * Beats;
             float[] data = new float[length];

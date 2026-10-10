@@ -176,6 +176,9 @@ namespace UberBagarre.World
 
         private static AudioClip Loop(Kind kind)
         {
+            AudioClip real = Core.SoundBank.Real("Ambiance/" + Core.SoundBank.Slug(kind.ToString()));
+            if (real != null) return real;
+
             AudioClip clip;
             if (Loops.TryGetValue(kind, out clip) && clip != null) return clip;
 
@@ -472,6 +475,9 @@ namespace UberBagarre.World
         /// </summary>
         private static AudioClip CarPass(string name, System.Random random, float cutoff, float wet)
         {
+            AudioClip real = Core.SoundBank.Real("Ambiance/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             float duration = 4.5f + (float)random.NextDouble() * 1.5f;
             int length = Mathf.RoundToInt(duration * SampleRate);
             float[] data = new float[length];
@@ -514,6 +520,9 @@ namespace UberBagarre.World
         /// l'écho des façades.</summary>
         private static AudioClip Siren(string name, System.Random random, float cutoff)
         {
+            AudioClip real = Core.SoundBank.Real("Ambiance/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             float duration = 8f;
             int length = Mathf.RoundToInt(duration * SampleRate);
             float[] data = new float[length];
@@ -552,6 +561,9 @@ namespace UberBagarre.World
 
         private static AudioClip Horn(string name, System.Random random)
         {
+            AudioClip real = Core.SoundBank.Real("Ambiance/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             float duration = 0.45f + (float)random.NextDouble() * 0.35f;
             int length = Mathf.RoundToInt((duration + 0.6f) * SampleRate);
             float[] data = new float[length];
@@ -583,6 +595,9 @@ namespace UberBagarre.World
         /// <summary>Une goutte qui tombe d'une gouttière dans une flaque, et résonne.</summary>
         private static AudioClip Drip(string name, System.Random random)
         {
+            AudioClip real = Core.SoundBank.Real("Ambiance/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(0.9f * SampleRate);
             float[] data = new float[length];
 

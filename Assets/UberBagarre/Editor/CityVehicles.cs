@@ -368,8 +368,23 @@ namespace UberBagarre.EditorTools
 
         // ------------------------------------------------------------------ modèle conduisible
 
-        /// <summary>Échelle des voitures par rapport aux modèles de la carte.</summary>
-        public const float VehicleScale = 0.88f;
+        /// <summary>
+        /// Échelle de chaque voiture par rapport à son modèle de la carte. Les modèles de Schedule 1
+        /// sont trapus (grosses roues, gros volumes) : à côté des maisons et du joueur, ceux de la
+        /// circulation paraissaient trop gros, le pick-up et le SUV surtout. Réduits pour retrouver
+        /// des gabarits réels : compacte 3,5 m, berline et coupé 4,1 m, SUV 4,0 m, pick-up 4,9 m.
+        /// </summary>
+        public static float ScaleOf(string key)
+        {
+            switch (key)
+            {
+                case "Pickup": return 0.82f;
+                case "SUV": return 0.84f;
+                case "Sedan": return 0.85f;
+                case "Coupe": return 0.85f;
+                default: return 0.88f;
+            }
+        }
 
         private GameObject BuildTemplate(Transform source, Model model, Transform donor)
         {
@@ -386,7 +401,7 @@ namespace UberBagarre.EditorTools
             // Plus petites que les modèles de la carte : à côté des maisons et des portes de la
             // ville, elles paraissaient trop grosses. Tout est mesuré après la réduction (roues,
             // carrosserie, siège, collisions), donc la physique suit.
-            const float k = VehicleScale;
+            float k = ScaleOf(model.key);
             radius *= k;
             for (int i = 0; i < hubs.Length; i++) hubs[i] = ground + (hubs[i] - ground) * k;
 
@@ -444,6 +459,10 @@ namespace UberBagarre.EditorTools
             model.halfWidth = width * 0.5f;
             model.height = top;
 
+            // L'habitacle, taillé sur la coque (avant le corps rigide : la mesure pose des colliders
+            // de maillage temporaires, interdits sous un corps rigide).
+            CarCabinBuilder.Result cab = CarCabinBuilder.Build(root.transform, shell.transform, model.key, shape, radius);
+
             BoxCollider lower = root.AddComponent<BoxCollider>();
             lower.center = new Vector3(shape.center.x, (bottom + belt) * 0.5f, shape.center.z);
             lower.size = new Vector3(width * 0.98f, belt - bottom, length * 0.98f);
@@ -456,10 +475,8 @@ namespace UberBagarre.EditorTools
             rb.mass = model.mass;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-            // --- places : le siège conducteur à gauche, la portière à côté
-            float hip = top * 0.36f;
-            Transform seat = EditorBuildUtility.CreateEmpty("Siege conducteur", root.transform,
-                new Vector3(-width * 0.21f, hip, shape.center.z - length * 0.06f)).transform;
+            // --- places : le siège conducteur à gauche (celui de l'habitacle), la portière à côté
+            Transform seat = EditorBuildUtility.CreateEmpty("Siege conducteur", root.transform, cab.Cabin.Hip).transform;
             Transform doorPoint = EditorBuildUtility.CreateEmpty("Portiere", root.transform,
                 new Vector3(-width * 0.5f - 0.05f, Mathf.Min(1.05f, top * 0.6f), seat.localPosition.z + 0.2f)).transform;
 
@@ -495,7 +512,6 @@ namespace UberBagarre.EditorTools
             lights.arraySize = headlights.Length;
             for (int i = 0; i < headlights.Length; i++) lights.GetArrayElementAtIndex(i).objectReferenceValue = headlights[i];
 
-            float scale = model.mass / 1250f;
             so.FindProperty("_seat").objectReferenceValue = seat;
             so.FindProperty("_brakeLight").objectReferenceValue = brake;
             so.FindProperty("_engine").objectReferenceValue = engine;
@@ -504,12 +520,18 @@ namespace UberBagarre.EditorTools
             so.FindProperty("_impacts").objectReferenceValue = impacts;
             so.FindProperty("_displayName").stringValue = model.label;
             so.FindProperty("_wheelRadius").floatValue = radius;
-            so.FindProperty("_spring").floatValue = 36000f * scale;
-            so.FindProperty("_damper").floatValue = 3800f * scale;
-            so.FindProperty("_centerOfMass").vector3Value = new Vector3(0f, radius + 0.12f, 0.08f);
+            so.FindProperty("_centerOfMass").vector3Value = new Vector3(0f, radius + 0.1f, 0.06f);
             so.FindProperty("_maxSpeed").floatValue = model.maxSpeed;
             so.FindProperty("_engineForce").floatValue = model.mass * model.power;
-            so.FindProperty("_brakeForce").floatValue = 15000f * scale;
+            // Le caractère de chaque modèle : la compacte souple, le coupé ferme et vif, les gros
+            // (pick-up, SUV) plus hauts, plus mous, qui roulent davantage.
+            so.FindProperty("_suspensionFrequency").floatValue = model.key == "Coupe" ? 2.4f : model.key == "Shitbox" ? 1.75f :
+                model.key == "Pickup" || model.key == "SUV" ? 1.7f : 1.9f;
+            so.FindProperty("_antiRollFront").floatValue = model.key == "Coupe" ? 0.35f : model.key == "Pickup" || model.key == "SUV" ? 0.3f : 0.2f;
+            so.FindProperty("_antiRollRear").floatValue = model.key == "Coupe" ? 0.2f : model.key == "Pickup" || model.key == "SUV" ? 0.15f : 0.1f;
+            so.FindProperty("_grip").floatValue = model.key == "Coupe" ? 1.15f : model.key == "Pickup" ? 0.98f : 1.05f;
+            so.FindProperty("_rearGrip").floatValue = model.key == "Coupe" ? 1.2f : model.key == "Pickup" ? 1.02f : 1.1f;
+            so.FindProperty("_maxSteer").floatValue = model.key == "Pickup" || model.key == "SUV" ? 34f : 36f;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             root.SetActive(false);

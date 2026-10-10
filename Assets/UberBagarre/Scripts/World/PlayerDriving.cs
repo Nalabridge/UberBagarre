@@ -45,11 +45,29 @@ namespace UberBagarre.World
         [SerializeField] private Camera _gameCamera;
         [SerializeField] private Camera _chaseCamera;
 
-        [SerializeField, Min(2f)] private float _distance = 6.4f;
-        [SerializeField, Min(0.5f)] private float _height = 1.55f;
+        [SerializeField, Min(2f)] private float _distance = 5.6f;
+        [SerializeField, Min(0.5f)] private float _height = 1.5f;
         [SerializeField] private float _pitch = 9f;
-        [SerializeField] private Vector2 _fieldOfView = new Vector2(62f, 76f);
+        [SerializeField] private Vector2 _fieldOfView = new Vector2(60f, 72f);
         [SerializeField, Min(0.01f)] private float _mouseSensitivity = 0.12f;
+
+        /// <summary>Les vues au volant : poursuite proche, poursuite éloignée, place du conducteur (touche V).</summary>
+        public enum View
+        {
+            Proche = 0,
+            Eloignee = 1,
+            Conducteur = 2
+        }
+
+        private static View _view = View.Proche;
+        private Vector3 _pivotPosition;
+        private Vector3 _pivotVelocity;
+        private float _yawVelocity;
+        private float _lookYaw;
+        private float _lookPitch;
+        private Vector3 _lastCarVelocity;
+        private Vector3 _headOffset;
+        private float _defaultNear = 0.3f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Vitesse (m/s) au-dessus de laquelle on ne peut pas descendre.")]
@@ -69,6 +87,7 @@ namespace UberBagarre.World
         private float _exitedAt = -10f;
         private float _hotwire;
         private readonly RaycastHit[] _hits = new RaycastHit[16];
+        private bool _lookBack;
 
         /// <summary>Le joueur conduit.</summary>
         public static bool IsDriving { get; private set; }
@@ -171,7 +190,12 @@ namespace UberBagarre.World
 
             if (_chaseCamera != null)
             {
+                _defaultNear = _chaseCamera.nearClipPlane;
                 _chaseCamera.enabled = true;
+                _lookYaw = 0f;
+                _lookPitch = 0f;
+                _lastCarVelocity = car.Body != null ? car.Body.linearVelocity : Vector3.zero;
+                ApplyView();
                 PlaceCamera(1f, true);
             }
 
@@ -198,6 +222,9 @@ namespace UberBagarre.World
             Hint = string.Empty;
 
             car.Honk(false);
+            CarCockpit cockpit = car.GetComponent<CarCockpit>();
+            if (cockpit != null) cockpit.SetInside(false);
+            if (_chaseCamera != null) _chaseCamera.nearClipPlane = _defaultNear;
             car.Occupied = false;
 
             for (int i = 0; i < _hidden.Count; i++)
@@ -295,26 +322,7 @@ namespace UberBagarre.World
                 _doorSource.spatialBlend = 0.6f;
             }
 
-            if (_doorClip == null)
-            {
-                const int rate = 22050;
-                float[] data = new float[(int)(rate * 0.55f)];
-                System.Random random = new System.Random(5);
-                for (int i = 0; i < data.Length; i++)
-                {
-                    float time = i / (float)rate;
-                    float click = time < 0.03f ? ((float)random.NextDouble() * 2f - 1f) * (1f - time / 0.03f) * 0.4f : 0f;
-                    float slamT = time - 0.32f;
-                    float slam = slamT > 0f
-                        ? (Mathf.Sin(2f * Mathf.PI * (85f - slamT * 60f) * slamT) * 0.9f + ((float)random.NextDouble() * 2f - 1f) * 0.35f) *
-                          Mathf.Exp(-slamT * 22f)
-                        : 0f;
-                    data[i] = Mathf.Clamp(click + slam, -1f, 1f) * 0.8f;
-                }
-
-                _doorClip = AudioClip.Create("Portiere", data.Length, 1, rate, false);
-                _doorClip.SetData(data, 0);
-            }
+            if (_doorClip == null) _doorClip = CarAudio.DoorClip;
 
             _doorSource.transform.position = at;
             _doorSource.PlayOneShot(_doorClip, 0.8f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
@@ -366,13 +374,34 @@ namespace UberBagarre.World
                 {
                     _car.SetInput(_input.Move.y, _input.Move.x, handbrake);
                     _car.Honk(horn);
+                    // Ceux qui sont devant entendent le klaxon (ils se rangent).
+                    if (horn) TrafficDriver.NotifyHorn(_car.transform.position, _car.transform.forward);
                 }
+
+                // V : la vue suivante (proche, éloignée, conducteur).
+                if (provider != null && bindings != null && provider.GetPressedThisFrame(bindings.attackLowKick))
+                {
+                    _view = (View)(((int)_view + 1) % 3);
+                    ApplyView();
+                    PlaceCamera(1f, true);
+                }
+
+                _lookBack = provider != null && bindings != null && provider.GetHeld(bindings.crouch);
 
                 Vector2 look = _input.LookDelta;
                 if (look.sqrMagnitude > 0.01f)
                 {
-                    _orbitYaw += look.x * _mouseSensitivity;
-                    _orbitPitch = Mathf.Clamp(_orbitPitch - look.y * _mouseSensitivity, -12f, 35f);
+                    if (_view == View.Conducteur)
+                    {
+                        _lookYaw = Mathf.Clamp(_lookYaw + look.x * _mouseSensitivity, -135f, 135f);
+                        _lookPitch = Mathf.Clamp(_lookPitch - look.y * _mouseSensitivity, -45f, 35f);
+                    }
+                    else
+                    {
+                        _orbitYaw += look.x * _mouseSensitivity;
+                        _orbitPitch = Mathf.Clamp(_orbitPitch - look.y * _mouseSensitivity, -12f, 35f);
+                    }
+
                     _idleMouse = 0f;
                 }
 
@@ -406,16 +435,49 @@ namespace UberBagarre.World
             PlaceCamera(Time.deltaTime, false);
         }
 
+        /// <summary>La vue choisie : l'habitacle se montre de l'intérieur, la caméra s'approche des yeux.</summary>
+        private void ApplyView()
+        {
+            if (_car == null || _chaseCamera == null) return;
+            CarCockpit cockpit = _car.GetComponent<CarCockpit>();
+            bool inside = _view == View.Conducteur && cockpit != null && cockpit.Eye != null;
+            if (cockpit != null) cockpit.SetInside(inside);
+            _chaseCamera.nearClipPlane = inside ? 0.03f : _defaultNear;
+            _lookYaw = 0f;
+            _lookPitch = 0f;
+        }
+
         private void PlaceCamera(float dt, bool snap)
         {
+            CarCockpit cockpit = _car.GetComponent<CarCockpit>();
+            if (_view == View.Conducteur && cockpit != null && cockpit.Eye != null)
+            {
+                PlaceInside(cockpit, dt, snap);
+                return;
+            }
+
             Transform car = _car.transform;
             float speed = _car.ForwardSpeed;
             float speed01 = Mathf.Clamp01(Mathf.Abs(speed) / 30f);
+            bool far = _view == View.Eloignee;
 
-            // La caméra rattrape la voiture, sans la coller : un virage se voit.
+            // Le cap suivi : celui de la voiture, et en glisse un peu celui de la trajectoire — on
+            // voit la voiture partir de travers, comme dans GTA. En marche arrière, on ne fait pas
+            // volte-face.
             float carYaw = car.eulerAngles.y;
-            if (speed < -2f) carYaw = _followYaw;          // en marche arrière on ne fait pas volte-face
-            _followYaw = snap ? carYaw : Mathf.LerpAngle(_followYaw, carYaw, 1f - Mathf.Exp(-3.5f * dt));
+            Vector3 velocity = _car.Body != null ? _car.Body.linearVelocity : Vector3.zero;
+            Vector3 flat = new Vector3(velocity.x, 0f, velocity.z);
+            float targetYaw = carYaw;
+            if (speed > 3f && flat.sqrMagnitude > 9f)
+            {
+                float travel = Mathf.Atan2(flat.x, flat.z) * Mathf.Rad2Deg;
+                targetYaw = Mathf.LerpAngle(carYaw, travel, Mathf.Clamp01((flat.magnitude - 3f) / 8f) * 0.45f);
+            }
+
+            if (speed < -2f) targetYaw = _followYaw;
+            if (_lookBack) targetYaw = carYaw + 180f;
+            float lag = _lookBack ? 0.05f : Mathf.Lerp(0.3f, 0.16f, speed01);
+            _followYaw = snap ? targetYaw : Mathf.SmoothDampAngle(_followYaw, targetYaw, ref _yawVelocity, lag, 720f, dt);
 
             _idleMouse += dt;
             if (_idleMouse > 1.4f)
@@ -425,13 +487,28 @@ namespace UberBagarre.World
                 _orbitPitch = Mathf.Lerp(_orbitPitch, 0f, back);
             }
 
-            Quaternion rotation = Quaternion.Euler(_pitch + _orbitPitch, _followYaw + _orbitYaw, 0f);
-            Vector3 pivot = car.position + Vector3.up * _height;
-            float distance = Mathf.Lerp(_distance, _distance * 1.18f, speed01);
+            // Le point visé suit la voiture par un ressort : la caméra se laisse distancer à
+            // l'accélération et rattrape au freinage — on sent la poussée et le freinage.
+            Vector3 anchor = car.position + Vector3.up * (far ? 2.0f : _height);
+            if (snap)
+            {
+                _pivotPosition = anchor;
+                _pivotVelocity = Vector3.zero;
+            }
+            else
+            {
+                _pivotPosition = Vector3.SmoothDamp(_pivotPosition, anchor, ref _pivotVelocity, 0.07f, Mathf.Infinity, dt);
+                // Jamais trop loin derrière (un choc, une téléportation).
+                if ((_pivotPosition - anchor).sqrMagnitude > 4f) _pivotPosition = anchor + (_pivotPosition - anchor).normalized * 2f;
+            }
+
+            float pitch = (far ? _pitch + 4f : _pitch) - speed01 * 2f + _orbitPitch;
+            Quaternion rotation = Quaternion.Euler(pitch, _followYaw + _orbitYaw, 0f);
+            float distance = far ? Mathf.Lerp(7.6f, 8.8f, speed01) : Mathf.Lerp(_distance, _distance * 1.15f, speed01);
             Vector3 back3 = rotation * Vector3.back;
 
             // Un mur entre la voiture et la caméra : la caméra passe devant.
-            int count = Physics.SphereCastNonAlloc(pivot, 0.3f, back3, _hits, distance, ~0, QueryTriggerInteraction.Ignore);
+            int count = Physics.SphereCastNonAlloc(_pivotPosition, 0.3f, back3, _hits, distance, ~0, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < count; i++)
             {
                 Collider c = _hits[i].collider;
@@ -441,12 +518,59 @@ namespace UberBagarre.World
             }
 
             Transform cam = _chaseCamera.transform;
-            Vector3 position = pivot + back3 * distance;
-            cam.position = snap ? position : Vector3.Lerp(cam.position, position, 1f - Mathf.Exp(-18f * dt));
-            cam.rotation = Quaternion.LookRotation(pivot + car.forward * 1.2f - cam.position, Vector3.up);
+            Vector3 position = _pivotPosition + back3 * distance;
+            cam.position = snap ? position : Vector3.Lerp(cam.position, position, 1f - Mathf.Exp(-20f * dt));
+
+            // On regarde un peu devant la voiture, d'autant plus qu'elle va vite.
+            Vector3 lookAhead = car.forward * Mathf.Clamp(speed * 0.1f, -1f, 3f);
+            if (_lookBack) lookAhead = -car.forward * 1.5f;
+            Quaternion look = Quaternion.LookRotation(_pivotPosition + lookAhead + Vector3.up * -0.25f - cam.position, Vector3.up);
+            cam.rotation = look * Shake(speed01, dt);
 
             float fov = Mathf.Lerp(_fieldOfView.x, _fieldOfView.y, speed01 * speed01);
             _chaseCamera.fieldOfView = snap ? fov : Mathf.Lerp(_chaseCamera.fieldOfView, fov, 1f - Mathf.Exp(-3f * dt));
+        }
+
+        /// <summary>
+        /// La place du conducteur : la caméra aux yeux, qui roule avec la voiture ; la tête se
+        /// penche dans les virages et plonge au freinage (l'inertie du corps), le regard
+        /// accompagne le volant, la souris tourne la tête (elle revient d'elle-même).
+        /// </summary>
+        private void PlaceInside(CarCockpit cockpit, float dt, bool snap)
+        {
+            Transform car = _car.transform;
+            Vector3 velocity = _car.Body != null ? _car.Body.linearVelocity : Vector3.zero;
+            Vector3 accel = dt > 0f && !snap ? (velocity - _lastCarVelocity) / dt : Vector3.zero;
+            _lastCarVelocity = velocity;
+
+            Vector3 localAccel = car.InverseTransformDirection(accel);
+            Vector3 wanted = new Vector3(Mathf.Clamp(-localAccel.x * 0.004f, -0.05f, 0.05f), Mathf.Clamp(-localAccel.y * 0.002f, -0.03f, 0.03f),
+                Mathf.Clamp(-localAccel.z * 0.004f, -0.05f, 0.05f));
+            _headOffset = snap ? Vector3.zero : Vector3.Lerp(_headOffset, wanted, 1f - Mathf.Exp(-6f * dt));
+
+            _idleMouse += dt;
+            if (_idleMouse > 1.6f && !_lookBack)
+            {
+                float back = 1f - Mathf.Exp(-3f * dt);
+                _lookYaw = Mathf.LerpAngle(_lookYaw, 0f, back);
+                _lookPitch = Mathf.Lerp(_lookPitch, 0f, back);
+            }
+
+            float yaw = _lookBack ? 160f : _lookYaw + _car.WheelAngle * 0.35f;
+            Transform cam = _chaseCamera.transform;
+            cam.position = cockpit.Eye.position + car.TransformDirection(_headOffset);
+            cam.rotation = car.rotation * Quaternion.Euler(5f + _lookPitch, yaw, 0f) *
+                           Shake(Mathf.Clamp01(Mathf.Abs(_car.ForwardSpeed) / 30f) * 0.6f, dt);
+            _chaseCamera.fieldOfView = snap ? 64f : Mathf.Lerp(_chaseCamera.fieldOfView, 64f, 1f - Mathf.Exp(-4f * dt));
+        }
+
+        /// <summary>Un tremblement léger qui grandit avec la vitesse (la route qui passe sous les roues).</summary>
+        private static Quaternion Shake(float speed01, float dt)
+        {
+            float k = speed01 * speed01 * 0.22f;
+            if (k < 0.001f) return Quaternion.identity;
+            float t = Time.time * 13f;
+            return Quaternion.Euler((Mathf.PerlinNoise(t, 3.1f) - 0.5f) * k, (Mathf.PerlinNoise(7.7f, t) - 0.5f) * k, 0f);
         }
     }
 }

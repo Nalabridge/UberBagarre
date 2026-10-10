@@ -12,9 +12,9 @@ namespace UberBagarre.EditorTools
     /// </summary>
     public static partial class OpenWorldSceneBuilder
     {
-        // La circulation : surtout des berlines, des SUV, des pick-up et des compactes ; un coupé
-        // de temps en temps.
-        private static readonly string[] TrafficMix = { "Sedan", "SUV", "Shitbox", "Pickup", "Sedan", "Coupe", "SUV", "Shitbox", "Pickup", "Sedan" };
+        // La circulation : surtout des berlines et des compactes ; un SUV, un pick-up, un coupé de
+        // temps en temps (les gros gabarits partout faisaient une ville de camions).
+        private static readonly string[] TrafficMix = { "Sedan", "Shitbox", "Sedan", "SUV", "Shitbox", "Sedan", "Coupe", "Shitbox", "Pickup", "Sedan" };
         private static readonly string[] ParkedMix = { "Sedan", "Pickup", "Shitbox", "SUV", "Sedan", "Shitbox" };
 
         private static GameObject BuildCityTraffic(CityVehicles vehicles, List<Vector3[]> loops, int[] perLoop)

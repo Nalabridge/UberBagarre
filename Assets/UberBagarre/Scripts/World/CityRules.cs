@@ -21,7 +21,7 @@ namespace UberBagarre.World
         public const int MediumDetailLayer = 27;
 
         /// <summary>Version de la préparation : l'augmenter la fait refaire.</summary>
-        public const int PreparedVersion = 3;
+        public const int PreparedVersion = 4;
 
         /// <summary>
         /// Les murs de la démo : la ville d'origine était fermée par des murs invisibles et des
@@ -39,7 +39,47 @@ namespace UberBagarre.World
         {
             if (t == null || t.name != "Container" || t.parent == null) return false;
             string parent = t.parent.name.ToLowerInvariant();
-            return parent.Contains("door") && !parent.Contains("fence") && !parent.Contains("frame");
+            return parent.Contains("door") && !parent.Contains("fence") && !parent.Contains("frame") &&
+                   !parent.Contains("sliding");
+        }
+
+        /// <summary>
+        /// La baie vitrée d'une maison (« Sliding Glass Door ») : son battant (« Container »)
+        /// glisse entre les repères « Closed » et « Open » posés à côté. Prise pour un gond, elle
+        /// pivotait au milieu de la pièce et laissait la vitre fixe en place — une porte en double.
+        /// </summary>
+        public static bool IsSlidingGlassDoor(Transform t, out Transform closed, out Transform open)
+        {
+            closed = null;
+            open = null;
+            if (t == null || t.name != "Container" || t.parent == null) return false;
+
+            string parent = t.parent.name.ToLowerInvariant();
+            if (!parent.Contains("sliding") || !parent.Contains("door")) return false;
+            closed = t.parent.Find("Closed");
+            open = t.parent.Find("Open");
+            return closed != null && open != null;
+        }
+
+        /// <summary>
+        /// Un rendu « LOD1 », « LOD2 »… (par son nom) qu'aucun LODGroup ne gère : il se dessinait
+        /// en permanence par-dessus son LOD0 (lampadaires, poubelles, poutres en double).
+        /// </summary>
+        public static bool IsLodName(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return false;
+            int i = name.IndexOf("lod", System.StringComparison.OrdinalIgnoreCase);
+            while (i >= 0)
+            {
+                bool start = i == 0 || name[i - 1] == '_' || name[i - 1] == ' ' || name[i - 1] == '.' || name[i - 1] == '-';
+                int k = i + 3;
+                if (k < name.Length && name[k] == ' ') k++;
+                if (start && k < name.Length && name[k] >= '1' && name[k] <= '9' &&
+                    (k + 1 == name.Length || !char.IsLetterOrDigit(name[k + 1]))) return true;
+                i = name.IndexOf("lod", i + 3, System.StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
         }
 
         /// <summary>

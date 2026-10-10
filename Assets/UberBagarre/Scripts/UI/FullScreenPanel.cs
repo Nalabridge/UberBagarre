@@ -487,6 +487,9 @@ namespace UberBagarre.UI
 
         private static AudioClip Tone(string name, float from, float to, float duration, float level)
         {
+            AudioClip real = Core.SoundBank.Real("Interface/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(duration * Rate);
             float[] data = new float[length];
             float phase = 0f;
@@ -507,6 +510,9 @@ namespace UberBagarre.UI
         /// <summary>Tiroir-caisse : deux tintements clairs.</summary>
         private static AudioClip Cash()
         {
+            AudioClip real = Core.SoundBank.Real("Interface/caisse");
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(0.5f * Rate);
             float[] data = new float[length];
             float[] notes = { 1760f, 2637f };

@@ -35,6 +35,10 @@ namespace UberBagarre.World
             public bool front;
 
             [NonSerialized] public Vector3 rest;
+            [NonSerialized] public Vector3 origin;
+            [NonSerialized] public Vector3 contact;
+            [NonSerialized] public Vector3 normal;
+            [NonSerialized] public float compression;
             [NonSerialized] public float length;
             [NonSerialized] public bool grounded;
             [NonSerialized] public float load;
@@ -53,27 +57,66 @@ namespace UberBagarre.World
 
         [Header("Suspension")]
         [SerializeField, Min(0.05f)] private float _wheelRadius = 0.34f;
-        [SerializeField, Min(0.05f)] private float _travelUp = 0.22f;
-        [SerializeField, Min(0.05f)] private float _travelDown = 0.22f;
-        [SerializeField, Min(1000f)] private float _spring = 36000f;
-        [SerializeField, Min(100f)] private float _damper = 3800f;
-        [SerializeField] private Vector3 _centerOfMass = new Vector3(0f, 0.38f, 0.12f);
+        [SerializeField, Min(0.05f)] private float _travelUp = 0.16f;
+        [SerializeField, Min(0.05f)] private float _travelDown = 0.18f;
+
+        [SerializeField, Range(1f, 3.5f)]
+        [Tooltip("Frequence propre de la suspension (Hz) : 1,9 = berline ferme, 2,5 = sportive.")]
+        private float _suspensionFrequency = 1.9f;
+
+        [SerializeField, Range(0.1f, 1f)] private float _bumpDamping = 0.32f;
+        [SerializeField, Range(0.1f, 1f)] private float _reboundDamping = 0.55f;
+
+        [SerializeField, Range(0f, 1.5f)]
+        [Tooltip("Barres anti-roulis (fraction de la raideur d'un ressort).")]
+        private float _antiRollFront = 0.2f;
+
+        [SerializeField, Range(0f, 1.5f)] private float _antiRollRear = 0.1f;
+        [SerializeField] private Vector3 _centerOfMass = new Vector3(0f, 0.38f, 0.06f);
 
         [Header("Moteur et freins")]
         [SerializeField, Min(1f)] private float _maxSpeed = 32f;
         [SerializeField, Min(1f)] private float _reverseSpeed = 9f;
-        [SerializeField, Min(100f)] private float _engineForce = 9800f;
-        [SerializeField, Min(100f)] private float _brakeForce = 15000f;
-        [SerializeField, Min(0f)] private float _rollingResistance = 55f;
-        [SerializeField, Min(0f)] private float _airDrag = 0.42f;
+
+        [SerializeField, Min(100f)]
+        [Tooltip("Poussee de reference (N) : fixe la puissance du moteur avec la vitesse de pointe.")]
+        private float _engineForce = 9800f;
+
+        [SerializeField] private float[] _gearRatios = { 3.45f, 2.15f, 1.5f, 1.12f, 0.9f, 0.74f };
+        [SerializeField, Min(0.5f)] private float _finalDrive = 3.9f;
+        [SerializeField, Min(500f)] private float _idleRpm = 850f;
+        [SerializeField, Min(2000f)] private float _redline = 6600f;
+        [SerializeField, Min(1000f)] private float _peakRpm = 5200f;
 
         [Header("Direction et adherence")]
-        [SerializeField, Range(5f, 45f)] private float _maxSteer = 34f;
-        [SerializeField, Range(2f, 30f)] private float _highSpeedSteer = 9f;
-        [SerializeField, Min(0.5f)] private float _steerSpeed = 3.2f;
-        [SerializeField, Min(0.1f)] private float _grip = 1.25f;
-        [SerializeField, Range(0.05f, 1f)] private float _handbrakeRearGrip = 0.3f;
-        [SerializeField, Min(0f)] private float _downforce = 3.5f;
+        [SerializeField, Range(10f, 50f)] private float _maxSteer = 36f;
+
+        [SerializeField, Min(1f)]
+        [Tooltip("Vitesse (m/s) a laquelle le braquage maximal est divise par deux.")]
+        private float _steerFalloff = 13f;
+
+        [SerializeField, Range(2f, 20f)] private float _minSteer = 7.5f;
+        [SerializeField, Min(10f)] private float _steerRate = 110f;
+        [SerializeField, Min(0.1f)] private float _grip = 1.05f;
+        [SerializeField, Min(0.1f)] private float _rearGrip = 1.1f;
+        [SerializeField, Range(2f, 20f)] private float _tirePeakFront = 7.5f;
+        [SerializeField, Range(2f, 20f)] private float _tirePeakRear = 6f;
+        [SerializeField, Range(0f, 0.4f)] private float _loadSensitivity = 0.12f;
+        [SerializeField, Range(0.05f, 1f)] private float _handbrakeRearGrip = 0.5f;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Hauteur (fraction du centre de gravite) ou s'appliquent les forces des pneus.")]
+        private float _rollCenter = 0.05f;
+
+        [SerializeField, Min(0f)] private float _downforce = 0.6f;
+
+        [SerializeField, Range(0f, 1.5f)]
+        [Tooltip("Aide au contre-braquage (joueur) : les roues avant suivent la glisse.")]
+        private float _counterSteer = 0.85f;
+
+        [SerializeField, Range(0f, 2f)]
+        [Tooltip("Stabilite : amortit le lacet que le volant ne demande pas (sauf frein a main).")]
+        private float _stability = 0.6f;
 
         [Header("Feux")]
         [SerializeField] private Light[] _headlights = new Light[0];
@@ -95,6 +138,18 @@ namespace UberBagarre.World
         private float _rpm;
         private int _gear = 1;
         private float _shiftDip;
+        private float _shiftTimer;
+        private float _engineRpm;
+        private float _pedal;
+
+        // Suspension calculée au réveil (masse, fréquence, amortissement).
+        private float _spring;
+        private float _bump;
+        private float _rebound;
+        private float _peakTorque;
+        private float _drag;
+        private float _brakeTotal;
+        private float _rollResistance;
         private bool _occupied;
         private bool _autopilot;
         private float _upsideDownFor;
@@ -104,10 +159,6 @@ namespace UberBagarre.World
         private float _settledFor;
 
         private static readonly List<DrivableCar> _all = new List<DrivableCar>();
-        private static AudioClip _engineClip;
-        private static AudioClip _tireClip;
-        private static AudioClip _hornClip;
-        private static AudioClip _thumpClip;
 
         /// <summary>La voiture que le joueur conduit, ou null.</summary>
         public static DrivableCar Driven { get; private set; }
@@ -204,20 +255,70 @@ namespace UberBagarre.World
         /// <summary>Braquage maximal (degrés) à la vitesse actuelle : un volant à fond donne ça.</summary>
         public float SteerLimit
         {
+            get { return LockAt(ForwardSpeed); }
+        }
+
+        /// <summary>Le braquage maximal diminue avec la vitesse (comme une direction assistée).</summary>
+        private float LockAt(float speed)
+        {
+            return Mathf.Max(_minSteer, _maxSteer / (1f + Mathf.Abs(speed) / _steerFalloff));
+        }
+
+        /// <summary>Angle actuel des roues avant (degrés, + à droite) : le volant de l'habitacle le suit.</summary>
+        public float WheelAngle { get { return _steer; } }
+
+        /// <summary>Régime moteur en tours par minute (le son du moteur).</summary>
+        public float EngineRpm { get { return _engineRpm; } }
+
+        /// <summary>Zone rouge du moteur (tr/min).</summary>
+        public float Redline { get { return _redline; } }
+
+        /// <summary>Pédale d'accélérateur (0 à 1), coupée pendant un passage de rapport.</summary>
+        public float EngineLoad { get { return _shiftTimer > 0f ? 0f : _pedal; } }
+
+        /// <summary>Un rapport vient de passer (le son coupe et repart).</summary>
+        public float ShiftDip { get { return _shiftDip; } }
+
+        /// <summary>Le plus fort glissement des pneus au sol (m/s) : le crissement.</summary>
+        public float TireSlip
+        {
             get
             {
-                float speed01 = Mathf.Clamp01(Mathf.Abs(ForwardSpeed) / _maxSpeed);
-                return Mathf.Lerp(_maxSteer, _highSpeedSteer, speed01);
+                float slip = 0f;
+                for (int i = 0; i < _wheels.Length; i++)
+                {
+                    if (_wheels[i] != null && _wheels[i].grounded) slip = Mathf.Max(slip, _wheels[i].slip);
+                }
+
+                return slip;
             }
         }
 
+        public bool Handbrake { get { return _handbrake; } }
+
+        /// <summary>Freine (pédale ou frein à main) : les feux stop.</summary>
+        public bool Braking
+        {
+            get
+            {
+                float speed = ForwardSpeed;
+                return _handbrake || (_throttle > 0.05f && speed < -0.6f) || (_throttle < -0.05f && speed > 0.6f);
+            }
+        }
+
+        /// <summary>Quelqu'un tient le volant (le moteur tourne).</summary>
+        public bool EngineOn { get { return Driving; } }
+
         public float MaxSpeed { get { return _maxSpeed; } }
+
+        private float _wheelbase;
 
         /// <summary>Distance entre les essieux (mètres), mesurée sur les roues.</summary>
         public float Wheelbase
         {
             get
             {
+                if (_wheelbase > 0f) return _wheelbase;
                 float front = 0f, rear = 0f;
                 int nf = 0, nr = 0;
                 for (int i = 0; i < _wheels.Length; i++)
@@ -250,11 +351,7 @@ namespace UberBagarre.World
                     if (_headlights[i] != null) _headlights[i].enabled = value;
                 }
 
-                if (_engine != null)
-                {
-                    if (value && !_engine.isPlaying) _engine.Play();
-                    if (!value) _engine.Stop();
-                }
+                if (_audio != null) _audio.EngineRunning(value);
 
                 if (value && _body != null)
                 {
@@ -295,11 +392,7 @@ namespace UberBagarre.World
                     if (_headlights[i] != null) _headlights[i].enabled = value;
                 }
 
-                if (_engine != null)
-                {
-                    if (value && !_engine.isPlaying) _engine.Play();
-                    if (!value) _engine.Stop();
-                }
+                if (_audio != null) _audio.EngineRunning(value);
 
                 if (value)
                 {
@@ -323,6 +416,8 @@ namespace UberBagarre.World
             _body.linearDamping = 0.02f;
             _body.angularDamping = 0.6f;
 
+            Tune();
+
             // Le ressort est tendu pour qu'au repos, chargée de son propre poids, la roue soit
             // exactement là où le modèle la dessine.
             float sag = _body.mass * -Physics.gravity.y / Mathf.Max(1, _wheels.Length) / _spring;
@@ -334,6 +429,9 @@ namespace UberBagarre.World
                 w.rest = transform.InverseTransformPoint(w.pivot.position);
                 w.length = _travelUp + sag;
             }
+
+            _wheelbase = 0f;
+            _wheelbase = Wheelbase;
 
             _interactable = GetComponent<Interactable>();
             if (_interactable != null) _interactable.Activated += OnActivated;
@@ -450,9 +548,7 @@ namespace UberBagarre.World
 
         public void Honk(bool on)
         {
-            if (_horn == null) return;
-            if (on && !_horn.isPlaying) _horn.Play();
-            if (!on && _horn.isPlaying) _horn.Stop();
+            if (_audio != null) _audio.Honk(on);
         }
 
         /// <summary>
@@ -508,115 +604,334 @@ namespace UberBagarre.World
 
         // ------------------------------------------------------------------ physique
 
+        /// <summary>
+        /// Les grandeurs qui découlent de la masse : raideur des ressorts (fréquence propre),
+        /// amortisseurs (fraction de l'amortissement critique), couple du moteur (calé pour que la
+        /// vitesse de pointe soit celle du modèle), traînée, freins.
+        /// </summary>
+        private void Tune()
+        {
+            float mass = _body.mass;
+            float corner = mass / Mathf.Max(1, _wheels.Length);
+            float omega = 2f * Mathf.PI * _suspensionFrequency;
+            _spring = corner * omega * omega;
+            float critical = 2f * Mathf.Sqrt(_spring * corner);
+            _bump = _bumpDamping * critical;
+            _rebound = _reboundDamping * critical;
+
+            float peakPower = _engineForce * _maxSpeed * 0.62f;
+            _peakTorque = peakPower / (_peakRpm * 2f * Mathf.PI / 60f) / 0.93f;
+            _rollResistance = 0.012f * mass * 9.81f;
+            float wheelPower = peakPower * 0.88f;
+            _drag = Mathf.Max(0.25f, (wheelPower / _maxSpeed - _rollResistance) / (_maxSpeed * _maxSpeed));
+            _brakeTotal = 1.15f * mass * 9.81f;
+            _engineRpm = _idleRpm;
+        }
+
         private void FixedUpdate()
         {
             float dt = Time.fixedDeltaTime;
             if (Sleeping && !_occupied) return;
             if (Park(dt)) return;
 
+            Vector3 up = transform.up;
+            Vector3 forward = transform.forward;
+            Vector3 right = transform.right;
             float speed = ForwardSpeed;
-            float speed01 = Mathf.Clamp01(Mathf.Abs(speed) / _maxSpeed);
+            float mass = _body.mass;
+            float g = -Physics.gravity.y;
 
-            float steerLimit = Mathf.Lerp(_maxSteer, _highSpeedSteer, speed01);
-            _steer = Mathf.MoveTowards(_steer, _steerInput * steerLimit, _steerSpeed * steerLimit * dt);
-
-            int grounded = 0;
-            int driven = 0;
-            for (int i = 0; i < _wheels.Length; i++)
-            {
-                if (_wheels[i] != null && !_wheels[i].front) driven++;
-            }
-
-            driven = Mathf.Max(1, driven);
+            Steering(speed, up, forward, right, dt);
 
             // Gaz dans le sens de la marche = moteur ; à contre-sens = frein, puis marche
             // arrière une fois presque arrêté. Comme toutes les voitures de jeu.
             bool braking = (_throttle > 0.05f && speed < -0.6f) || (_throttle < -0.05f && speed > 0.6f);
-            float drive = 0f;
-            if (!braking && !_handbrake)
-            {
-                if (_throttle > 0f && speed < _maxSpeed) drive = _throttle * _engineForce * (1f - Mathf.Clamp01(speed / _maxSpeed) * 0.55f);
-                if (_throttle < 0f && speed > -_reverseSpeed) drive = _throttle * _engineForce * 0.55f;
-                drive *= 1f - _shiftDip;
-            }
+            float drive = Drivetrain(speed, dt);
+            if (braking || _handbrake) drive = 0f;
+            float brake = braking ? Mathf.Abs(_throttle) * _brakeTotal : 0f;
 
+            // --- suspension : la compression de chaque roue d'abord (les barres anti-roulis
+            // relient les deux roues d'un essieu)
+            int grounded = 0;
+            float reach = _travelUp + _travelDown + _wheelRadius;
             for (int i = 0; i < _wheels.Length; i++)
             {
                 Wheel w = _wheels[i];
                 if (w == null || w.pivot == null) continue;
 
-                Vector3 origin = transform.TransformPoint(w.rest + Vector3.up * _travelUp);
-                Vector3 down = -transform.up;
-                float reach = _travelUp + _travelDown + _wheelRadius;
-
+                w.origin = transform.TransformPoint(w.rest + Vector3.up * _travelUp);
                 RaycastHit hit;
-                w.grounded = Physics.Raycast(origin, down, out hit, reach, ~0, QueryTriggerInteraction.Ignore) &&
+                w.grounded = Physics.Raycast(w.origin, -up, out hit, reach, ~0, QueryTriggerInteraction.Ignore) &&
                              !hit.collider.transform.IsChildOf(transform);
 
                 if (!w.grounded)
                 {
+                    w.compression = 0f;
                     w.load = 0f;
                     w.slip = 0f;
                     continue;
                 }
 
                 grounded++;
+                w.contact = hit.point;
+                w.normal = hit.normal;
+                w.compression = Mathf.Max(0f, w.length - (hit.distance - _wheelRadius));
+            }
 
-                // --- suspension
-                float spring = hit.distance - _wheelRadius;
-                Vector3 pointVelocity = _body.GetPointVelocity(hit.point);
-                // Bornée : une roue qui tape un trottoir, un poteau ou le toit d'une autre voiture
-                // à pleine vitesse donnait une force d'amortisseur énorme — la voiture décollait,
-                // et plus rien ne l'arrêtait (« parti dans le ciel à 20 000 km/h »).
-                float compressionSpeed = Mathf.Clamp(-Vector3.Dot(pointVelocity, transform.up), -4f, 4f);
-                float force = (Mathf.Max(0f, w.length - spring)) * _spring + compressionSpeed * _damper;
-                float maxForce = _body.mass * -Physics.gravity.y * 2.5f;
-                force = Mathf.Clamp(force, 0f, maxForce);
+            float maxLoad = mass * g * 1.8f;
+            for (int i = 0; i < _wheels.Length; i++)
+            {
+                Wheel w = _wheels[i];
+                if (w == null || w.pivot == null || !w.grounded) continue;
+
+                Vector3 pointVelocity = _body.GetPointVelocity(w.contact);
+                // Bornée : une roue qui tape un trottoir à pleine vitesse ne fait pas décoller la voiture.
+                float closing = Mathf.Clamp(-Vector3.Dot(pointVelocity, up), -3f, 3f);
+                float damper = (closing > 0f ? _bump : _rebound) * closing;
+
+                Wheel other = Partner(i);
+                float antiRoll = other != null ? (w.front ? _antiRollFront : _antiRollRear) * _spring * (w.compression - other.compression) : 0f;
+
+                float force = Mathf.Clamp(w.compression * _spring + damper + antiRoll, 0f, maxLoad);
                 w.load = force;
-                _body.AddForceAtPosition(transform.up * force, origin);
+                _body.AddForceAtPosition(up * force, w.origin);
+            }
 
-                // --- pneus
-                Quaternion steerRotation = w.front ? Quaternion.AngleAxis(_steer, transform.up) : Quaternion.identity;
-                Vector3 forward = Vector3.ProjectOnPlane(steerRotation * transform.forward, hit.normal).normalized;
-                Vector3 right = Vector3.Cross(hit.normal, forward);
+            // --- pneus : angle de dérive, adhérence qui sature, cercle d'adhérence
+            Vector3 com = _body.worldCenterOfMass;
+            float baseLoad = mass * g / Mathf.Max(1, _wheels.Length);
+            float share = mass / Mathf.Max(1, _wheels.Length);
+            int drivenCount = 0;
+            for (int i = 0; i < _wheels.Length; i++)
+            {
+                if (_wheels[i] != null && !_wheels[i].front && _wheels[i].grounded) drivenCount++;
+            }
 
-                float lateral = Vector3.Dot(pointVelocity, right);
-                float longitudinal = Vector3.Dot(pointVelocity, forward);
+            for (int i = 0; i < _wheels.Length; i++)
+            {
+                Wheel w = _wheels[i];
+                if (w == null || w.pivot == null || !w.grounded || w.load <= 0f) continue;
 
-                float grip = _grip;
-                if (_handbrake && !w.front) grip *= _handbrakeRearGrip;
-                float limit = force * grip;
+                Vector3 pointVelocity = _body.GetPointVelocity(w.contact);
+                Quaternion steerRotation = w.front ? Quaternion.AngleAxis(_steer, up) : Quaternion.identity;
+                Vector3 tireForward = Vector3.ProjectOnPlane(steerRotation * forward, w.normal).normalized;
+                Vector3 tireRight = Vector3.Cross(w.normal, tireForward);
 
-                // L'impulsion qui annulerait le glissement latéral, bornée par l'adhérence :
-                // au-delà, le pneu glisse (et crisse).
-                float share = _body.mass / Mathf.Max(1, _wheels.Length);
-                float wanted = -lateral * share / dt;
-                float side = Mathf.Clamp(wanted, -limit, limit);
-                w.slip = Mathf.Abs(wanted) > limit ? Mathf.Abs(lateral) : 0f;
+                float lateral = Vector3.Dot(pointVelocity, tireRight);
+                float longitudinal = Vector3.Dot(pointVelocity, tireForward);
+                float slide = Mathf.Sqrt(lateral * lateral + longitudinal * longitudinal);
+
+                float mu = (w.front ? _grip : _rearGrip) * (1f - _loadSensitivity * (w.load / baseLoad - 1f));
+                if (_handbrake && !w.front && !_autopilot) mu *= _handbrakeRearGrip;
+                float limit = Mathf.Max(0f, mu) * w.load;
+
+                // Dérive : la courbe du pneu ; à l'arrêt (pas d'angle défini) un simple amortissement.
+                float alpha = Mathf.Atan2(lateral, Mathf.Max(Mathf.Abs(longitudinal), 0.5f));
+                float peak = (w.front ? _tirePeakFront : _tirePeakRear) * Mathf.Deg2Rad;
+                float curve = -limit * TireCurve(alpha, peak);
+                float damped = Mathf.Clamp(-lateral * share / dt * 0.6f, -limit, limit);
+                float blend = Mathf.Clamp01((slide - 1.5f) / 3.5f);
+                float side = Mathf.Lerp(damped, curve, blend);
 
                 float along = 0f;
-                if (!w.front) along += drive / driven;
-                // Frein dosé : la pédale à fond (le clavier) freine à fond ; la circulation dose.
-                if (braking) along -= Mathf.Sign(longitudinal) * _brakeForce * Mathf.Clamp01(Mathf.Abs(_throttle)) / _wheels.Length;
-                if (_handbrake && !w.front) along -= Mathf.Sign(longitudinal) * Mathf.Min(_brakeForce * 0.3f, Mathf.Abs(longitudinal) * share / dt);
-                along -= longitudinal * _rollingResistance / _wheels.Length;
+                if (!w.front && drivenCount > 0) along += drive / drivenCount;
+                if (braking)
+                {
+                    float bias = w.front ? 0.66f : 0.34f;
+                    along -= Mathf.Sign(longitudinal) * Mathf.Min(brake * bias * 0.5f, limit);
+                }
+
+                if (_handbrake && !w.front && !_autopilot)
+                {
+                    along -= Mathf.Sign(longitudinal) * Mathf.Min(0.35f * _brakeTotal * 0.5f, Mathf.Abs(longitudinal) * share / dt);
+                }
+
+                along -= Mathf.Abs(longitudinal) > 0.3f
+                    ? Mathf.Sign(longitudinal) * _rollResistance / _wheels.Length
+                    : longitudinal / 0.3f * _rollResistance / _wheels.Length;
+
                 // Garée, ou arrêtée par son conducteur (feu, bouchon) : elle ne roule pas toute seule.
                 if (!Driving || (_autopilot && _handbrake)) along -= Mathf.Clamp(longitudinal * share / dt, -limit, limit);
-                along = Mathf.Clamp(along, -limit * 1.1f, limit * 1.1f);
 
-                _body.AddForceAtPosition(right * side + forward * along, hit.point);
+                // Cercle d'adhérence : le freinage passe d'abord ; le moteur prend ce que le virage laisse.
+                if (braking || (_handbrake && !w.front))
+                {
+                    along = Mathf.Clamp(along, -limit, limit);
+                    float room = Mathf.Sqrt(Mathf.Max(0f, limit * limit - along * along));
+                    side = Mathf.Clamp(side, -room, room);
+                }
+                else
+                {
+                    side = Mathf.Clamp(side, -limit, limit);
+                    float room = Mathf.Sqrt(Mathf.Max(0f, limit * limit - side * side * 0.85f));
+                    along = Mathf.Clamp(along, -room, room);
+                }
+
+                w.slip = Mathf.Abs(side) >= limit * 0.98f ? Mathf.Abs(lateral) : Mathf.Abs(alpha) > peak * 1.3f ? Mathf.Abs(lateral) * 0.6f : 0f;
+                if (braking && Mathf.Abs(along) >= limit * 0.98f) w.slip = Mathf.Max(w.slip, Mathf.Abs(longitudinal) * 0.5f);
+
+                // Les forces des pneus s'appliquent un peu au-dessus du sol (centre de roulis) :
+                // posées au ras du sol, elles faisaient basculer la voiture dans les virages.
+                Vector3 application = w.contact + up * (Vector3.Dot(com - w.contact, up) * _rollCenter);
+                _body.AddForceAtPosition(tireRight * side + tireForward * along, application);
             }
 
             if (grounded > 0)
             {
                 Vector3 v = _body.linearVelocity;
-                _body.AddForce(-v * v.magnitude * _airDrag);
-                _body.AddForce(-transform.up * v.magnitude * v.magnitude * _downforce);
+                float sp = v.magnitude;
+                _body.AddForce(-v * sp * _drag);
+                _body.AddForce(-up * sp * sp * _downforce);
             }
 
+            Stabilize(grounded, speed, up, forward);
             LimitSpeed();
             TrackSafety(dt, grounded);
             SweepPedestrians(speed, dt);
+        }
+
+        /// <summary>
+        /// Le volant : braquage qui diminue avec la vitesse, retour au centre plus vif, et pour le
+        /// joueur une aide au contre-braquage — les roues avant suivent la glisse de l'arrière.
+        /// </summary>
+        private void Steering(float speed, Vector3 up, Vector3 forward, Vector3 right, float dt)
+        {
+            float lockAngle = LockAt(speed);
+            float assist = 0f;
+            if (_occupied && _counterSteer > 0f && speed > 3f)
+            {
+                Vector3 flat = Vector3.ProjectOnPlane(_body.linearVelocity, up);
+                if (flat.sqrMagnitude > 9f)
+                {
+                    float beta = Mathf.Atan2(Vector3.Dot(flat, right), Vector3.Dot(flat, forward)) * Mathf.Rad2Deg;
+                    assist = Mathf.Clamp(beta * _counterSteer, -lockAngle, lockAngle) * (1f - 0.6f * Mathf.Abs(_steerInput));
+                }
+            }
+
+            float target = _steerInput * lockAngle + assist;
+            float rate = _steerRate * (Mathf.Abs(target) < Mathf.Abs(_steer) ? 1.6f : 1f);
+            _steer = Mathf.MoveTowards(_steer, target, rate * dt);
+        }
+
+        /// <summary>
+        /// Moteur et boîte automatique : couple selon le régime, six rapports, embrayage qui patine
+        /// au démarrage, coupure au passage des rapports, frein moteur. Rend la poussée aux roues.
+        /// </summary>
+        private float Drivetrain(float speed, float dt)
+        {
+            float wheelRpm = Mathf.Abs(speed) / _wheelRadius * 60f / (2f * Mathf.PI);
+            bool reverse = _throttle < -0.05f && speed < 0.8f;
+            if (reverse) _gear = 0;
+            else if (_gear == 0 && (_throttle > 0.05f || speed > 0.5f)) _gear = 1;
+
+            int count = _gearRatios != null ? _gearRatios.Length : 0;
+            float ratio = (_gear == 0 || count == 0 ? 3.3f : _gearRatios[Mathf.Clamp(_gear - 1, 0, count - 1)]) * _finalDrive;
+            float rpm = wheelRpm * ratio;
+
+            _pedal = Driving ? (_gear == 0 ? Mathf.Max(0f, -_throttle) : Mathf.Max(0f, _throttle)) : 0f;
+            float launch = _idleRpm + (2600f - _idleRpm) * _pedal;
+            float engine = Mathf.Max(rpm, Mathf.Abs(speed) < 6f && _gear <= 1 ? launch : _idleRpm);
+            _engineRpm = Mathf.Lerp(_engineRpm, engine, 1f - Mathf.Exp(-14f * dt));
+            _rpm = Mathf.Clamp01(_engineRpm / _redline);
+
+            if (_shiftTimer > 0f)
+            {
+                _shiftTimer -= dt;
+            }
+            else if (_gear >= 1 && count > 0)
+            {
+                if (rpm > _redline * 0.93f && _gear < count)
+                {
+                    _gear++;
+                    _shiftTimer = 0.2f;
+                    _shiftDip = 1f;
+                }
+                else if (_gear > 1 && rpm < _redline * 0.38f)
+                {
+                    _gear--;
+                    _shiftTimer = 0.12f;
+                }
+            }
+
+            _shiftDip = Mathf.MoveTowards(_shiftDip, 0f, dt * 4f);
+            if (!Driving) return 0f;
+
+            float force = 0f;
+            if (_shiftTimer <= 0f) force = Torque(_engineRpm) * ratio * 0.88f / _wheelRadius * _pedal;
+
+            // Le pied levé : le moteur retient (pas en marche arrière, pas à l'arrêt).
+            if (_pedal < 0.05f && _gear >= 1 && Mathf.Abs(speed) > 0.5f)
+            {
+                force -= _engineRpm / _redline * 0.035f * _body.mass * 9.81f * Mathf.Sign(speed);
+            }
+
+            if (_gear == 0)
+            {
+                force = -force;
+                if (speed < -_reverseSpeed) force = 0f;
+            }
+
+            return force;
+        }
+
+        /// <summary>Le couple selon le régime : plein vers 5 000 tr/min, qui retombe après, coupé au rupteur.</summary>
+        private float Torque(float rpm)
+        {
+            float x = rpm / _peakRpm;
+            float t = x <= 1f ? 0.72f + 0.28f * Mathf.Sin(x * Mathf.PI * 0.5f) : 1f - 0.55f * Mathf.Pow(x - 1f, 1.2f);
+            if (rpm > _redline) t *= Mathf.Max(0f, 1f - (rpm - _redline) / 200f);
+            return _peakTorque * Mathf.Max(0f, t);
+        }
+
+        /// <summary>Courbe de pneu normalisée : montée jusqu'au pic de dérive, puis 90 % au-delà (glisse rattrapable).</summary>
+        private static float TireCurve(float alpha, float peak)
+        {
+            float x = Mathf.Abs(alpha) / Mathf.Max(0.01f, peak);
+            float y = x < 1f ? x * (2f - x) : 1f - 0.1f * Mathf.Min(1f, (x - 1f) * 0.5f);
+            return alpha < 0f ? -y : y;
+        }
+
+        /// <summary>La roue de l'autre côté du même essieu (barre anti-roulis).</summary>
+        private Wheel Partner(int index)
+        {
+            Wheel w = _wheels[index];
+            float side = transform.InverseTransformPoint(w.pivot.position).x;
+            for (int i = 0; i < _wheels.Length; i++)
+            {
+                Wheel o = _wheels[i];
+                if (i == index || o == null || o.pivot == null || o.front != w.front) continue;
+                float x = transform.InverseTransformPoint(o.pivot.position).x;
+                if (Mathf.Sign(x) != Mathf.Sign(side)) return o;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Les aides : au sol, le roulis au-delà de 9° est rappelé fermement (une voiture ne se
+        /// couche plus dans un virage serré ou sur un trottoir) ; le lacet que le volant ne demande
+        /// pas est amorti (sauf au frein à main : on peut toujours la faire tourner).
+        /// </summary>
+        private void Stabilize(int grounded, float speed, Vector3 up, Vector3 forward)
+        {
+            float mass = _body.mass;
+            if (grounded >= 2)
+            {
+                Vector3 r = transform.right;
+                float roll = Mathf.Atan2(r.y, up.y) * Mathf.Rad2Deg;
+                float excess = Mathf.Max(0f, Mathf.Abs(roll) - 9f);
+                float rollRate = Vector3.Dot(_body.angularVelocity, forward);
+                float k = 1800f * mass / 1380f;
+                float torque = -Mathf.Sign(roll) * excess * k - rollRate * 0.35f * k * (excess > 0f ? 1f : 0.15f);
+                _body.AddTorque(forward * torque);
+            }
+
+            if (grounded >= 3 && !_handbrake && Mathf.Abs(speed) > 4f && _stability > 0f)
+            {
+                float yawRate = Vector3.Dot(_body.angularVelocity, up);
+                float wanted = speed * Mathf.Tan(_steer * Mathf.Deg2Rad) / Mathf.Max(1.5f, Wheelbase);
+                _body.AddTorque(-up * (yawRate - wanted) * _stability * mass);
+            }
         }
 
         private readonly Collider[] _sweep = new Collider[8];
@@ -759,15 +1074,12 @@ namespace UberBagarre.World
             if (!Driving && _body.isKinematic) return;
             if (Sleeping && !_occupied) return;
 
-            float speed = ForwardSpeed;
-            UpdateWheels(speed, dt);
-            UpdateGearbox(speed, dt);
-            UpdateAudio(speed);
+            UpdateWheels(ForwardSpeed, dt);
+            if (_audio != null) _audio.Tick(dt);
 
             if (_brakeLight != null)
             {
-                bool braking = _handbrake || (_throttle > 0.05f && speed < -0.6f) || (_throttle < -0.05f && speed > 0.6f);
-                float target = !Driving ? 0f : braking ? _brakeLightIntensity : _brakeLightIntensity * 0.25f;
+                float target = !Driving ? 0f : Braking ? _brakeLightIntensity : _brakeLightIntensity * 0.25f;
                 _brakeLight.intensity = Mathf.MoveTowards(_brakeLight.intensity, target, dt * 12f);
                 _brakeLight.enabled = _brakeLight.intensity > 0.01f;
             }
@@ -775,22 +1087,14 @@ namespace UberBagarre.World
 
         private void UpdateWheels(float speed, float dt)
         {
+            float travel = _travelUp + _travelDown;
             for (int i = 0; i < _wheels.Length; i++)
             {
                 Wheel w = _wheels[i];
                 if (w == null || w.pivot == null) continue;
 
-                // Débattement : la roue suit le sol (reposée par le rayon de la physique).
-                Vector3 origin = transform.TransformPoint(w.rest + Vector3.up * _travelUp);
-                float travel = _travelUp + _travelDown;
-                RaycastHit hit;
-                float drop = travel;
-                if (Physics.Raycast(origin, -transform.up, out hit, travel + _wheelRadius, ~0, QueryTriggerInteraction.Ignore) &&
-                    !hit.collider.transform.IsChildOf(transform))
-                {
-                    drop = Mathf.Clamp(hit.distance - _wheelRadius, 0f, travel);
-                }
-
+                // Débattement : la roue suit le sol, d'après la compression calculée par la physique.
+                float drop = w.grounded ? Mathf.Clamp(w.length - w.compression, 0f, travel) : travel;
                 Vector3 wanted = transform.TransformPoint(w.rest + Vector3.up * (_travelUp - drop));
                 w.pivot.position = Vector3.Lerp(w.pivot.position, wanted, 1f - Mathf.Exp(-30f * dt));
                 w.pivot.rotation = transform.rotation * Quaternion.Euler(0f, w.front ? _steer : 0f, 0f);
@@ -799,63 +1103,6 @@ namespace UberBagarre.World
                 float spin = _handbrake && !w.front ? 0f : speed / _wheelRadius * Mathf.Rad2Deg;
                 w.angle = Mathf.Repeat(w.angle + spin * dt, 360f);
                 if (w.spin != null) w.spin.localRotation = Quaternion.Euler(w.angle, 0f, 0f);
-            }
-        }
-
-        /// <summary>Cinq rapports : le régime grimpe dans chacun, retombe au passage du suivant.</summary>
-        private void UpdateGearbox(float speed, float dt)
-        {
-            float s = Mathf.Abs(speed);
-            float[] tops = { 0.2f, 0.38f, 0.58f, 0.8f, 1.05f };
-
-            if (speed < -0.5f)
-            {
-                _gear = 0;
-            }
-            else
-            {
-                int gear = 1;
-                float fraction = s / _maxSpeed;
-                while (gear < tops.Length && fraction > tops[gear - 1]) gear++;
-                if (gear != _gear && _gear != 0 && gear > _gear) _shiftDip = 1f;
-                _gear = gear;
-            }
-
-            float low = _gear <= 1 ? 0f : tops[Mathf.Max(0, _gear - 2)];
-            float high = _gear == 0 ? _reverseSpeed / _maxSpeed : tops[Mathf.Clamp(_gear - 1, 0, tops.Length - 1)];
-            float within = Mathf.InverseLerp(low, high, s / _maxSpeed);
-
-            float idle = 0.12f;
-            float load = Mathf.Abs(_throttle);
-            float target = Mathf.Lerp(idle, 1f, within) * (0.8f + 0.2f * load);
-            if (Driving && load > 0.1f && s < 1f) target = Mathf.Max(target, 0.3f + 0.3f * load);
-
-            _rpm = Mathf.Lerp(_rpm, target, 1f - Mathf.Exp(-8f * dt));
-            _shiftDip = Mathf.MoveTowards(_shiftDip, 0f, dt * 4f);
-        }
-
-        private void UpdateAudio(float speed)
-        {
-            if (_engine != null && Driving)
-            {
-                _engine.pitch = Mathf.Lerp(0.55f, 1.9f, _rpm) * (1f - _shiftDip * 0.12f);
-                _engine.volume = Mathf.Lerp(0.28f, 0.62f, Mathf.Abs(_throttle)) * (0.75f + 0.25f * _rpm) *
-                                 (_occupied ? 1f : 0.55f) * Core.GameSettings.Volume(Core.AudioChannel.Effects);
-            }
-
-            if (_tires != null)
-            {
-                float slip = 0f;
-                for (int i = 0; i < _wheels.Length; i++)
-                {
-                    if (_wheels[i] != null && _wheels[i].grounded) slip = Mathf.Max(slip, _wheels[i].slip);
-                }
-
-                float volume = Mathf.Clamp01((slip - 2f) / 6f) * 0.7f * Core.GameSettings.Volume(Core.AudioChannel.Effects);
-                if (_handbrake && Mathf.Abs(speed) > 4f) volume = Mathf.Max(volume, 0.45f * Core.GameSettings.Volume(Core.AudioChannel.Effects));
-                _tires.volume = Mathf.MoveTowards(_tires.volume, volume, Time.deltaTime * 3f);
-                if (_tires.volume > 0.01f && !_tires.isPlaying) _tires.Play();
-                if (_tires.volume <= 0.01f && _tires.isPlaying) _tires.Stop();
             }
         }
 
@@ -871,132 +1118,19 @@ namespace UberBagarre.World
                 if (fresh && _occupied && impact > 6f) Crimes.Report(Crime.Delit, walker.transform.position, walker.gameObject);
             }
 
-            if (_impacts == null || impact < 2.5f) return;
-            _impacts.pitch = UnityEngine.Random.Range(0.8f, 1.1f);
-            _impacts.PlayOneShot(_thumpClip, Mathf.Clamp01(impact / 14f) * Core.GameSettings.Volume(Core.AudioChannel.Effects));
+            if (_audio != null && impact >= 2.5f) _audio.Crash(impact, collision.contactCount > 0 ? collision.GetContact(0).point : transform.position);
         }
 
-        // ------------------------------------------------------------------ sons fabriqués
+        // ------------------------------------------------------------------ son
 
+        private CarAudio _audio;
+
+        /// <summary>Le son de la voiture : moteur, pneus, klaxon, chocs (voir <see cref="CarAudio"/>).</summary>
         private void SetupAudio()
         {
-            BuildClips();
-
-            if (_engine != null)
-            {
-                _engine.clip = _engineClip;
-                _engine.loop = true;
-                _engine.playOnAwake = false;
-                _engine.spatialBlend = 0.85f;
-            }
-
-            if (_tires != null)
-            {
-                _tires.clip = _tireClip;
-                _tires.loop = true;
-                _tires.playOnAwake = false;
-                _tires.volume = 0f;
-                _tires.spatialBlend = 0.85f;
-            }
-
-            if (_horn != null)
-            {
-                _horn.clip = _hornClip;
-                _horn.loop = true;
-                _horn.playOnAwake = false;
-                _horn.spatialBlend = 0.8f;
-            }
-
-            if (_impacts != null)
-            {
-                _impacts.playOnAwake = false;
-                _impacts.spatialBlend = 0.85f;
-            }
-        }
-
-        private static void BuildClips()
-        {
-            const int rate = 22050;
-            System.Random random = new System.Random(71);
-
-            if (_engineClip == null)
-            {
-                // Un quatre cylindres au ralenti : une fondamentale à 40 Hz (deux explosions par
-                // tour à 1200 tr/min), ses harmoniques, un souffle d'échappement. Une seconde
-                // entière : toutes les fréquences y font un nombre entier de périodes, la boucle
-                // ne claque pas.
-                float[] data = new float[rate];
-                float noise = 0f;
-                for (int i = 0; i < data.Length; i++)
-                {
-                    float t = i / (float)rate;
-                    float v = 0f;
-                    v += Mathf.Sin(2f * Mathf.PI * 40f * t) * 0.55f;
-                    v += Mathf.Sin(2f * Mathf.PI * 80f * t + 0.6f) * 0.32f;
-                    v += Mathf.Sin(2f * Mathf.PI * 120f * t + 1.1f) * 0.18f;
-                    v += Mathf.Sin(2f * Mathf.PI * 160f * t + 0.3f) * 0.12f;
-                    v += Mathf.Sin(2f * Mathf.PI * 20f * t) * 0.2f;
-                    noise = noise * 0.93f + ((float)random.NextDouble() * 2f - 1f) * 0.07f;
-                    float pulse = 0.6f + 0.4f * Mathf.Abs(Mathf.Sin(2f * Mathf.PI * 40f * t));
-                    data[i] = Mathf.Clamp((v * 0.5f + noise * 1.6f) * pulse, -1f, 1f) * 0.8f;
-                }
-
-                _engineClip = AudioClip.Create("Moteur (synthese)", data.Length, 1, rate, false);
-                _engineClip.SetData(data, 0);
-            }
-
-            if (_tireClip == null)
-            {
-                float[] data = new float[rate];
-                float a = 0f, b = 0f;
-                for (int i = 0; i < data.Length; i++)
-                {
-                    float white = (float)random.NextDouble() * 2f - 1f;
-                    a = a * 0.6f + white * 0.4f;
-                    b = b * 0.97f + a * 0.03f;
-                    float t = i / (float)rate;
-                    float squeal = Mathf.Sin(2f * Mathf.PI * 900f * t + Mathf.Sin(2f * Mathf.PI * 7f * t) * 3f) * 0.25f;
-                    data[i] = Mathf.Clamp((a - b) * 0.8f + squeal, -1f, 1f) * 0.6f;
-                }
-
-                _tireClip = AudioClip.Create("Pneus (synthese)", data.Length, 1, rate, false);
-                _tireClip.SetData(data, 0);
-            }
-
-            if (_hornClip == null)
-            {
-                // Deux tons (fa dièse et la dièse), un peu carrés : le klaxon des vieilles berlines.
-                float[] data = new float[rate / 2];
-                for (int i = 0; i < data.Length; i++)
-                {
-                    float t = i / (float)rate;
-                    float v = Mathf.Sign(Mathf.Sin(2f * Mathf.PI * 370f * t)) * 0.5f +
-                              Mathf.Sign(Mathf.Sin(2f * Mathf.PI * 466f * t)) * 0.5f;
-                    data[i] = v * 0.28f;
-                }
-
-                _hornClip = AudioClip.Create("Klaxon (synthese)", data.Length, 1, rate, false);
-                _hornClip.SetData(data, 0);
-            }
-
-            if (_thumpClip == null)
-            {
-                float[] data = new float[rate * 2 / 5];
-                float low = 0f;
-                for (int i = 0; i < data.Length; i++)
-                {
-                    float t = i / (float)rate;
-                    float white = (float)random.NextDouble() * 2f - 1f;
-                    low = low * 0.9f + white * 0.1f;
-                    float envelope = Mathf.Exp(-t * 14f);
-                    float body = Mathf.Sin(2f * Mathf.PI * (70f - t * 60f) * t) * 0.9f;
-                    float rattle = white * Mathf.Exp(-t * 30f) * 0.5f;
-                    data[i] = Mathf.Clamp((body + low * 2f) * envelope + rattle, -1f, 1f) * 0.9f;
-                }
-
-                _thumpClip = AudioClip.Create("Choc (synthese)", data.Length, 1, rate, false);
-                _thumpClip.SetData(data, 0);
-            }
+            _audio = GetComponent<CarAudio>();
+            if (_audio == null) _audio = gameObject.AddComponent<CarAudio>();
+            _audio.Bind(this, _engine, _tires, _horn, _impacts);
         }
     }
 }

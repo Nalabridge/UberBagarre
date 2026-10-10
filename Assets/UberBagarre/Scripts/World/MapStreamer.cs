@@ -481,6 +481,14 @@ namespace UberBagarre.World
                     if (CityRules.IsSlidingPanel(t, out closed, out open))
                     {
                         SlidingDoor.Install(t, closed, open, SlidingSound(t));
+                        continue;
+                    }
+
+                    // Baie vitrée d'une maison : elle glisse (E), et se verrouille comme une porte.
+                    if (CityRules.IsSlidingGlassDoor(t, out closed, out open))
+                    {
+                        string glass = CityRules.PathOf(t);
+                        if (!Doors.ContainsKey(glass)) Doors[glass] = SwingDoor.InstallSliding(t, closed, open);
                     }
                 }
             }
@@ -494,6 +502,8 @@ namespace UberBagarre.World
                 if (!Doors.ContainsKey(path)) Doors[path] = SwingDoor.Install(hinges[i], _doorAngle, false);
                 if (hinges[i].gameObject.activeInHierarchy) live.Add(hinges[i]);
             }
+
+            PairDoubleDoors(live);
 
             for (int i = 0; i < statics.Count; i++)
             {
@@ -521,6 +531,66 @@ namespace UberBagarre.World
             }
 
             return blockers;
+        }
+
+        /// <summary>
+        /// Les portes doubles (le restaurant de tacos, l'agence immobilière…) : deux battants côte
+        /// à côte, dans le même plan, gonds aux deux bouts. Ouvrir l'un laissait l'autre fermé —
+        /// « une porte en double qui ne s'ouvre pas ». On les apparie : ils bougent ensemble.
+        /// </summary>
+        private static int PairDoubleDoors(List<Transform> live)
+        {
+            List<SwingDoor> doors = new List<SwingDoor>(live.Count);
+            List<Bounds> leaves = new List<Bounds>(live.Count);
+            for (int i = 0; i < live.Count; i++)
+            {
+                SwingDoor door = live[i] != null ? live[i].GetComponent<SwingDoor>() : null;
+                if (door == null) continue;
+                doors.Add(door);
+                leaves.Add(door.LeafBounds);
+            }
+
+            int pairs = 0;
+            for (int a = 0; a < doors.Count; a++)
+            {
+                if (doors[a].Partner != null) continue;
+                Bounds la = leaves[a];
+                bool thinX = la.size.x < la.size.z;
+
+                SwingDoor best = null;
+                float bestGap = float.MaxValue;
+                for (int b = 0; b < doors.Count; b++)
+                {
+                    if (b == a || doors[b].Partner != null) continue;
+                    Bounds lb = leaves[b];
+                    if (thinX != lb.size.x < lb.size.z) continue;
+                    if (Mathf.Abs(la.center.y - lb.center.y) > 0.25f) continue;
+
+                    // Même plan (l'épaisseur), côte à côte (la largeur d'un battant), gonds aux deux bouts.
+                    float plane = thinX ? Mathf.Abs(la.center.x - lb.center.x) : Mathf.Abs(la.center.z - lb.center.z);
+                    if (plane > 0.3f) continue;
+                    float centers = new Vector2(la.center.x - lb.center.x, la.center.z - lb.center.z).magnitude;
+                    float width = thinX ? Mathf.Max(la.size.z, lb.size.z) : Mathf.Max(la.size.x, lb.size.x);
+                    if (centers > width * 1.45f || centers < width * 0.6f) continue;
+                    Vector3 ha = doors[a].transform.position;
+                    Vector3 hb = doors[b].transform.position;
+                    float hinges = new Vector2(ha.x - hb.x, ha.z - hb.z).magnitude;
+                    if (hinges < centers + width * 0.5f) continue;
+
+                    if (centers < bestGap)
+                    {
+                        bestGap = centers;
+                        best = doors[b];
+                    }
+                }
+
+                if (best == null) continue;
+                SwingDoor.Pair(doors[a], best);
+                pairs++;
+            }
+
+            if (pairs > 0) Debug.Log("[UberBagarre] " + pairs + " portes doubles : leurs deux battants s'ouvrent ensemble.");
+            return pairs;
         }
 
         private static bool NearHinge(Vector3 at, List<Transform> hinges)

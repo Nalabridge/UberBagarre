@@ -381,6 +381,9 @@ namespace UberBagarre.Story
         /// <summary>Souffle de coupe : un bruit filtré dont la hauteur monte puis retombe.</summary>
         private static AudioClip Whoosh()
         {
+            AudioClip real = Core.SoundBank.Real("Cinematique/coupe");
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(0.45f * SampleRate);
             float[] data = new float[length];
             System.Random random = new System.Random(5);
@@ -407,6 +410,9 @@ namespace UberBagarre.Story
         /// <summary>Coup sourd : une grosse caisse de cinéma, un sinus qui plonge.</summary>
         private static AudioClip Boom()
         {
+            AudioClip real = Core.SoundBank.Real("Cinematique/coup_sourd");
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(0.9f * SampleRate);
             float[] data = new float[length];
             System.Random random = new System.Random(9);

@@ -362,6 +362,9 @@ namespace UberBagarre.World
         /// <summary>Un clic métallique bref (le son du crochet, d'une goupille, d'une casse).</summary>
         private static AudioClip Click(string name, float frequency, float seconds, float level)
         {
+            AudioClip real = Core.SoundBank.Real("Vol/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = Mathf.Max(32, (int)(rate * seconds));
             float[] data = new float[length];

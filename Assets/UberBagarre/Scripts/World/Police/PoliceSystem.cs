@@ -180,7 +180,7 @@ namespace UberBagarre.World
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            if (_radioClip != null) Destroy(_radioClip);
+            Core.SoundBank.Release(_radioClip);
         }
 
         private void Start()
@@ -547,11 +547,41 @@ namespace UberBagarre.World
             return officer;
         }
 
+        private readonly Collider[] _spawnHits = new Collider[16];
+
+        /// <summary>
+        /// Une voiture de patrouille, posée sur la chaussée dans le sens de la voie (vers le
+        /// joueur) et à une place libre : elle n'apparaît plus dans une voiture garée, dans la
+        /// circulation ou dans un mur. Sans place libre, elle attend le passage suivant.
+        /// </summary>
         private void SpawnCar()
         {
-            Vector3 at = SpawnPoint(_carSpawns, 55f, 95f);
-            Vector3 toPlayer = Flat(PlayerPosition - at);
-            Quaternion rotation = toPlayer.sqrMagnitude > 0.01f ? Quaternion.LookRotation(toPlayer.normalized) : Quaternion.identity;
+            Vector3 at = Vector3.zero;
+            Quaternion rotation = Quaternion.identity;
+            bool found = false;
+            for (int attempt = 0; attempt < 8 && !found; attempt++)
+            {
+                at = SpawnPoint(_carSpawns, 55f, 95f);
+                Vector3 toPlayer = Flat(PlayerPosition - at);
+                Vector3 lanePoint;
+                Vector3 tangent;
+                Vector3 heading = toPlayer.sqrMagnitude > 0.01f ? toPlayer.normalized : Vector3.forward;
+                if (TrafficSystem.NearestLane(at, 12f, out lanePoint, out tangent))
+                {
+                    at = new Vector3(lanePoint.x, at.y, lanePoint.z);
+                    heading = Vector3.Dot(tangent, toPlayer) >= 0f ? tangent : -tangent;
+                }
+
+                heading.y = 0f;
+                rotation = Quaternion.LookRotation(heading.sqrMagnitude > 1e-4f ? heading.normalized : Vector3.forward);
+                found = ClearForCar(at, rotation);
+            }
+
+            if (!found)
+            {
+                _nextSpawn = Time.time + 1f;
+                return;
+            }
 
             GameObject go = Instantiate(_carTemplate, at + Vector3.up * 0.3f, rotation, transform);
             go.name = "Voiture de police";
@@ -560,6 +590,23 @@ namespace UberBagarre.World
             if (car == null) car = go.AddComponent<PoliceCar>();
             car.Begin(this);
             _cars.Add(car);
+        }
+
+        /// <summary>La place d'une voiture est-elle libre (rien au-dessus de la chaussée) ?</summary>
+        private bool ClearForCar(Vector3 at, Quaternion rotation)
+        {
+            int count = Physics.OverlapBoxNonAlloc(at + Vector3.up * 1.2f, new Vector3(1.3f, 0.85f, 3f), _spawnHits, rotation, ~0,
+                QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                Collider c = _spawnHits[i];
+                if (c == null) continue;
+                // Le sol en pente qui dépasse un peu dans la boîte ne compte pas.
+                if (c is TerrainCollider) continue;
+                return false;
+            }
+
+            return true;
         }
 
         // ------------------------------------------------------------------ interpellation
@@ -844,6 +891,9 @@ namespace UberBagarre.World
         /// <summary>Le grésillement bref d'une radio de police.</summary>
         private static AudioClip RadioClip()
         {
+            AudioClip real = Core.SoundBank.Real("Police/radio");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = rate / 3;
             float[] data = new float[length];

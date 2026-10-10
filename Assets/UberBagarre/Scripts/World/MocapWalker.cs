@@ -90,6 +90,14 @@ namespace UberBagarre.World
         // Bloqué sans avancer : on finit par prendre le point suivant du trajet.
         private Vector3 _progressFrom;
         private float _progressTimer;
+        private float _blockedFor;
+
+        // La bulle autour du joueur : loin et hors de vue, le passant revient près de lui.
+        private const float DespawnDistance = 130f;
+        private static readonly Vector2 SpawnRing = new Vector2(35f, 105f);
+        private bool _culled;
+        private float _nextRecycle;
+        private Renderer[] _renderers;
 
         // Personnalité : posture, curiosité, sociabilité, couche-tard.
         private float _posture;
@@ -223,6 +231,7 @@ namespace UberBagarre.World
             }
 
             _progressFrom = transform.position;
+            _nextRecycle = Time.time + Random.value * 2f;
             BuildGraph();
 
             if (_locomotion != null) _locomotion.enabled = !_animated;
@@ -301,6 +310,8 @@ namespace UberBagarre.World
 
             UpdateRest(position);
             if (_resting) return;
+
+            if (Recycle(position)) return;
 
             if (_downStage != 0)
             {
@@ -395,6 +406,15 @@ namespace UberBagarre.World
 
             _body.MovePosition(next);
             Face(_heading, 1f - Mathf.Exp(-8f * dt));
+
+            // Barré des deux côtés (un mur, une voiture garée en travers) : il ne reste pas planté
+            // le nez contre l'obstacle, il prend le point suivant de son trajet.
+            _blockedFor = _blocked && !paused ? _blockedFor + dt : 0f;
+            if (_blockedFor > 1.6f)
+            {
+                _blockedFor = 0f;
+                SkipAhead(position);
+            }
 
             // Coincé (un mur que le trajet traverse, une foule) : il prend le point suivant.
             if (!paused && wanted > 0.2f)
@@ -547,7 +567,7 @@ namespace UberBagarre.World
             for (int i = 0; i < Walkers.Count; i++)
             {
                 MocapWalker other = Walkers[i];
-                if (other == null || other == this || other._resting || other.IsDown) continue;
+                if (other == null || other == this || other._resting || other._culled || other.IsDown) continue;
                 if (other == _partner) continue;
                 AvoidPerson(position, myVelocity, right, other.transform.position, other._heading * other._currentSpeed);
             }
@@ -699,7 +719,7 @@ namespace UberBagarre.World
             for (int i = 0; i < Walkers.Count; i++)
             {
                 MocapWalker other = Walkers[i];
-                if (other == null || other == this || !other._sociable || other._oneWay || other._resting || other.IsDown) continue;
+                if (other == null || other == this || !other._sociable || other._oneWay || other._resting || other._culled || other.IsDown) continue;
                 if (other._activity != Activity.None || other._pause > 0f || other._partner != null) continue;
 
                 Vector3 offset = Flat(other.transform.position - position);
@@ -866,6 +886,102 @@ namespace UberBagarre.World
             EndActivity();
         }
 
+        // ------------------------------------------------------------------ la bulle autour du joueur
+
+        /// <summary>
+        /// Seuls les passants autour du joueur existent vraiment : loin (130 m) et hors de vue,
+        /// on le remet sur son trajet entre 35 et 105 m du joueur, hors de l'écran, là où
+        /// personne n'est déjà ; sans place, il disparaît (aucun calcul) et réessaie. Vrai tant
+        /// qu'il est caché.
+        /// </summary>
+        private bool Recycle(Vector3 position)
+        {
+            if (_oneWay || _downStage != 0) return false;
+            if (Time.time < _nextRecycle) return _culled;
+            _nextRecycle = Time.time + 0.7f + Random.value * 0.5f;
+
+            Transform viewer = TrafficDriver.Player;
+            if (viewer == null && Camera.main != null) viewer = Camera.main.transform;
+            if (viewer == null) return _culled;
+
+            Vector3 player = viewer.position;
+            if (!_culled)
+            {
+                if (Flat(position - player).magnitude <= DespawnDistance || Visible(position)) return false;
+            }
+
+            int index;
+            if (FindSpawn(player, out index))
+            {
+                Vector3 p = _path[index];
+                _body.position = p;
+                transform.position = p;
+                _next = Advance(index);
+                Vector3 heading = Flat(_path[_next] - p);
+                _heading = heading.sqrMagnitude > 1e-4f ? heading.normalized : _heading;
+                Face(_heading, 1f);
+                _hasGround = false;
+                _pause = 0f;
+                EndActivity();
+                _progressFrom = p;
+                _progressTimer = 0f;
+                _blockedFor = 0f;
+                SetCulled(false);
+                return false;
+            }
+
+            SetCulled(true);
+            return true;
+        }
+
+        private bool FindSpawn(Vector3 player, out int index)
+        {
+            index = -1;
+            int count = _path.Length;
+            int offset = Random.Range(0, count);
+            for (int k = 0; k < count; k++)
+            {
+                int i = (k + offset) % count;
+                Vector3 p = _path[i];
+                float d = Flat(p - player).magnitude;
+                if (d < SpawnRing.x || d > SpawnRing.y) continue;
+                if (NearCamera(p, 120f) && Visible(p)) continue;
+
+                bool taken = false;
+                for (int w = 0; w < Walkers.Count && !taken; w++)
+                {
+                    MocapWalker other = Walkers[w];
+                    if (other == null || other == this || other._culled) continue;
+                    if (Flat(other.transform.position - p).sqrMagnitude < 2.5f * 2.5f) taken = true;
+                }
+
+                if (taken) continue;
+                index = i;
+                return true;
+            }
+
+            return false;
+        }
+
+        private void SetCulled(bool culled)
+        {
+            if (_culled == culled) return;
+            _culled = culled;
+            if (_renderers == null) _renderers = GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < _renderers.Length; i++)
+            {
+                if (_renderers[i] != null) _renderers[i].enabled = !culled && !_resting;
+            }
+
+            if (_collider != null) _collider.enabled = !culled && !_resting;
+            if (culled && _phone != null) _phone.SetActive(false);
+            if (_animated && _graph.IsValid())
+            {
+                if (culled) _graph.Stop();
+                else _graph.Play();
+            }
+        }
+
         // ------------------------------------------------------------------ la nuit
 
         /// <summary>La nuit, la plupart rentrent chez eux (ils disparaissent hors de vue, reviennent au matin).</summary>
@@ -892,8 +1008,8 @@ namespace UberBagarre.World
         {
             _resting = resting;
             Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
-            for (int i = 0; i < renderers.Length; i++) renderers[i].enabled = !resting;
-            if (_collider != null) _collider.enabled = !resting;
+            for (int i = 0; i < renderers.Length; i++) renderers[i].enabled = !resting && !_culled;
+            if (_collider != null) _collider.enabled = !resting && !_culled;
             if (_phone != null) _phone.SetActive(false);
             if (resting) EndActivity();
         }
@@ -1016,7 +1132,7 @@ namespace UberBagarre.World
         private void Update()
         {
             UpdateDown(Time.deltaTime);
-            if (_resting) return;
+            if (_resting || _culled) return;
 
             // Le mélange marche / attente suit la vitesse, sans « patiner » au démarrage.
             float walk = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.05f, 0.75f, _currentSpeed));
@@ -1046,7 +1162,7 @@ namespace UberBagarre.World
         /// </summary>
         private void LateUpdate()
         {
-            if (_rig == null || _resting || _downStage != 0) return;
+            if (_rig == null || _resting || _culled || _downStage != 0) return;
             Vector3 position = transform.position;
             if (!NearCamera(position, 60f)) return;
 

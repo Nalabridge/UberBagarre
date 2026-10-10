@@ -470,6 +470,9 @@ namespace UberBagarre.World
         /// <summary>Trois coups de phalanges sur du bois.</summary>
         private static AudioClip KnockClip()
         {
+            AudioClip real = Core.SoundBank.Real("Portes/toc");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = (int)(rate * 0.7f);
             float[] data = new float[length];

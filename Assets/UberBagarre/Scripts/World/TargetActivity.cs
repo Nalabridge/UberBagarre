@@ -618,6 +618,9 @@ namespace UberBagarre.World
 
         private static AudioClip Murmur(bool angry)
         {
+            AudioClip real = Core.SoundBank.Real(angry ? "Rue/engueulade" : "Rue/conversation");
+            if (real != null) return real;
+
             const int rate = 16000;
             int length = rate * 4;
             float[] data = new float[length];
@@ -644,6 +647,9 @@ namespace UberBagarre.World
 
         private static AudioClip Hiss()
         {
+            AudioClip real = Core.SoundBank.Real("Rue/bombe_peinture");
+            if (real != null) return real;
+
             const int rate = 16000;
             int length = rate;
             float[] data = new float[length];

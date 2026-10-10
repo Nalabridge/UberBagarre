@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UberBagarre.Combat;
 using UnityEngine;
 
@@ -35,9 +36,12 @@ namespace UberBagarre.World
         [SerializeField] private int _startIndex;
         [SerializeField, Min(2f)] private float _cruise = 11f;
 
+        [Header("Bulle autour du joueur")]
         [SerializeField]
-        [Tooltip("Au-dela, la physique s'endort et la voiture glisse sur sa route.")]
-        private float _sleepDistance = 150f;
+        [Tooltip("Au-dela (et hors de vue), la voiture est recyclee pres du joueur.")]
+        private float _despawnDistance = 210f;
+
+        [SerializeField] private Vector2 _spawnRing = new Vector2(70f, 165f);
 
         [SerializeField]
         [Tooltip("Le corps du conducteur (cache quand le joueur prend la voiture).")]
@@ -58,7 +62,24 @@ namespace UberBagarre.World
         private float _wheelbase = 2.7f;
         private float _groundOffset;
 
-        private bool _asleep;
+        private bool _hidden;
+        private float _nextRecycle;
+
+        // Caractère et réactions.
+        private float _baseCruise;
+        private float _baseHeadway = 1f;
+        private float _shockedUntil;
+        private float _fleeUntil;
+        private float _yieldUntil;
+        private float _lastHornSeen;
+        private Vector3 _hornFrom;
+
+        // Le dernier coup de klaxon du joueur (voir NotifyHorn).
+        private static float _hornAt = -10f;
+        private static Vector3 _hornPosition;
+        private static Vector3 _hornForward;
+        private Renderer[] _renderers;
+        private Collider[] _colliders;
         private float _sensorTimer;
         private float _turningFor;
         private float _lostFor;
@@ -124,11 +145,20 @@ namespace UberBagarre.World
                 return;
             }
 
+            // Chacun conduit à sa façon : un sur quatre prudent (plus lent, garde ses distances),
+            // un sur cinq pressé (plus vite, colle un peu), les autres entre les deux.
+            System.Random temper = new System.Random(name.GetHashCode());
+            double roll = temper.NextDouble();
+            float pace = roll < 0.25 ? 0.88f : roll > 0.8 ? 1.14f : 0.96f + (float)temper.NextDouble() * 0.1f;
+            _baseHeadway = roll < 0.25 ? 1.35f : roll > 0.8 ? 0.78f : 1f;
+            _baseCruise = _cruise * pace;
+
             _agent = new TrafficAgent
             {
                 Id = GetInstanceID(),
                 HalfLength = _halfLength,
-                Cruise = _cruise,
+                Cruise = _baseCruise,
+                HeadwayScale = _baseHeadway,
                 Owner = this
             };
 
@@ -141,24 +171,31 @@ namespace UberBagarre.World
             _flow.Add(_agent);
             _car.Autopilot = true;
             _sensorTimer = Random.value * 0.1f;
+            _renderers = GetComponentsInChildren<Renderer>(true);
+            _colliders = GetComponentsInChildren<Collider>(true);
+            // Étalé : toutes les voitures loin du joueur au départ ne se recyclent pas la même image.
+            _nextRecycle = Time.time + Random.value * 2.5f;
         }
 
         private void OnDisable()
         {
+            Combatant.AnyDamaged -= OnAnyDamaged;
+            if (_hidden) Show(false);
             if (_flow != null && _agent != null) _flow.Remove(_agent);
             if (_car != null && !_car.Occupied) _car.Autopilot = false;
         }
 
         private void OnEnable()
         {
-            if (_flow != null && _agent != null) _flow.Add(_agent);
+            if (_flow != null && _agent != null && !_hidden) _flow.Add(_agent);
+            Combatant.AnyDamaged += OnAnyDamaged;
         }
 
         /// <summary>Le joueur sort le conducteur : il disparaît, la voiture s'arrête là.</summary>
         public void Evict()
         {
             if (_driverBody != null) _driverBody.SetActive(false);
-            if (_asleep) Wake();
+            if (_hidden) Show(false);
             _car.Sleeping = false;
             _car.Autopilot = false;
             _car.SetInput(0f, 0f, true);
@@ -204,20 +241,34 @@ namespace UberBagarre.World
             TrafficTrack track = _flow.Track;
             Vector3 center = Center;
 
-            // --- loin du joueur : le régulateur conduit, la voiture suit sa position.
-            if (ViewerDistance(center) > _sleepDistance)
+            // --- la bulle : seules les voitures autour du joueur existent. Trop loin et hors de
+            // vue, la voiture revient sur sa route près de lui, à une place libre ; sans place,
+            // elle reste cachée (aucun calcul) et réessaie.
+            if (_hidden)
             {
-                Sleep();
-                Vector3 p = track.Point(_agent.S);
-                Vector3 t = track.Tangent(_agent.S);
-                Quaternion rotation = Quaternion.LookRotation(t, Vector3.up);
-                Vector3 pivot = p - rotation * _centerOffset + Vector3.up * _groundOffset;
-                _body.MovePosition(pivot);
-                _body.MoveRotation(Quaternion.Slerp(_body.rotation, rotation, 1f - Mathf.Exp(-6f * dt)));
+                if (Time.time >= _nextRecycle)
+                {
+                    _nextRecycle = Time.time + 0.6f + Random.value * 0.4f;
+                    float spot;
+                    if (FindSpawn(track, out spot))
+                    {
+                        Show();
+                        Spawn(spot);
+                    }
+                }
+
                 return;
             }
 
-            if (_asleep && !Wake()) return;
+            if (Time.time >= _nextRecycle && ViewerDistance(center) > _despawnDistance && !Visible(center))
+            {
+                _nextRecycle = Time.time + 0.6f + Random.value * 0.4f;
+                float spot;
+                if (FindSpawn(track, out spot)) Spawn(spot);
+                else Hide();
+                if (_hidden) return;
+                center = Center;
+            }
 
             float speed = _car.ForwardSpeed;
             _agent.Speed = speed;
@@ -242,6 +293,7 @@ namespace UberBagarre.World
             }
 
             Sense(track, speed, dt);
+            React(track, center);
             Recover(track, center, speed, dt);
             if (_reverseFor > 0f)
             {
@@ -257,6 +309,8 @@ namespace UberBagarre.World
 
             // --- pédales
             float desired = _agent.Desired;
+            // Choqué (on vient de le percuter) : il pile.
+            if (Time.time < _shockedUntil) desired = Mathf.Min(desired, -6f);
             // En contournant par la voie d'en face : au pas.
             if (Mathf.Abs(_offset) > 0.3f) desired = Mathf.Min(desired, (4f - speed) * 1.2f);
             if (_agent.ObstacleGap < 1.2f && speed > 0.3f) desired = -7f;
@@ -417,9 +471,11 @@ namespace UberBagarre.World
             _agent.ObstacleSpeed = nearestSpeed;
             _playerAhead = player;
             _obstacle = found;
-            // Immobile, et pas une voiture de la circulation (celle-là repartira : on l'attend).
+            // Immobile, et pas une voiture de la circulation (celle-là repartira : on l'attend). La
+            // voiture du joueur arrêtée en pleine rue : on klaxonne, puis on finit par la doubler.
             TrafficDriver other = found != null ? found.GetComponentInParent<TrafficDriver>() : null;
-            _obstacleFixed = found != null && Mathf.Abs(nearestSpeed) < 0.3f && !player && (other == null || !other.enabled);
+            bool playerCarParked = player && found != null && found.GetComponentInParent<DrivableCar>() != null && _agent.StoppedFor > 6f;
+            _obstacleFixed = found != null && Mathf.Abs(nearestSpeed) < 0.3f && (!player || playerCarParked) && (other == null || !other.enabled);
         }
 
         /// <summary>L'objet entier auquel appartient un collider (la voiture, la personne).</summary>
@@ -498,6 +554,8 @@ namespace UberBagarre.World
                 }
             }
 
+            // Klaxonné par derrière : il serre à droite le temps de laisser passer.
+            if (target == 0f && Time.time < _yieldUntil) target = 0.85f;
             _offset = Mathf.MoveTowards(_offset, target, Time.fixedDeltaTime * 1.2f);
         }
 
@@ -542,6 +600,66 @@ namespace UberBagarre.World
             }
 
             _car.Honk(Time.time < _honkUntil);
+        }
+
+        // ------------------------------------------------------------------ réactions
+
+        /// <summary>Le joueur klaxonne (appelé par sa voiture) : ceux qui sont devant lui l'entendent.</summary>
+        public static void NotifyHorn(Vector3 position, Vector3 forward)
+        {
+            _hornAt = Time.time;
+            _hornPosition = position;
+            _hornForward = forward;
+        }
+
+        /// <summary>
+        /// Ce qui change sa conduite : un coup de klaxon derrière lui (il se range un peu et
+        /// accélère), une bagarre ou un choc tout près (il fuit, plus vite, plus près des autres).
+        /// </summary>
+        private void React(TrafficTrack track, Vector3 center)
+        {
+            if (_hornAt > _lastHornSeen && Time.time - _hornAt < 0.6f)
+            {
+                _lastHornSeen = _hornAt;
+                Vector3 tangent = track.Tangent(_agent.S);
+                Vector3 toHonker = _hornPosition - center;
+                toHonker.y = 0f;
+                bool behind = Vector3.Dot(toHonker, tangent) < -2f && toHonker.magnitude < 28f;
+                bool sameWay = Vector3.Dot(_hornForward, tangent) > 0.6f;
+                if (behind && sameWay) _yieldUntil = Time.time + 3f;
+            }
+
+            bool fleeing = Time.time < _fleeUntil;
+            _agent.Cruise = _baseCruise * (fleeing ? 1.35f : Time.time < _yieldUntil ? 1.1f : 1f);
+            _agent.HeadwayScale = fleeing ? Mathf.Min(_baseHeadway, 0.75f) : _baseHeadway;
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            if (!enabled || _hidden) return;
+            float impact = collision.relativeVelocity.magnitude;
+            if (impact < 3f) return;
+
+            bool byPlayer = collision.collider.GetComponentInParent<DrivableCar>() == DrivableCar.Driven && DrivableCar.Driven != null;
+            if (!byPlayer && Player != null) byPlayer = collision.collider.transform.IsChildOf(Player);
+
+            // Percuté : il pile, klaxonne longuement, puis s'en va plus vite (on ne discute pas).
+            _shockedUntil = Time.time + Mathf.Lerp(0.6f, 1.6f, Mathf.InverseLerp(3f, 12f, impact));
+            _honkUntil = Time.time + (byPlayer ? 1.4f : 0.6f);
+            _nextHonk = Time.time + 6f;
+            if (impact > 6f || byPlayer) _fleeUntil = Time.time + 12f;
+        }
+
+        private void OnAnyDamaged(Combatant victim, DamageInfo info)
+        {
+            if (victim == null || _hidden) return;
+            if ((victim.transform.position - transform.position).sqrMagnitude > 30f * 30f) return;
+            _fleeUntil = Time.time + 10f;
+            if (Time.time >= _nextHonk)
+            {
+                _honkUntil = Time.time + 0.35f;
+                _nextHonk = Time.time + 5f;
+            }
         }
 
         // ------------------------------------------------------------------ incidents
@@ -638,34 +756,56 @@ namespace UberBagarre.World
             _offset = 0f;
         }
 
-        // ------------------------------------------------------------------ loin du joueur
+        // ------------------------------------------------------------------ bulle autour du joueur
 
-        private void Sleep()
+        /// <summary>
+        /// Une place pour réapparaître : sur la route de cette voiture, entre 70 et 165 m du
+        /// joueur, hors de l'écran, hors d'un demi-tour, et libre — ni voiture (de cette boucle
+        /// ou d'une autre), ni personne, ni objet à moins de quelques mètres.
+        /// </summary>
+        private bool FindSpawn(TrafficTrack track, out float spot)
         {
-            if (_asleep) return;
-            _asleep = true;
-            _agent.Asleep = true;
-            _agent.Turning = -1;
-            _agent.ObstacleGap = float.MaxValue;
-            _car.Sleeping = true;
-            _car.Honk(false);
-            _body.isKinematic = true;
-            _car.SetInput(0f, 0f, false);
-            _passUntilS = -1f;
-            _offset = 0f;
-        }
+            spot = 0f;
+            Transform viewer = Player;
+            if (viewer == null && Camera.main != null) viewer = Camera.main.transform;
+            if (viewer == null) return false;
 
-        /// <summary>Reprend ses roues, si la place est libre (sinon elle attend, endormie).</summary>
-        private bool Wake()
-        {
-            // En pleine manœuvre simulée : elle réapparaît au bout, sur la voie de retour.
-            if (_agent.Turning >= 0)
+            Vector3 player = viewer.position;
+            float length = track.Length;
+            int samples = Mathf.Clamp(Mathf.CeilToInt(length / 9f), 8, 600);
+            int offset = Random.Range(0, samples);
+            for (int k = 0; k < samples; k++)
             {
-                _flow.FinishTurn(_agent, _flow.Track.Turnarounds[_agent.Turning].Rejoin);
+                float s = track.Wrap((k + offset) * length / samples + Random.value * 4f);
+                Vector3 p = track.Point(s);
+                float d = new Vector2(p.x - player.x, p.z - player.z).magnitude;
+                if (d < _spawnRing.x || d > _spawnRing.y) continue;
+                if (SpawnVisible(p)) continue;
+                if (InTurnaround(track, s)) continue;
+                if (Crowded(p, track.Tangent(s), s)) continue;
+                spot = s;
+                return true;
             }
 
-            Vector3 p = Center + Vector3.up * 1f;
-            int count = Physics.OverlapBoxNonAlloc(p, new Vector3(_halfWidth, 0.5f, _halfLength), _hits, transform.rotation, ~0,
+            return false;
+        }
+
+        /// <summary>Quelqu'un ou quelque chose sur la place (et quelques mètres devant et derrière) ?</summary>
+        private bool Crowded(Vector3 p, Vector3 tangent, float s)
+        {
+            // Les voitures de la circulation, de toutes les boucles (même endormies ou en route).
+            IReadOnlyList<DrivableCar> cars = DrivableCar.All;
+            for (int i = 0; i < cars.Count; i++)
+            {
+                DrivableCar other = cars[i];
+                if (other == null || other == _car) continue;
+                Vector3 d = other.transform.position - p;
+                d.y = 0f;
+                if (d.sqrMagnitude < 11f * 11f) return true;
+            }
+
+            Quaternion r = Quaternion.LookRotation(tangent, Vector3.up);
+            int count = Physics.OverlapBoxNonAlloc(p + Vector3.up * 1.1f, new Vector3(_halfWidth + 0.8f, 0.9f, _halfLength + 3f), _hits, r, ~0,
                 QueryTriggerInteraction.Ignore);
             for (int i = 0; i < count; i++)
             {
@@ -673,17 +813,79 @@ namespace UberBagarre.World
                 if (c == null || c.transform.IsChildOf(transform)) continue;
                 Vector3 v;
                 bool isPlayer;
-                if (Moving(c, out v, out isPlayer)) return false;
+                if (Moving(c, out v, out isPlayer)) return true;
             }
 
-            _asleep = false;
-            _agent.Asleep = false;
+            return false;
+        }
+
+        /// <summary>Vue par le joueur (dans le champ, à moins de 150 m) : on n'apparaît pas sous ses yeux.</summary>
+        private static bool SpawnVisible(Vector3 position)
+        {
+            Camera camera = Camera.main;
+            if (camera == null) return false;
+            if (Vector3.Distance(camera.transform.position, position) > 150f) return false;
+            Vector3 viewport = camera.WorldToViewportPoint(position + Vector3.up);
+            return viewport.z > 0f && viewport.x > -0.2f && viewport.x < 1.2f && viewport.y > -0.2f && viewport.y < 1.2f;
+        }
+
+        /// <summary>Réapparaît à <paramref name="s"/>, lancée à l'allure de la rue.</summary>
+        private void Spawn(float s)
+        {
+            PlaceAt(s);
+            TrafficTrack track = _flow.Track;
+            float speed = Mathf.Min(_cruise, track.Limit(s)) * 0.85f;
+            if (!_body.isKinematic) _body.linearVelocity = track.Tangent(s) * speed;
+            _agent.Speed = speed;
+            _agent.StoppedFor = 0f;
+            _lostFor = 0f;
+            _jammedFor = 0f;
+            _reverseFor = 0f;
+        }
+
+        /// <summary>Plus de place près du joueur : la voiture disparaît (ni rendu, ni physique, ni régulateur).</summary>
+        private void Hide()
+        {
+            if (_hidden) return;
+            _hidden = true;
+            _flow.Remove(_agent);
+            _car.Honk(false);
+            _car.SetInput(0f, 0f, false);
+            _car.Sleeping = true;
+            _body.isKinematic = true;
+            _body.detectCollisions = false;
+            SetVisible(false);
+        }
+
+        private void Show(bool rejoin = true)
+        {
+            if (!_hidden) return;
+            _hidden = false;
             _car.Sleeping = false;
+            _body.detectCollisions = true;
             _body.isKinematic = false;
-            _body.linearVelocity = Forward * Mathf.Max(0f, _agent.Speed);
-            _body.angularVelocity = Vector3.zero;
             _body.WakeUp();
-            return true;
+            SetVisible(true);
+            if (rejoin && _flow != null && _agent != null) _flow.Add(_agent);
+        }
+
+        private void SetVisible(bool visible)
+        {
+            if (_renderers != null)
+            {
+                for (int i = 0; i < _renderers.Length; i++)
+                {
+                    if (_renderers[i] != null) _renderers[i].enabled = visible;
+                }
+            }
+
+            if (_colliders != null)
+            {
+                for (int i = 0; i < _colliders.Length; i++)
+                {
+                    if (_colliders[i] != null) _colliders[i].enabled = visible;
+                }
+            }
         }
 
         // ------------------------------------------------------------------ outils

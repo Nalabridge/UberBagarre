@@ -30,7 +30,7 @@ namespace UberBagarre.EditorTools
         public static readonly string[] Styles =
         {
             "carrelage", "damier", "parquet", "brique", "platre", "moquette", "dalles", "bois", "beton", "lino", "lambris",
-            "metal", "papierpeint", "feutre", "cuir", "jersey", "denim", "caoutchouc", "bandes"
+            "metal", "papierpeint", "feutre", "cuir", "jersey", "denim", "caoutchouc", "bandes", "asphalte", "paves"
         };
 
         public static Result Make(string style, int size)
@@ -57,6 +57,8 @@ namespace UberBagarre.EditorTools
                 case "denim": Denim(r); break;
                 case "caoutchouc": Rubber(r); break;
                 case "bandes": Wraps(r); break;
+                case "asphalte": Asphalt(r); break;
+                case "paves": Slabs(r); break;
                 default: Plaster(r); break;
             }
 
@@ -267,6 +269,50 @@ namespace UberBagarre.EditorTools
                     Color c = Grey(0.68f + (low - 0.5f) * 0.14f + (mid - 0.5f) * 0.08f - (pore ? 0.18f : 0f));
                     c.a = 0.3f;
                     Set(r, x, y, c, pore ? 0f : 0.5f + mid * 0.3f);
+                }
+            }
+        }
+
+        /// <summary>L'enrobé de la chaussée : granulats clairs dans un liant sombre, usure en plaques.</summary>
+        private static void Asphalt(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 1.5f;
+            r.Relief = 1.3f;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float wear = Fbm(x, y, n, 3, 4);
+                    float grit = Hash(x, y, 41);
+                    float stone = Hash(x / 2, y / 2, 43);
+                    float tone = 0.5f + (wear - 0.5f) * 0.18f + (grit - 0.5f) * 0.1f + (stone > 0.9f ? 0.16f : 0f);
+                    Color c = Grey(tone);
+                    c.a = 0.18f + wear * 0.12f;
+                    Set(r, x, y, c, 0.35f + grit * 0.35f + (stone > 0.9f ? 0.3f : 0f));
+                }
+            }
+        }
+
+        /// <summary>Les dalles du trottoir : carreaux de 50 cm, joints creusés, teinte qui varie d'une dalle à l'autre.</summary>
+        private static void Slabs(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 1f;
+            r.Relief = 1.6f;
+            int cell = n / 2;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    int cx = x / cell, cy = y / cell;
+                    int lx = x % cell, ly = y % cell;
+                    bool joint = lx < 3 || ly < 3;
+                    float slab = Hash(cx, cy, 47);
+                    float grain = Fbm(x, y, n, 12, 3);
+                    Color c = Grey(joint ? 0.42f : 0.72f + (slab - 0.5f) * 0.08f + (grain - 0.5f) * 0.08f);
+                    c.a = 0.25f;
+                    Set(r, x, y, c, joint ? 0f : 0.6f + grain * 0.2f);
                 }
             }
         }

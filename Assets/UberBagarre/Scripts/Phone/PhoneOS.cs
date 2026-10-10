@@ -489,7 +489,7 @@ namespace UberBagarre.Phone
 
         private static void DestroyClip(AudioClip clip)
         {
-            if (clip != null) Destroy(clip);
+            Core.SoundBank.Release(clip);
         }
 
         private void Update()
@@ -1038,6 +1038,9 @@ namespace UberBagarre.Phone
 
         private static AudioClip Tone(string name, float from, float to, float duration, float level)
         {
+            AudioClip real = Core.SoundBank.Real("Telephone/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(duration * SampleRate);
             float[] data = new float[length];
             float phase = 0f;
@@ -1060,6 +1063,9 @@ namespace UberBagarre.Phone
         /// <summary>Sonnerie : quatre notes claires, deux fois, puis un silence. Boucle de 2,4 s.</summary>
         private static AudioClip Ringtone()
         {
+            AudioClip real = Core.SoundBank.Real("Telephone/sonnerie");
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(2.4f * SampleRate);
             float[] data = new float[length];
             float[] notes = { 1318.5f, 987.8f, 1174.7f, 1568f };
@@ -1093,6 +1099,9 @@ namespace UberBagarre.Phone
         /// <summary>Vibreur : bourdonnement grave 0,45 s, puis 0,55 s de silence.</summary>
         private static AudioClip Buzz()
         {
+            AudioClip real = Core.SoundBank.Real("Telephone/vibreur");
+            if (real != null) return real;
+
             int length = SampleRate;
             float[] data = new float[length];
 

@@ -214,7 +214,7 @@ namespace UberBagarre.UI
 
         private void OnDestroy()
         {
-            if (_musicClip != null) Destroy(_musicClip);
+            Core.SoundBank.Release(_musicClip);
             if (_tick != null) Destroy(_tick);
             if (_confirm != null) Destroy(_confirm);
             if (_whoosh != null) Destroy(_whoosh);
@@ -1465,6 +1465,9 @@ namespace UberBagarre.UI
 
         private static AudioClip Blip(string name, float frequency, float seconds, float level)
         {
+            AudioClip real = Core.SoundBank.Real("Interface/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(seconds * SampleRate);
             float[] data = new float[length];
 
@@ -1490,6 +1493,9 @@ namespace UberBagarre.UI
         /// </summary>
         private static AudioClip Music()
         {
+            AudioClip real = Core.SoundBank.Real("Musique/menu");
+            if (real != null) return real;
+
             const float bpm = 92f;
             float beat = 60f / bpm;
             float bar = beat * 4f;
@@ -1598,6 +1604,9 @@ namespace UberBagarre.UI
         /// </summary>
         private static AudioClip Swoosh(string name, float seconds, float level, int seed)
         {
+            AudioClip real = Core.SoundBank.Real("Interface/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             bool car = seconds > 1f;
             int length = Mathf.RoundToInt(seconds * SampleRate);
             float[] data = new float[length];

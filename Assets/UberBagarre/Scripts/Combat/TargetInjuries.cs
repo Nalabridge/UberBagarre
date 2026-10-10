@@ -142,6 +142,9 @@ namespace UberBagarre.Combat
         /// <summary>Le craquement : un claquement sec, court, et un grain d'os.</summary>
         private static AudioClip Crack()
         {
+            AudioClip real = Core.SoundBank.Real("Combat/fracture");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = rate / 4;
             float[] data = new float[length];

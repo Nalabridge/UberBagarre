@@ -98,7 +98,7 @@ namespace UberBagarre.EditorTools
                       " murs de la demo retires (" + report.objects + " objets defiges), " + report.roads +
                       " routes et " + report.districtObjects + " elements des quartiers fermes rallumes ; " + report.small +
                       " petits objets et " + report.medium + " objets moyens ranges pour n'etre dessines que de pres ; " +
-                      report.trees + " arbres retires des batiments.");
+                      report.trees + " arbres retires des batiments, " + report.lods + " doublons de LOD eteints.");
             return true;
         }
 
@@ -114,6 +114,74 @@ namespace UberBagarre.EditorTools
             public int small;
             public int medium;
             public int trees;
+            public int lods;
+        }
+
+        /// <summary>
+        /// Les versions simplifiées (« …_lod1 », « LOD1 ») qu'aucun LODGroup ne gère : la carte en
+        /// compte des centaines (poutres du pont, bordures, lampadaires, poubelles). Elles se
+        /// dessinaient en même temps que l'objet détaillé, au même endroit : deux lampadaires l'un
+        /// dans l'autre, des faces qui scintillent. On les éteint quand l'objet détaillé est là.
+        /// </summary>
+        private static int HideOrphanLods(Scene city)
+        {
+            HashSet<Renderer> managed = new HashSet<Renderer>();
+            List<Renderer> all = new List<Renderer>(32768);
+            GameObject[] roots = city.GetRootGameObjects();
+
+            for (int r = 0; r < roots.Length; r++)
+            {
+                LODGroup[] groups = roots[r].GetComponentsInChildren<LODGroup>(true);
+                for (int g = 0; g < groups.Length; g++)
+                {
+                    LOD[] lods = groups[g].GetLODs();
+                    for (int l = 0; l < lods.Length; l++)
+                    {
+                        Renderer[] renderers = lods[l].renderers;
+                        if (renderers == null) continue;
+                        for (int k = 0; k < renderers.Length; k++)
+                        {
+                            if (renderers[k] != null) managed.Add(renderers[k]);
+                        }
+                    }
+                }
+
+                all.AddRange(roots[r].GetComponentsInChildren<Renderer>(true));
+            }
+
+            int hidden = 0;
+            for (int i = 0; i < all.Count; i++)
+            {
+                Renderer renderer = all[i];
+                if (renderer == null || !renderer.enabled || managed.Contains(renderer)) continue;
+                if (!CityRules.IsLodName(renderer.gameObject.name)) continue;
+                if (!HasDetailedTwin(renderer.transform)) continue;
+
+                renderer.enabled = false;
+                hidden++;
+            }
+
+            return hidden;
+        }
+
+        /// <summary>L'objet détaillé de ce LOD : son parent dessiné, ou un frère dessiné qui n'est pas un LOD.</summary>
+        private static bool HasDetailedTwin(Transform lod)
+        {
+            Transform parent = lod.parent;
+            if (parent == null) return false;
+
+            Renderer own = parent.GetComponent<Renderer>();
+            if (own != null && own.enabled && !CityRules.IsLodName(parent.name)) return true;
+
+            for (int i = 0; i < parent.childCount; i++)
+            {
+                Transform sibling = parent.GetChild(i);
+                if (sibling == lod || CityRules.IsLodName(sibling.name)) continue;
+                Renderer r = sibling.GetComponent<Renderer>();
+                if (r != null && r.enabled) return true;
+            }
+
+            return false;
         }
 
         private static Report Run(Scene city)
@@ -155,7 +223,7 @@ namespace UberBagarre.EditorTools
 
                     Transform closed;
                     Transform open;
-                    if (CityRules.IsSlidingPanel(t, out closed, out open))
+                    if (CityRules.IsSlidingPanel(t, out closed, out open) || CityRules.IsSlidingGlassDoor(t, out closed, out open))
                     {
                         report.objects += Unfreeze(t);
                         report.sliding++;
@@ -179,6 +247,7 @@ namespace UberBagarre.EditorTools
             }
 
             OpenClosedDistricts(city, ref report);
+            report.lods = HideOrphanLods(city);
             SortByDistance(city, ref report);
             report.trees = ClearTreesFromBuildings(city);
 

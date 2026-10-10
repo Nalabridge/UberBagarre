@@ -67,6 +67,35 @@ namespace UberBagarre.World
         }
 
         /// <summary>
+        /// La voie de circulation la plus proche de <paramref name="position"/> (à moins de
+        /// <paramref name="maxDistance"/> m) : son point et son sens. Sert à poser une voiture
+        /// dans le bon sens (la police qui arrive).
+        /// </summary>
+        public static bool NearestLane(Vector3 position, float maxDistance, out Vector3 point, out Vector3 tangent)
+        {
+            point = position;
+            tangent = Vector3.forward;
+            if (_instance == null) return false;
+
+            float best = maxDistance;
+            bool found = false;
+            for (int f = 0; f < _instance._list.Count; f++)
+            {
+                TrafficTrack track = _instance._list[f].Track;
+                float s = track.Project(position, 0f, -1f);
+                Vector3 p = track.Point(s);
+                float d = new Vector2(p.x - position.x, p.z - position.z).magnitude;
+                if (d >= best) continue;
+                best = d;
+                point = p;
+                tangent = track.Tangent(s);
+                found = true;
+            }
+
+            return found;
+        }
+
+        /// <summary>
         /// Une voiture arrive-t-elle sur <paramref name="point"/> dans les <paramref name="seconds"/>
         /// secondes (la circulation, ou celle du joueur) ? Ce que regarde un piéton avant de
         /// traverser.

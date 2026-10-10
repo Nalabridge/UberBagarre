@@ -38,7 +38,7 @@ namespace UberBagarre.EditorTools
         private static readonly Dictionary<string, float> Meters = new Dictionary<string, float>();
 
         /// <summary>Construit <paramref name="plan"/> sous <paramref name="parent"/>, la pièce à <paramref name="origin"/> (monde).</summary>
-        public static Built Realize(InteriorPlan plan, Transform parent, Vector3 origin, string name, string assetName)
+        public static Built Realize(InteriorPlan plan, Transform parent, Vector3 origin, string name, string assetName, bool probe = true)
         {
             EditorBuildUtility.EnsureFolder(Folder);
             Built built = new Built();
@@ -91,8 +91,11 @@ namespace UberBagarre.EditorTools
             Lamps(plan, t);
 
             // --- la sonde de reflets : chrome, vitrines, sols brillants reflètent la pièce
-            EditorBuildUtility.AddReflectionProbe(t, "Sonde de reflexion", new Vector3(0f, plan.Size.y * 0.5f, plan.Size.z * 0.5f),
-                plan.Size + new Vector3(0.4f, 0.2f, 0.4f), true, 1f);
+            if (probe)
+            {
+                EditorBuildUtility.AddReflectionProbe(t, "Sonde de reflexion", new Vector3(0f, plan.Size.y * 0.5f, plan.Size.z * 0.5f),
+                    plan.Size + new Vector3(0.4f, 0.2f, 0.4f), true, 1f);
+            }
 
             // --- les enseignes : des tubes lettre par lettre, puis fusionnés en un maillage par couleur
             GameObject signs = EditorBuildUtility.CreateEmpty("Enseignes", t, Vector3.zero);

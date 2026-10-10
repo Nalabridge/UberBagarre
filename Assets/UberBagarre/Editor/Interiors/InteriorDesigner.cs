@@ -558,8 +558,7 @@ namespace UberBagarre.EditorTools
                         p.Box("Trumeau", new Vector3(k * (w * 0.5f - outer * 0.5f), (sill + top) * 0.5f, -0.1f), new Vector3(outer, top - sill, 0.2f), "mur", true);
                     }
 
-                    // La vitre (la rue, de nuit, floue derrière) et ses montants.
-                    p.Box("Vitrine (rue)", new Vector3(gx, (sill + top) * 0.5f, -0.16f), new Vector3(glass, top - sill, 0.02f), "vitrine_rue");
+                    // La vitre et ses montants ; derrière, la rue (InteriorDesigner.Rue).
                     p.Box("Vitre", new Vector3(gx, (sill + top) * 0.5f, -0.06f), new Vector3(glass, top - sill, 0.02f), "verre", true);
                     p.Box("Montant", new Vector3(gx, (sill + top) * 0.5f, -0.04f), new Vector3(0.05f, top - sill, 0.06f), "metal_noir");
                     p.Box("Rebord", new Vector3(gx, sill + 0.02f, 0.06f), new Vector3(glass + 0.1f, 0.04f, 0.22f), "moulure");
@@ -609,6 +608,9 @@ namespace UberBagarre.EditorTools
             p.Box("Panneau sortie", new Vector3(0f, doorH + 0.32f, 0.06f), new Vector3(0.36f, 0.14f, 0.05f), "sortie");
             p.Mark("porte", new Vector3(0f, 0f, 0.05f), 0f);
             p.Mark("arrivee", new Vector3(0f, 0.05f, 1.5f), 0f);
+
+            // Dehors : une rue, pas la mer (la pièce est construite loin de la ville).
+            Street(p);
         }
 
         /// <summary>Un store vénitien : des lamelles fines jusqu'à la hauteur <paramref name="drop"/>.</summary>

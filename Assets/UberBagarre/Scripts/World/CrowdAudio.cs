@@ -90,10 +90,10 @@ namespace UberBagarre.World
 
         private void OnDestroy()
         {
-            if (_murmurClip != null) Destroy(_murmurClip);
-            if (_cheerClip != null) Destroy(_cheerClip);
-            if (_oohClip != null) Destroy(_oohClip);
-            if (_roarClip != null) Destroy(_roarClip);
+            Core.SoundBank.Release(_murmurClip);
+            Core.SoundBank.Release(_cheerClip);
+            Core.SoundBank.Release(_oohClip);
+            Core.SoundBank.Release(_roarClip);
         }
 
         private void Update()
@@ -172,6 +172,9 @@ namespace UberBagarre.World
         /// <summary>Brouhaha en boucle : des dizaines de voix syllabiques, graves, qui se chevauchent.</summary>
         private static AudioClip Murmur(System.Random random)
         {
+            AudioClip real = Core.SoundBank.Real("Foule/brouhaha");
+            if (real != null) return real;
+
             int length = SampleRate * 6;
             float[] data = new float[length];
 
@@ -223,6 +226,9 @@ namespace UberBagarre.World
         private static AudioClip Voices(string name, System.Random random, float duration, int voices,
             float[] formants, float spread, float sustain)
         {
+            AudioClip real = Core.SoundBank.Real("Foule/" + Core.SoundBank.Slug(name.Replace(" (generee)", "")));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(SampleRate * duration);
             float[] data = new float[length];
 

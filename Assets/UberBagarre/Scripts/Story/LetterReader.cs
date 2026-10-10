@@ -915,6 +915,9 @@ namespace UberBagarre.Story
         /// </summary>
         private static AudioClip Paper(string name, float seconds, float crackle, float grain, int seed)
         {
+            AudioClip real = Core.SoundBank.Real("Courrier/" + Core.SoundBank.Slug(name));
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(seconds * SampleRate);
             float[] data = new float[length];
             System.Random random = new System.Random(seed);
@@ -948,6 +951,9 @@ namespace UberBagarre.Story
         /// <summary>Le tampon : un choc sourd sur la table, et le claquement du caoutchouc.</summary>
         private static AudioClip Thump()
         {
+            AudioClip real = Core.SoundBank.Real("Courrier/tampon");
+            if (real != null) return real;
+
             int length = Mathf.RoundToInt(0.3f * SampleRate);
             float[] data = new float[length];
             System.Random random = new System.Random(4);

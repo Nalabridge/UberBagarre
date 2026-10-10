@@ -199,7 +199,7 @@ namespace UberBagarre.World
 
             if (_puddles != null) Destroy(_puddles);
             if (_puddleMask != null) Destroy(_puddleMask);
-            if (_loop != null) Destroy(_loop);
+            Core.SoundBank.Release(_loop);
             if (_thunder != null) Destroy(_thunder);
         }
 
@@ -494,6 +494,9 @@ namespace UberBagarre.World
         /// <summary>Quatre secondes de pluie en boucle : un souffle filtré et des gouttes qui claquent.</summary>
         private static AudioClip RainLoop()
         {
+            AudioClip real = Core.SoundBank.Real("Meteo/pluie");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = rate * 4;
             float[] data = new float[length];
@@ -568,6 +571,9 @@ namespace UberBagarre.World
         /// <summary>Le tonnerre : un craquement, puis un grondement grave qui roule et s'éteint.</summary>
         private static AudioClip Thunder()
         {
+            AudioClip real = Core.SoundBank.Real("Meteo/tonnerre");
+            if (real != null) return real;
+
             const int rate = 22050;
             int length = rate * 5;
             float[] data = new float[length];

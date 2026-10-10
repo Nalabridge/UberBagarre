@@ -395,7 +395,9 @@ namespace UberBagarre.UI
             if (_keys == null) _keys = FindAnyObjectByType<PlayerInputReader>();
             Core.InputBindings b = _keys != null ? _keys.Bindings : null;
             float hx = UiTheme.KeyHint(x, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.jump) : "Espace", "Frein à main", u);
-            UiTheme.KeyHint(hx, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.attackStraight) : "Clic", "Klaxon", u);
+            hx = UiTheme.KeyHint(hx, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.attackStraight) : "Clic", "Klaxon", u);
+            hx = UiTheme.KeyHint(hx, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.attackLowKick) : "V", "Vue", u);
+            UiTheme.KeyHint(hx, Screen.height - 40f * u, b != null ? UiTheme.KeyName(b.crouch) : "C", "Regarder derrière", u);
         }
 
         // ------------------------------------------------------------------ centre de l'écran

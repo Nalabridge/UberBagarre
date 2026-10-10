@@ -28,6 +28,9 @@ namespace UberBagarre.World
         /// <summary>Vitesse de croisière propre (chaque conducteur a son pied).</summary>
         public float Cruise = 11f;
 
+        /// <summary>Distance de suivi propre au conducteur (1 = normal, moins = colle, plus = prudent).</summary>
+        public float HeadwayScale = 1f;
+
         /// <summary>Un obstacle hors circulation devant (le joueur, un passant, une voiture garée) : la distance au pare-chocs, sa vitesse.</summary>
         public float ObstacleGap = float.MaxValue;
         public float ObstacleSpeed;
@@ -168,7 +171,7 @@ namespace UberBagarre.World
                 float gap = track.Ahead(agent.S, leader.S) - agent.HalfLength - leader.HalfLength;
                 if (gap < 120f)
                 {
-                    float a = Follow(v, v0, gap, v - Mathf.Max(0f, leader.Speed), Standstill);
+                    float a = Follow(v, v0, gap, v - Mathf.Max(0f, leader.Speed), Standstill * Mathf.Lerp(1f, agent.HeadwayScale, 0.5f), agent.HeadwayScale);
                     if (a < accel)
                     {
                         accel = a;
@@ -197,10 +200,10 @@ namespace UberBagarre.World
         }
 
         /// <summary>L'accélération IDM derrière quelque chose à <paramref name="gap"/> mètres, qui va moins vite de <paramref name="closing"/>.</summary>
-        public static float Follow(float v, float v0, float gap, float closing, float standstill)
+        public static float Follow(float v, float v0, float gap, float closing, float standstill, float headwayScale = 1f)
         {
             float free = 1f - Pow4(v / Mathf.Max(0.5f, v0));
-            float wanted = standstill + Mathf.Max(0f, v * Headway + v * closing / (2f * Mathf.Sqrt(IdmAcceleration * IdmBraking)));
+            float wanted = standstill + Mathf.Max(0f, v * Headway * headwayScale + v * closing / (2f * Mathf.Sqrt(IdmAcceleration * IdmBraking)));
             float ratio = wanted / Mathf.Max(0.1f, gap);
             float a = IdmAcceleration * (free - ratio * ratio);
             if (gap <= 0.2f) a = -7f;
