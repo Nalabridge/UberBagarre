@@ -326,7 +326,7 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>Les textures d'un style (carrelage, parquet…), générées au premier besoin et gardées en assets.</summary>
-        private static void TexturesFor(string style, out Texture2D albedo, out Texture2D normal, out float meters)
+        internal static void TexturesFor(string style, out Texture2D albedo, out Texture2D normal, out float meters)
         {
             if (Albedos.TryGetValue(style, out albedo) && albedo != null && Normals.TryGetValue(style, out normal) && normal != null)
             {

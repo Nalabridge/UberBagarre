@@ -229,6 +229,31 @@ namespace UberBagarre.EditorTools
                     s.LightIntensity = 1.45f;
                     s.Neon = new Color(0.2f, 1f, 0.45f);
                     break;
+                case "Restaurant" when Named("dragon", "chin"):
+                    s.Floor = "parquet";
+                    s.FloorColor = new Color(0.62f, 0.4f, 0.3f);
+                    s.Wall = "papierpeint";
+                    s.WallColor = new Color(0.55f, 0.1f, 0.08f);
+                    s.Wainscot = "lambris";
+                    s.WainscotColor = new Color(0.2f, 0.08f, 0.05f);
+                    s.Ceiling = "platre";
+                    s.CeilingColor = new Color(0.3f, 0.08f, 0.06f);
+                    s.Lighting = "suspensions";
+                    s.Light = new Color(1f, 0.78f, 0.55f);
+                    s.Neon = new Color(1f, 0.75f, 0.2f);
+                    break;
+                case "Restaurant" when Named("pizz", "marco"):
+                    s.Floor = "carrelage";
+                    s.FloorColor = new Color(0.78f, 0.45f, 0.32f);
+                    s.Wall = Named("pizz") ? "brique" : "platre";
+                    s.WallColor = Named("pizz") ? new Color(0.95f, 0.92f, 0.88f) : new Color(0.93f, 0.86f, 0.7f);
+                    s.Wainscot = "lambris";
+                    s.WainscotColor = Named("pizz") ? new Color(0.12f, 0.32f, 0.16f) : new Color(0.32f, 0.18f, 0.1f);
+                    s.Ceiling = "platre";
+                    s.Lighting = "suspensions";
+                    s.Light = new Color(1f, 0.84f, 0.62f);
+                    s.Neon = Named("pizz") ? new Color(0.3f, 1f, 0.4f) : new Color(1f, 0.35f, 0.3f);
+                    break;
                 case "Restaurant":
                     s.Floor = "damier";
                     s.FloorColor = new Color(1f, 1f, 1f);

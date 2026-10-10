@@ -337,9 +337,9 @@ namespace UberBagarre.EditorTools
             for (int i = 0; i < cuts.Length; i++)
             {
                 List<string> slots;
-                Mesh mesh = CorpsImporter.BuildMesh(data, cuts[i], false, out slots);
+                Mesh mesh = CorpsImporter.BuildMesh(data, cuts[i], false, out slots, true);
                 List<string> shadowSlots;
-                Mesh whole = CorpsImporter.BuildMesh(data, cuts[i], true, out shadowSlots);
+                Mesh whole = CorpsImporter.BuildMesh(data, cuts[i], true, out shadowSlots, true);
 
                 tops[i] = new PlayerWardrobe.TopVariant
                 {

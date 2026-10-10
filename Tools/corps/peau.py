@@ -253,40 +253,59 @@ def paint(body, prefix, tone, res=RES, seed=7):
     r = p - eyes      # repère de la tête = axes du monde (tête droite en liaison)
     face_front = head & (r[:, 2] > -0.04)
 
-    # joues, nez, oreilles
+    # joues, nez, oreilles : un visage n'est jamais d'un seul ton — le sang affleure là où la
+    # peau est fine ou exposée (pommettes, bout du nez, oreilles), le front reste plus clair.
     for sx in (-1, 1):
-        cheek = eyes + np.array([sx * 0.042, -0.035, 0.0])
-        red += np.exp(-(np.linalg.norm(p - cheek, axis=1) / 0.025) ** 2) * 0.35 * face_front
+        cheek = eyes + np.array([sx * 0.045, -0.038, 0.004])
+        red += np.exp(-(np.linalg.norm(p - cheek, axis=1) / 0.028) ** 2) * 0.5 * face_front
     nose = eyes + np.array([0.0, -0.03, 0.035])
-    red += np.exp(-(np.linalg.norm((p - nose) * np.array([1, 1, 0.6]), axis=1) / 0.018) ** 2) * 0.3
+    red += np.exp(-(np.linalg.norm((p - nose) * np.array([1, 1, 0.6]), axis=1) / 0.018) ** 2) * 0.42
+    tip = eyes + np.array([0.0, -0.045, 0.05])
+    red += np.exp(-(np.linalg.norm(p - tip, axis=1) / 0.012) ** 2) * 0.25
     ears = head & (np.abs(r[:, 0]) > 0.072) & (r[:, 1] > -0.06) & (r[:, 1] < 0.025) & (r[:, 2] < -0.05)
-    red += ears * 0.3
+    red += ears * 0.45
+    forehead = face_front * smoothstep(0.02, 0.05, r[:, 1]) * smoothstep(0.1, 0.07, r[:, 1])
+    albedo = albedo * (1 + 0.05 * forehead[:, None] * np.array([1.0, 0.98, 0.9])[None, :])
 
-    # lèvres
+    # cernes : un voile froid sous les yeux
+    for sx in (-1, 1):
+        under = eyes + np.array([sx * 0.032, -0.013, 0.004])
+        q = (p - under) * np.array([1.0, 1.9, 1.0])
+        w = np.exp(-(q ** 2).sum(axis=1) / 0.012 ** 2) * face_front
+        cool = tone * np.array([0.8, 0.68, 0.72])
+        albedo = albedo * (1 - 0.16 * w[:, None]) + cool[None, :] * 0.16 * w[:, None]
+
+    # lèvres : la supérieure plus fine que l'inférieure, plus foncées et plus rouges que la
+    # peau, un trait sombre entre les deux (la commissure), un bord adouci.
     mouth = eyes + np.array([0.0, -0.072, 0.0])
     lip_front = head & (r[:, 2] > 0.0)
     ly = (p[:, 1] - mouth[1]) / 0.0095
     lx = np.abs(r[:, 0]) / 0.025
-    lips = lip_front & (lx < 1.0) & (np.abs(ly) < np.sqrt(np.clip(1.0 - lx ** 2, 0, 1)))
-    lip_soft = lips * smoothstep(1.0, 0.7, lx)
-    lip_color = tone * np.array([0.86, 0.58, 0.57])
-    albedo = albedo * (1 - 0.45 * lip_soft[:, None]) + lip_color[None, :] * 0.45 * lip_soft[:, None]
+    reach = np.sqrt(np.clip(1.0 - lx ** 2, 0, 1))
+    lips = lip_front & (lx < 1.0) & (ly < 0.8 * reach) & (ly > -1.1 * reach)
+    lip_soft = lips * smoothstep(1.0, 0.65, lx) * smoothstep(1.0, 0.75, np.abs(ly) / np.maximum(reach, 1e-3))
+    lip_soft = np.maximum(lip_soft, lips * 0.45)
+    lip_color = tone * np.array([0.8, 0.5, 0.5])
+    albedo = albedo * (1 - 0.6 * lip_soft[:, None]) + lip_color[None, :] * 0.6 * lip_soft[:, None]
+    line = lip_front * np.exp(-(ly / 0.12) ** 2) * smoothstep(1.05, 0.8, lx)
+    albedo = albedo * (1 - 0.45 * line[:, None]) + (tone * np.array([0.42, 0.26, 0.26]))[None, :] * 0.45 * line[:, None]
     height += lip_soft * np.sin(r[:, 0] * 2 * math.pi / 0.0022) * 0.2
+    height -= line * 0.3
 
-    # sourcils : deux arcs effilés, épais côté nez, fins vers la tempe
-    hair_color = np.array([0.055, 0.045, 0.04])
+    # sourcils : deux arcs effilés, épais côté nez, fins vers la tempe, faits de poils
+    hair_color = np.array([0.04, 0.032, 0.028])
     strands = noise(p * np.array([1.0, 7.0, 3.0]), 1100.0, seed + 71)
     for sx in (-1, 1):
         cx = eyes[0] + sx * 0.031
         x = (p[:, 0] - cx) * sx               # < 0 côté nez, > 0 côté tempe
         u = np.clip((x + 0.024) / 0.052, 0.0, 1.0)
         arc = eyes[1] + 0.021 + 0.005 * np.sin(u * math.pi * 0.9)
-        half = 0.0056 * (1.0 - 0.55 * u)
+        half = 0.0062 * (1.0 - 0.55 * u)
         inside = face_front & (x > -0.024) & (x < 0.028)
-        edge = smoothstep(half, half * 0.45, np.abs(p[:, 1] - arc))
-        ends = smoothstep(-0.024, -0.019, x) * smoothstep(0.028, 0.018, x)
-        density = inside * edge * ends * (0.55 + 0.45 * strands)
-        albedo = albedo * (1 - 0.9 * density[:, None]) + hair_color[None, :] * 0.9 * density[:, None]
+        edge = smoothstep(half, half * 0.35, np.abs(p[:, 1] - arc))
+        ends = smoothstep(-0.024, -0.017, x) * smoothstep(0.028, 0.016, x)
+        density = inside * edge * ends * (0.62 + 0.38 * strands)
+        albedo = albedo * (1 - 0.95 * density[:, None]) + hair_color[None, :] * 0.95 * density[:, None]
         height += density * 0.15
 
     # crâne rasé (buzz cut) : une ombre régulière et un grain très fin, pas des graviers
@@ -308,11 +327,23 @@ def paint(body, prefix, tone, res=RES, seed=7):
     beard_color = np.array([0.09, 0.08, 0.075])
     albedo = albedo * (1 - beard_amount[:, None]) + beard_color[None, :] * beard_amount[:, None]
 
-    # contour des yeux légèrement plus sombre
+    # contour des yeux légèrement plus sombre, et la ligne des cils au bord des paupières :
+    # sans elle, un œil de synthèse paraît écarquillé et vide.
+    lash_color = np.array([0.03, 0.024, 0.022])
     for sx in (-1, 1):
         e = eyes + np.array([sx * 0.032, 0.0, 0.0])
         ring = np.exp(-(np.linalg.norm(p - e, axis=1) / 0.018) ** 2) * face_front
-        albedo *= (1 - 0.12 * ring)[:, None]
+        albedo *= (1 - 0.14 * ring)[:, None]
+        u = (p[:, 0] - e[0]) / 0.0145
+        opening = np.sqrt(np.clip(1.0 - u ** 2, 0.0, 1.0))
+        near = face_front & (np.abs(u) < 1.1) & (r[:, 2] > -0.01)
+        upper_lid = e[1] + 0.0062 * opening + 0.0004
+        lower_lid = e[1] - 0.0048 * opening - 0.0004
+        upper = near * smoothstep(0.0024, 0.0006, np.abs(p[:, 1] - upper_lid - 0.0008)) * smoothstep(1.1, 0.55, np.abs(u))
+        lower = near * smoothstep(0.0014, 0.0004, np.abs(p[:, 1] - lower_lid)) * smoothstep(1.0, 0.4, np.abs(u))
+        albedo = albedo * (1 - 0.85 * upper[:, None]) + lash_color[None, :] * 0.85 * upper[:, None]
+        albedo = albedo * (1 - 0.3 * lower[:, None]) + lash_color[None, :] * 0.3 * lower[:, None]
+        height += upper * 0.12
 
     # --- rougeur, creux, pores
     red = np.clip(red, 0, 1)

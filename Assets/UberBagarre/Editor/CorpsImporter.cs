@@ -36,6 +36,7 @@ namespace UberBagarre.EditorTools
         private const int Jean = 8;
         private const int Chaussures = 16;
         private const int Tete = 32;
+        private const int Bandes = 64;
 
         /// <summary>Le haut porté. La valeur est le bit du vêtement dans les masques de peau.</summary>
         public enum Top
@@ -46,7 +47,7 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>Emplacements de matière, dans l'ordre des sous-maillages.</summary>
-        public static readonly string[] Slots = { "Peau", "Yeux", "Haut", "Jean", "Ceinture", "Chaussures", "Semelle" };
+        public static readonly string[] Slots = { "Peau", "Yeux", "Haut", "Jean", "Ceinture", "Chaussures", "Semelle", "Bandes" };
 
         public sealed class Data
         {
@@ -210,10 +211,10 @@ namespace UberBagarre.EditorTools
         /// Les sous-maillages suivent <see cref="Slots"/>, les emplacements vides en moins ;
         /// <paramref name="slots"/> dit lesquels restent, dans l'ordre.
         /// </summary>
-        public static Mesh BuildMesh(Data data, Top top, bool withHead, out List<string> slots)
+        public static Mesh BuildMesh(Data data, Top top, bool withHead, out List<string> slots, bool wraps = false)
         {
-            string key = data.Name + "_" + top + (withHead ? "" : "_SansTete");
-            int worn = (int)top | Jean | Chaussures | (withHead ? 0 : Tete);
+            string key = data.Name + "_" + top + (withHead ? "" : "_SansTete") + (wraps ? "_Bandes" : "");
+            int worn = (int)top | Jean | Chaussures | (withHead ? 0 : Tete) | (wraps ? Bandes : 0);
 
             Dictionary<string, List<int>> bySlot = new Dictionary<string, List<int>>();
             foreach (KeyValuePair<string, int[]> pair in data.Submeshes)
@@ -339,6 +340,7 @@ namespace UberBagarre.EditorTools
             if (submesh == "Yeux") return withHead ? "Yeux" : null;
             if (submesh == top.ToString()) return "Haut";
             if (submesh == "Jean" || submesh == "Ceinture" || submesh == "Chaussures" || submesh == "Semelle") return submesh;
+            if (submesh == "Bandes") return (worn & Bandes) != 0 ? "Bandes" : null;
             return null;
         }
 
@@ -433,11 +435,12 @@ namespace UberBagarre.EditorTools
                 {
                     case "Peau": materials[i] = SkinMaterial(silhouette); break;
                     case "Yeux": materials[i] = EyeMaterial(); break;
-                    case "Haut": materials[i] = top; break;
-                    case "Jean": materials[i] = pants; break;
-                    case "Ceinture": materials[i] = Plain("M_Ceinture", new Color(0.075f, 0.05f, 0.035f), 0.5f); break;
-                    case "Chaussures": materials[i] = shoes; break;
-                    case "Semelle": materials[i] = Plain("M_Semelle", new Color(0.80f, 0.78f, 0.74f), 0.18f); break;
+                    case "Haut": materials[i] = Fabric(top, "jersey", 0.55f); break;
+                    case "Jean": materials[i] = Fabric(pants, "denim", 0.7f); break;
+                    case "Ceinture": materials[i] = Fabric(Plain("M_Ceinture", new Color(0.075f, 0.05f, 0.035f), 0.5f), "cuir", 0.6f); break;
+                    case "Chaussures": materials[i] = Fabric(shoes, "cuir", 0.45f); break;
+                    case "Semelle": materials[i] = Fabric(Plain("M_Semelle", new Color(0.80f, 0.78f, 0.74f), 0.18f), "caoutchouc", 0.4f); break;
+                    case "Bandes": materials[i] = Fabric(Plain("M_Bandes", new Color(0.86f, 0.84f, 0.78f), 0.12f), "bandes", 0.8f); break;
                 }
             }
 
@@ -484,6 +487,62 @@ namespace UberBagarre.EditorTools
             ConfigureTexture(path, false);
             Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             return EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Yeux", Color.white, 0.86f, 0f, texture);
+        }
+
+        private static readonly Dictionary<string, Material> Fabrics = new Dictionary<string, Material>();
+
+        /// <summary>
+        /// La matière d'un vêtement (sa couleur, sa brillance, choisies par le personnage)
+        /// habillée d'un vrai tissu : la maille d'un tee-shirt, le sergé d'un jean, le grain du
+        /// cuir. Les UV des vêtements sont en mètres (voir Tools/corps/vetements.py) : la
+        /// texture se répète à sa taille réelle, sur toutes les silhouettes. Une couleur unie
+        /// sur un vêtement, c'est ce qui le faisait paraître en plastique.
+        /// </summary>
+        private static Material Fabric(Material source, string style, float normalScale)
+        {
+            if (source == null) return null;
+            string key = source.name + "|" + style;
+            Material cached;
+            if (Fabrics.TryGetValue(key, out cached) && cached != null) return cached;
+
+            Texture2D albedo, normal;
+            float meters;
+            InteriorRealizer.TexturesFor(style, out albedo, out normal, out meters);
+
+            EditorBuildUtility.EnsureFolder(MaterialsFolder);
+            string path = MaterialsFolder + "/M_Tissu_" + style + "_" + FileSafe(source.name) + ".mat";
+            Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(source);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            else
+            {
+                m.shader = source.shader;
+                m.CopyPropertiesFromMaterial(source);
+            }
+
+            Vector2 tiling = Vector2.one / Mathf.Max(0.02f, meters);
+            foreach (string property in new[] { "_BaseMap", "_MainTex" })
+            {
+                if (!m.HasProperty(property)) continue;
+                m.SetTexture(property, albedo);
+                m.SetTextureScale(property, tiling);
+            }
+
+            EditorBuildUtility.ApplyNormalMap(m, normal, normalScale);
+            if (m.HasProperty("_BumpMap")) m.SetTextureScale("_BumpMap", tiling);
+            EditorUtility.SetDirty(m);
+            Fabrics[key] = m;
+            return m;
+        }
+
+        private static string FileSafe(string name)
+        {
+            System.Text.StringBuilder b = new System.Text.StringBuilder(name.Length);
+            foreach (char c in name) b.Append(char.IsLetterOrDigit(c) || c == '_' ? c : '_');
+            return b.ToString();
         }
 
         private static Material Plain(string name, Color color, float smoothness)

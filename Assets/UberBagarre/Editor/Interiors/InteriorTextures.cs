@@ -30,7 +30,7 @@ namespace UberBagarre.EditorTools
         public static readonly string[] Styles =
         {
             "carrelage", "damier", "parquet", "brique", "platre", "moquette", "dalles", "bois", "beton", "lino", "lambris",
-            "metal", "papierpeint", "feutre", "cuir"
+            "metal", "papierpeint", "feutre", "cuir", "jersey", "denim", "caoutchouc", "bandes"
         };
 
         public static Result Make(string style, int size)
@@ -53,6 +53,10 @@ namespace UberBagarre.EditorTools
                 case "papierpeint": Wallpaper(r); break;
                 case "feutre": Felt(r); break;
                 case "cuir": Leather(r); break;
+                case "jersey": Jersey(r); break;
+                case "denim": Denim(r); break;
+                case "caoutchouc": Rubber(r); break;
+                case "bandes": Wraps(r); break;
                 default: Plaster(r); break;
             }
 
@@ -376,6 +380,115 @@ namespace UberBagarre.EditorTools
                     Color c = Grey(0.78f + cells * 0.12f + (mottle - 0.5f) * 0.1f);
                     c.a = 0.55f - cells * 0.25f;
                     Set(r, x, y, c, cells);
+                }
+            }
+        }
+
+        // ================================================================== tissus (vêtements)
+
+        /// <summary>
+        /// La maille jersey d'un tee-shirt ou d'un sweat : des colonnes de mailles en V (les
+        /// côtes), 26 par tuile de 8 cm — 3 mm la maille, ce qu'on devine à un mètre.
+        /// </summary>
+        private static void Jersey(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 0.08f;
+            r.Relief = 0.9f;
+            const int wales = 26, courses = 34;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float u = x / (float)n * wales, v = y / (float)n * courses;
+                    float fu = u - Mathf.Floor(u), fv = v - Mathf.Floor(v);
+                    // Les deux jambes de la maille : de (0,1)→(0,5 ; 0) et de (1,1)→(0,5 ; 0).
+                    float d1 = Mathf.Abs((fu - 0.5f) * 1f + (fv - 0.5f) * 0.5f);
+                    float d2 = Mathf.Abs((fu - 0.5f) * 1f - (fv - 0.5f) * 0.5f);
+                    float leg = fu < 0.5f ? d1 : d2;
+                    float loop = Mathf.Clamp01(1f - leg / 0.32f);
+                    loop = loop * loop * (3f - 2f * loop);
+                    float gap = Mathf.Clamp01(Mathf.Abs(fu - 0.5f) * 2f);
+                    float h = loop * (1f - 0.35f * gap * gap);
+                    float yarn = Fbm(x, y, n, 40, 2);
+                    Color c = Grey(0.88f + 0.08f * h + (yarn - 0.5f) * 0.06f);
+                    c.a = 0.35f + 0.25f * h;
+                    Set(r, x, y, c, h);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Le denim : le sergé (diagonales serrées), les fils de chaîne irréguliers (flammés) et
+        /// quelques mouchetures plus claires de la trame. Tuile de 6 cm.
+        /// </summary>
+        private static void Denim(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 0.06f;
+            r.Relief = 1.4f;
+            const int lines = 40;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float t = (x + y) / (float)n * lines;
+                    float twill = 0.5f + 0.5f * Mathf.Sin(t * Mathf.PI * 2f);
+                    twill = twill * twill;
+                    // Les fils de chaîne : une variation qui court le long de la jambe (v).
+                    float slub = Value(x / (float)n * 64f, y / (float)n * 6f, 64, 61);
+                    float fleck = Hash(x / 3, y / 2, 67) > 0.93f ? 1f : 0f;
+                    float h = twill * 0.8f + slub * 0.2f;
+                    Color c = Grey(0.72f + 0.2f * twill + (slub - 0.5f) * 0.14f + fleck * 0.1f);
+                    c.a = 0.25f + 0.15f * twill;
+                    Set(r, x, y, c, h);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Des bandes de boxe : une bande de coton de 4 cm enroulée en biais, chaque tour posé
+        /// sur le précédent (une ombre au bord du recouvrement), la trame du coton dessus.
+        /// </summary>
+        private static void Wraps(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 0.12f;
+            r.Relief = 0.6f;
+            const int turns = 3;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    // Une diagonale douce (deux tours de la tuile sur la hauteur pour un tour en largeur).
+                    float t = (y / (float)n * turns + x / (float)n) % 1f;
+                    float edge = Mathf.Clamp01(t / 0.08f);
+                    float lip = Mathf.Clamp01((1f - t) / 0.03f);
+                    float band = edge * lip;
+                    float weave = (Mathf.Sin(x / (float)n * Mathf.PI * 2f * 90f) * Mathf.Sin(y / (float)n * Mathf.PI * 2f * 90f)) * 0.5f + 0.5f;
+                    float dirt = Fbm(x, y, n, 6, 3);
+                    float h = band * 0.6f + weave * 0.25f;
+                    Color c = Grey(0.8f + 0.15f * band + weave * 0.04f - (dirt - 0.5f) * 0.12f);
+                    c.a = 0.15f;
+                    Set(r, x, y, c, h);
+                }
+            }
+        }
+
+        /// <summary>Le caoutchouc d'une semelle : un grain très fin, mat.</summary>
+        private static void Rubber(Result r)
+        {
+            int n = r.Size;
+            r.Meters = 0.05f;
+            r.Relief = 0.8f;
+            for (int y = 0; y < n; y++)
+            {
+                for (int x = 0; x < n; x++)
+                {
+                    float g = Fbm(x, y, n, 48, 2);
+                    Color c = Grey(0.88f + (g - 0.5f) * 0.12f);
+                    c.a = 0.4f;
+                    Set(r, x, y, c, g);
                 }
             }
         }

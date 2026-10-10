@@ -2872,3 +2872,33 @@ Ordres de grandeur : 450 à 8 000 pièces, 100 à 280 lots, 10 000 à 300 000 tr
 
 **Ce qui n'a pas changé** : les magasins que la carte meuble elle-même (ceux où l'on entre par la vraie
 porte) gardent leur intérieur d'origine ; les logements gardent leurs meubles (`HouseBuilder`).
+
+### 33.5 Les personnages : coupe, tissu, visage, mains
+
+Le rendu de contrôle des quatre silhouettes (`Tools/corps`, rendu Cycles avec le même solveur de pose
+que le jeu) montrait des pulls en sac, des jeans en pattes d'éléphant, des bretelles de débardeur en
+escalier, des semelles crénelées et des visages de mannequin. Corrigé à la source, dans la fabrique :
+
+- **La coupe** (`vetements.py`) : les largeurs de référence du jean se lisent sur le collant d'origine
+  et non sur la forme en cours (chaque passe de drapé élargissait l'ourlet de la précédente) ; la jambe
+  se resserre du genou à la cheville (coupe droite fuselée). Hauts moins décollés et moins drapés.
+- **Les bords** : ceux qui ne suivent aucune ligne de coupe (bretelles, emmanchures, encolure) sont
+  lissés le long du bord par un filtre de Taubin (un pas qui lisse, un pas qui regonfle : la bretelle
+  s'adoucit sans rétrécir) ; la ligne de la semelle et le haut de la ceinture sont recalés sur leur
+  hauteur avant l'étiquetage des faces.
+- **Les bandes de boxe** du joueur : une pièce taillée dans la peau même de la main (paume, dos,
+  jointures jusqu'à la base des doigts, racine du pouce, 7 cm de poignet), décollée de 3 mm, ourlet
+  court ; la peau dessous est masquée (bit 64). C'est ce qu'on voit en permanence à la première
+  personne : des poings nets plutôt que des mains de cire.
+- **Le tissu** (`CorpsImporter.Fabric`) : chaque matière de vêtement (couleur et brillance du
+  personnage) est doublée d'une texture de tissu générée (`InteriorTextures` : jersey, denim, cuir,
+  caoutchouc, coton des bandes), répétée à sa taille réelle grâce aux UV en mètres. Le teinturier de
+  la garde-robe (`PlayerWardrobe.Tint`) copie la matière : le tissu suit.
+- **Le visage** (`peau.py`) : rougeurs aux pommettes, au bout du nez et aux oreilles, front plus clair,
+  cernes froids, lèvres plus foncées avec la lèvre supérieure plus fine et la commissure marquée,
+  sourcils plus denses, ligne des cils au bord des paupières (sans elle, l'œil paraît écarquillé).
+
+**Les animations de combat à la première personne** restent celles du paquet FS Melee, cuites dans
+l'espace des bras (`MocapArms`, §27) plutôt que jouées sur un corps entier caméra dans la tête : le
+boxeur capturé tourne la tête de 90° et avance de 40 cm à chaque direct — une caméra qui le suivrait
+donnerait le mal de mer. On garde donc le geste capturé, vu par des yeux qui restent sur la cible.

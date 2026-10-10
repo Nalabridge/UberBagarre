@@ -252,7 +252,7 @@ def finish(asm, subdivide_levels, pieces):
 
 # Étiquette -> famille de matière (le nom de sous-maillage garde le détail, ex. Peau.9).
 TAG_MATERIAL = {"Peau": 0, "Yeux": 1, "TShirt": 2, "Veste": 3, "Debardeur": 4, "Jean": 5,
-                "Ceinture": 6, "Chaussures": 7, "Semelle": 8}
+                "Ceinture": 6, "Chaussures": 7, "Semelle": 8, "Bandes": 9}
 
 
 def split_for_unity(positions, normals, faces, uvs, tags, ids, weights):

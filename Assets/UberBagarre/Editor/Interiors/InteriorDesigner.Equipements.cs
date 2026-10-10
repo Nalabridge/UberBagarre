@@ -803,7 +803,8 @@ namespace UberBagarre.EditorTools
             if (turntable)
             {
                 p.Cylinder("Plateau tournant", V(0f, 0.05f, 0f), 2.7f, 0.1f, "metal", default(Vector3), true);
-                p.Cylinder("Liseré", V(0f, 0.1f, 0f), 2.72f, 0.02f, "neon_cyan");
+                // Le liseré lumineux : un disque à peine plus large, caché sous le plateau sauf sur son pourtour.
+                p.Cylinder("Liseré", V(0f, 0.05f, 0f), 2.73f, 0.05f, "neon_cyan");
                 lift = 0.1f;
             }
 

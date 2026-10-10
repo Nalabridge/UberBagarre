@@ -17,9 +17,9 @@ Prérequis : `pip install numpy scipy pillow`, et une copie de
 |---|---|
 | `makehuman.py` | lecture du maillage hm08, des cibles de morphologie, du squelette et des poids |
 | `rig.py` | le squelette du jeu (Pelvis, Spine, Chest, Neck, Head, Yeux, bras, mains, jambes) posé sur les articulations MakeHuman ; fusion et lissage des poids |
-| `vetements.py` | tee-shirt, veste, débardeur, jean, ceinture, chaussures taillés dans le « collant » d'aide ; masques de peau cachée |
+| `vetements.py` | tee-shirt, veste, débardeur, jean (coupe droite fuselée), ceinture, chaussures taillés dans le « collant » d'aide ; bandes de boxe (mains et poignets, sur la peau même) ; bords recalés sur leurs lignes de coupe ou lissés (Taubin) ; masques de peau cachée |
 | `subdivision.py` | un niveau de Catmull-Clark (poids, UV et étiquettes suivent) |
-| `peau.py` | texture de peau peinte dans les UV : teint, veines, ongles, jointures rougies, sourcils, crâne rasé, barbe de trois jours, pores ; carte de normales |
+| `peau.py` | texture de peau peinte dans les UV : teint et rougeurs (pommettes, nez, oreilles), cernes, veines, ongles, jointures rougies, sourcils, ligne des cils, lèvres et commissure, crâne rasé, barbe de trois jours, pores ; carte de normales |
 | `pose.py` | pose un corps (même solveur de bras que le jeu) pour les rendus de contrôle |
 | `fabrique.py` | tout enchaîne et écrit `Assets/UberBagarre/Art/Models/Corps/` |
 
@@ -30,3 +30,9 @@ Silhouettes : **Athlete** (le joueur — yeux à 1,62 m, pile sur la caméra), *
 Le format `UBCORPS2` (gzip) est documenté dans `write_binary`. Côté Unity, `CorpsImporter`
 assemble pour chaque tenue un maillage qui ne garde que la peau visible et les vêtements
 portés, et `FighterBuilder` construit le squelette et câble IK, mains, hitbox et zones.
+
+Côté Unity, chaque vêtement reçoit une matière de tissu (`CorpsImporter.Fabric`) : la couleur choisie
+pour le personnage, posée sur une maille jersey (hauts), un sergé de denim (jean), un grain de cuir
+(chaussures, ceinture), un caoutchouc (semelles), un coton enroulé (bandes). Les UV des vêtements
+étant en mètres, la texture garde sa taille réelle sur toutes les silhouettes. Le joueur porte les
+bandes de boxe (ce sont ses mains qu'on voit tout le temps) ; les autres personnages non.

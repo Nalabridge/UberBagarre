@@ -173,7 +173,8 @@ namespace UberBagarre.EditorTools
             result.EyeLocal = result.Body.transform.localPosition + eyes * scale;
 
             System.Collections.Generic.List<string> slots;
-            Mesh mesh = CorpsImporter.BuildMesh(data, skin.Top, withHead, out slots);
+            // Le joueur porte des bandes de boxe : ce sont ses mains qu'on voit tout le temps.
+            Mesh mesh = CorpsImporter.BuildMesh(data, skin.Top, withHead, out slots, !withHead);
             Material[] materials = CorpsImporter.MaterialsFor(data.Name, slots, skin.Shirt, skin.Pants, skin.Shoe);
             CorpsImporter.Built built = CorpsImporter.BuildSkeleton(data, result.Body.transform, mesh, materials);
             result.Renderer = built.Renderer;
@@ -187,7 +188,7 @@ namespace UberBagarre.EditorTools
                 // Un second rendu, ombre seulement, porte le corps entier ; le corps visible ne
                 // projette rien. Sans ça, une silhouette sans tête marche à côté de toi au sol.
                 System.Collections.Generic.List<string> shadowSlots;
-                Mesh whole = CorpsImporter.BuildMesh(data, skin.Top, true, out shadowSlots);
+                Mesh whole = CorpsImporter.BuildMesh(data, skin.Top, true, out shadowSlots, true);
                 Material[] shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, skin.Shirt, skin.Pants, skin.Shoe);
 
                 GameObject shadowGo = new GameObject("Ombre");

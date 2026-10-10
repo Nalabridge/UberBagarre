@@ -25,7 +25,7 @@ import math
 import numpy as np
 from scipy.spatial import cKDTree
 
-TSHIRT, VESTE, DEBARDEUR, JEAN, CHAUSSURES, TETE = 1, 2, 4, 8, 16, 32
+TSHIRT, VESTE, DEBARDEUR, JEAN, CHAUSSURES, TETE, BANDES = 1, 2, 4, 8, 16, 32, 64
 TOPS = {"TShirt": TSHIRT, "Veste": VESTE, "Debardeur": DEBARDEUR}
 
 ARM, TORSO, LEG, FOOT, HEAD = "bras", "torse", "jambe", "pied", "tete"
@@ -33,8 +33,8 @@ ARM, TORSO, LEG, FOOT, HEAD = "bras", "torse", "jambe", "pied", "tete"
 # Réglages de coupe (mètres, relatifs aux articulations du squelette).
 TOP_CUT = {
     #            manche (m le long du bras), ourlet (/ bassin), col avant, col arrière, décollement, drapé
-    "TShirt":    dict(sleeve=0.13, hem=-0.085, front=-0.050, back=-0.012, offset=0.007, drape=0.6, thick=0.0035),
-    "Veste":     dict(sleeve=None, hem=-0.08, front=-0.012, back=0.018, offset=0.014, drape=0.95, thick=0.006),
+    "TShirt":    dict(sleeve=0.13, hem=-0.085, front=-0.050, back=-0.012, offset=0.006, drape=0.45, thick=0.0035),
+    "Veste":     dict(sleeve=None, hem=-0.075, front=-0.012, back=0.018, offset=0.009, drape=0.55, thick=0.005),
     "Debardeur": dict(sleeve=-1.0, hem=-0.02, front=-0.105, back=-0.045, offset=0.0065, drape=0.55, thick=0.0025),
 }
 
@@ -93,6 +93,35 @@ class Anatomy:
     def collar_y(self, p, front, back):
         rear = smoothstep(self.neck[2] + 0.05, self.neck[2] - 0.05, p[2])
         return self.neck[1] + front + (back - front) * rear
+
+    def face_bone(self, corners):
+        names = [self.vertex_bone[v] for v in corners]
+        return max(set(names), key=names.count)
+
+    def in_wraps(self, p, bone, m=0.0):
+        """
+        Les bandes de boxe : la main (paume et dos), les jointures jusqu'à la base des doigts,
+        le pouce à sa racine, et le poignet jusqu'à 7 cm sur l'avant-bras. Les doigts restent
+        libres, comme sous de vraies bandes.
+        """
+        side = "Left" if bone.startswith("Left") else "Right" if bone.startswith("Right") else None
+        if side is None:
+            return False
+        J = self.J
+        if "Palm" in bone or "Knuckles" in bone or bone.endswith("Wrist"):
+            return True
+        if "Forearm" in bone:
+            elbow, wrist = J[side + "Forearm"], J[side + "Wrist"]
+            axis = wrist - elbow
+            length = np.linalg.norm(axis)
+            t = np.dot(p - elbow, axis) / length
+            return t > length - 0.075 + m
+        for finger in ("Index", "Majeur", "Annulaire", "Auriculaire"):
+            if finger + "1" in bone:
+                return np.linalg.norm(p - J[side + finger + "1"]) < 0.013 - m
+        if "Pouce1" in bone:
+            return np.linalg.norm(p - J[side + "Pouce1"]) < 0.018 - m
+        return False
 
     def face_category(self, corners):
         cats = [self.vertex_cat[v] for v in corners]
@@ -283,6 +312,18 @@ def cut(body, anatomy, name, test):
     return out
 
 
+def cut_skin(body, anatomy, test):
+    """Faces de la peau retenues par <test(p, os)> (les bandes se posent sur la main même)."""
+    out = []
+    for vi, _, g in body.base.faces:
+        if g != "body":
+            continue
+        p = body.coords[vi].mean(axis=0)
+        if test(p, anatomy.face_bone(vi)):
+            out.append(tuple(vi))
+    return out
+
+
 def make_garment(body, anatomy, skin, name, faces_mh, offset, smooth, thick, shape=None, under=None):
     g = Garment(name)
     verts = sorted({v for f in faces_mh for v in f})
@@ -302,7 +343,8 @@ def make_garment(body, anatomy, skin, name, faces_mh, offset, smooth, thick, sha
 
     offset = np.broadcast_to(np.asarray(offset, dtype=np.float64), (len(P),)).copy()
 
-    P = snap_edges(P, sorted({v for e in bedges for v in e}), g.cats, anatomy, name)
+    P, snapped = snap_edges(P, sorted({v for e in bedges for v in e}), g.cats, anatomy, name)
+    P = smooth_free_edges(P, bedges, snapped)
 
     # Les bords ne sont pas lissés : ils sont déjà recalés sur leur ligne de coupe, et un
     # lissage le long du bord rétrécit les bandes étroites (les bretelles disparaissaient).
@@ -311,6 +353,7 @@ def make_garment(body, anatomy, skin, name, faces_mh, offset, smooth, thick, sha
         edge[a] = True
         edge[b] = True
 
+    g.rest = P.copy()
     for it in range(3):
         P = laplacian(P, nb, edge, smooth, 0.5, None)
         if shape is not None:
@@ -321,7 +364,9 @@ def make_garment(body, anatomy, skin, name, faces_mh, offset, smooth, thick, sha
 
     g.positions = P
     g.faces = faces
-    add_hems(g, bedges, thick)
+    # Le revers intérieur d'un ourlet : 2 cm sur un vêtement, à peine quelques millimètres sur
+    # une bande de boxe (sinon il dépasse en languettes autour des doigts).
+    add_hems(g, bedges, thick, 0.003 if name == "Bandes" else 0.022)
     return g
 
 
@@ -348,6 +393,7 @@ def snap_edges(P, edge_vertices, cats, anatomy, name):
     elif name == "Chaussures":
         lines += [("y", anatomy.ankle_y + 0.048)]
 
+    snapped = set()
     for v in edge_vertices:
         p = P[v]
         best = None
@@ -377,10 +423,35 @@ def snap_edges(P, edge_vertices, cats, anatomy, name):
                 best = (abs(d), cand)
         if best is not None:
             P[v] = best[1]
+            snapped.add(v)
+    return P, snapped
+
+
+def smooth_free_edges(P, bedges, snapped, iterations=24):
+    """
+    Les bords qui ne suivent aucune ligne de coupe (bretelles et emmanchures du débardeur,
+    encolures) gardent l'escalier des quads du collant. On les lisse le long du bord lui-même,
+    à la manière de Taubin (un pas qui lisse, un pas qui regonfle) : la courbe s'adoucit sans
+    rétrécir — une bretelle étroite ne disparaît pas.
+    """
+    nb = {}
+    for a, b in bedges:
+        nb.setdefault(a, set()).add(b)
+        nb.setdefault(b, set()).add(a)
+    free = [v for v in nb if v not in snapped and len(nb[v]) == 2]
+    if not free:
+        return P
+    P = P.copy()
+    idx = np.array(free)
+    pairs = np.array([sorted(nb[v]) for v in free])
+    for it in range(iterations):
+        for k in (0.5, -0.53):
+            mid = (P[pairs[:, 0]] + P[pairs[:, 1]]) * 0.5
+            P[idx] = P[idx] + (mid - P[idx]) * k
     return P
 
 
-def add_hems(g, bedges, thick):
+def add_hems(g, bedges, thick, fold_length=0.022):
     """Tranche d'épaisseur + revers intérieur sur chaque bord ouvert."""
     if not bedges:
         return
@@ -410,7 +481,7 @@ def add_hems(g, bedges, thick):
         lip[v] = base + 2 * k
         fold[v] = base + 2 * k + 1
         new_p.append(P[v] - normals[v] * thick)
-        new_p.append(P[v] - normals[v] * thick + inward[v] * 0.022)
+        new_p.append(P[v] - normals[v] * thick + inward[v] * fold_length)
         for _ in range(2):
             new_ids.append(g.ids[v])
             new_w.append(g.weights[v])
@@ -555,7 +626,11 @@ def straight_legs(anatomy, loose=0.012):
             d = P[sel] - knee
             t = d @ axis
             radial = d - t[:, None] * axis
-            r = np.linalg.norm(radial, axis=1)
+            # Les largeurs de référence se lisent sur le collant d'origine, pas sur la forme en
+            # cours : sinon chaque passe élargit l'ourlet de la précédente (pattes d'éléphant).
+            rest = getattr(g, "rest", P)[sel] - knee
+            t0 = rest @ axis
+            r = np.linalg.norm(rest - t0[:, None] * axis, axis=1)
             ang = np.arctan2(radial @ ortho, radial @ ref)
             bins = np.clip(((ang + math.pi) / (2 * math.pi) * 24).astype(int), 0, 23)
             knee_band = np.abs(t) < 0.04
@@ -567,14 +642,31 @@ def straight_legs(anatomy, loose=0.012):
             for b in range(24):
                 if ref_r[b] == 0:
                     ref_r[b] = max(ref_r[(b - 1) % 24], ref_r[(b + 1) % 24])
-            u = np.clip(t / length, 0.0, 1.0)
-            target = np.where(t > 0, ref_r[bins] * (1.0 - 0.05 * u) + loose, r + loose * 0.5)
-            new_r = np.maximum(r, target)
-            scale = np.where(r > 1e-6, new_r / np.maximum(r, 1e-6), 1.0)
+            # Fuselé : la largeur du genou se resserre jusqu'à la cheville (un jean coupe
+            # droite, pas une pattes d'éléphant), sans jamais coller au mollet.
+            ankle_band = t > length - 0.05
+            ref_a = np.zeros(24)
+            for b in range(24):
+                m = ankle_band & (bins == b)
+                if m.any():
+                    ref_a[b] = r[m].max()
+            for b in range(24):
+                if ref_a[b] == 0:
+                    ref_a[b] = max(ref_a[(b - 1) % 24], ref_a[(b + 1) % 24])
+            u = smoothstep(0.0, 1.0, np.clip(t / length, 0.0, 1.0))
+            knee_r = ref_r[bins] + loose
+            hem_r = np.maximum(ref_a[bins] + 0.024, knee_r * 0.74)
+            target = np.where(t > 0, knee_r + (hem_r - knee_r) * u, r + loose * 0.5)
+            new_r = np.maximum(r + 0.004, target)
+            cur = np.linalg.norm(radial, axis=1)
+            scale = np.where(cur > 1e-6, new_r / np.maximum(cur, 1e-6), 1.0)
             out[sel] = knee + t[:, None] * axis + radial * scale[:, None]
         return out
 
     return shape
+
+
+SOLE_Y = 0.026
 
 
 def shoe_shape(anatomy):
@@ -582,6 +674,23 @@ def shoe_shape(anatomy):
         out = P.copy()
         low = out[:, 1] < 0.018
         out[low, 1] = np.minimum(out[low, 1], -0.004)
+        # La ligne de la semelle : les sommets proches y sont posés, pour un bord net
+        # (l'étiquette « Semelle » se décide face par face, et suivait l'escalier des quads).
+        near = np.abs(out[:, 1] - SOLE_Y) < 0.009
+        out[near, 1] = SOLE_Y
+        return out
+
+    return shape
+
+
+def belt_line(anatomy, base_shape):
+    """Le haut de la ceinture, ligne nette, et la jambe fuselée."""
+    y_belt = anatomy.waist_y - 0.038
+
+    def shape(P, g):
+        out = base_shape(P, g)
+        near = (np.abs(out[:, 1] - y_belt) < 0.008) & (g.cats[:len(out)] != LEG)
+        out[near, 1] = y_belt
         return out
 
     return shape
@@ -595,7 +704,7 @@ def dress(body, anatomy, skin_surface):
 
     jean_faces = cut(body, anatomy, "Jean", lambda p, c: anatomy.in_jean(p, c))
     jean = make_garment(body, anatomy, skin_surface, "Jean", jean_faces, 0.006, 4, 0.004,
-                        shape=straight_legs(anatomy))
+                        shape=belt_line(anatomy, straight_legs(anatomy)))
     pieces["Jean"] = jean
     jean_surface = Surface(jean.positions[:len(jean.positions)], vertex_normals(jean.positions, jean.faces))
 
@@ -609,6 +718,9 @@ def dress(body, anatomy, skin_surface):
         pieces[name] = make_garment(body, anatomy, skin_surface, name, faces, c["offset"], 4, c["thick"],
                                     shape=drape_top(anatomy, c["drape"]), under=under)
 
+    wrap_faces = cut_skin(body, anatomy, lambda p, bone: anatomy.in_wraps(p, bone))
+    pieces["Bandes"] = make_garment(body, anatomy, skin_surface, "Bandes", wrap_faces, 0.0028, 1, 0.0018)
+
     for g in pieces.values():
         garment_uvs(g, anatomy)
         tag_details(g, anatomy)
@@ -621,7 +733,7 @@ def tag_details(g, anatomy):
     for f in g.faces:
         p = g.positions[list(f)].mean(axis=0)
         tag = g.name
-        if g.name == "Chaussures" and p[1] < 0.026:
+        if g.name == "Chaussures" and p[1] < SOLE_Y:
             tag = "Semelle"
         elif g.name == "Jean" and p[1] > anatomy.waist_y - 0.038:
             tag = "Ceinture"
@@ -646,6 +758,8 @@ def skin_masks(body, anatomy):
             m |= JEAN
         if anatomy.in_shoes(p, cat, m=0.012):
             m |= CHAUSSURES
+        if anatomy.in_wraps(p, anatomy.face_bone(vi), m=0.004):
+            m |= BANDES
         head = 0.0
         for v in vi:
             for j in range(body.bone_ids.shape[1]):
