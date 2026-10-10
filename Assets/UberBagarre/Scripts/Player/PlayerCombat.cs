@@ -38,6 +38,10 @@ namespace UberBagarre.Player
         [Tooltip("Optionnel. Sert uniquement a couper le deplacement pendant qu'on est au sol.")]
         private KnockdownSystem _knockdown;
 
+        [SerializeField]
+        [Tooltip("Optionnel (cherche sur le joueur) : la visee, que l'aide au ciblage oriente.")]
+        private PlayerLook _look;
+
         [Header("Coups")]
         [SerializeField] private AttackData _straight;
         [SerializeField] private AttackData _hook;
@@ -95,20 +99,27 @@ namespace UberBagarre.Player
 
         [Header("Cadence")]
         [SerializeField, Min(0f)]
-        [Tooltip("Intervalle minimal entre deux coups, en secondes, quel que soit le coup.")]
-        private float _minAttackInterval = 0.34f;
+        [Tooltip("Intervalle minimal entre deux coups, en secondes, quel que soit le coup. Le " +
+                 "vrai rythme vient du point d'enchainement de chaque coup (fin de sa fenetre " +
+                 "d'impact) : un direct en enchaine un autre en ~0,2 s, un crochet en ~0,27 s.")]
+        private float _chainInterval = 0.22f;
 
-        [SerializeField, Min(0f)]
-        [Tooltip("Temps de recuperation ajoute apres la duree de chaque coup. Un coup lourd " +
-                 "immobilise donc plus longtemps qu'un direct.")]
-        private float _attackRecovery = 0.08f;
+        [Header("Aide au ciblage")]
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Part de l'ecart vers l'adversaire que la vue rattrape quand un coup part : le " +
+                 "verrouillage doux a la GTA. 0 = aucune aide, 1 = le coup recentre la vue sur lui.")]
+        private float _aimAssist = 0.7f;
+
+        [SerializeField, Range(0f, 60f)]
+        [Tooltip("Au-dela de cet angle, l'adversaire n'est pas celui qu'on vise : pas d'aide.")]
+        private float _aimAssistMaxAngle = 28f;
 
         [Header("Effet sur le deplacement")]
         [SerializeField, Range(0f, 1f)]
-        [Tooltip("Vitesse conservee pendant un coup. Volontairement haut : a 0,42 un joueur qui " +
-                 "enchaine etait immobilise en permanence, ce qui se ressent comme de la lourdeur " +
-                 "bien plus que comme du poids.")]
-        private float _attackSpeedMultiplier = 0.66f;
+        [Tooltip("Vitesse conservee pendant un coup. Volontairement haut : on frappe en tournant " +
+                 "autour de l'adversaire, comme dans GTA ; a 0,42 un joueur qui enchaine etait " +
+                 "immobilise en permanence, ce qui se ressent comme de la lourdeur, pas du poids.")]
+        private float _moveWhileAttacking = 0.75f;
 
         [SerializeField, Min(0.5f)] private float _speedRecovery = 10f;
 
@@ -127,8 +138,23 @@ namespace UberBagarre.Player
 
         private float _currentSpeedMultiplier = 1f;
         private AttackData _buffered;
+        private AttackKey _bufferedKey;
+        private AttackKey _holdKey;
         private float _bufferedUntil;
         private float _nextAttackAllowed;
+
+        /// <summary>La touche qui a demandé un coup : sert à savoir si elle est encore tenue (charge).</summary>
+        private enum AttackKey
+        {
+            None,
+            Straight,
+            Hook,
+            Uppercut,
+            Kick,
+            LowKick,
+            Headbutt,
+            Shove
+        }
 
         /// <summary>
         /// Nombre de coups dont l'asset date d'une version antérieure du code.
@@ -163,6 +189,8 @@ namespace UberBagarre.Player
             if (_input == null) _input = GetComponentInParent<PlayerInputReader>();
             if (_motor == null) _motor = GetComponentInParent<PlayerMotor>();
             if (_guard == null) _guard = GetComponentInParent<GuardSystem>();
+            if (_look == null) _look = GetComponentInParent<PlayerLook>();
+            if (_look == null && _motor != null) _look = _motor.GetComponentInChildren<PlayerLook>();
         }
 
         private void OnEnable()
@@ -318,45 +346,50 @@ namespace UberBagarre.Player
         /// <summary>
         /// Lit l'intention d'attaque, la mémorise, et la rejoue dès que l'exécuteur l'accepte.
         ///
-        /// C'est le tampon d'entrée, et c'est ce qui manquait pour que le combat réponde. Un coup
-        /// n'est annulable qu'après sa fenêtre d'impact — soit les deux tiers de sa durée. Sans
-        /// tampon, toute touche pressée pendant ces deux tiers disparaissait purement et
-        /// simplement : l'exécuteur refusait, et personne ne s'en souvenait à l'image suivante.
+        /// C'est le tampon d'entrée, et c'est ce qui fait que le combat répond. Sans lui, toute
+        /// touche pressée pendant la partie non annulable d'un coup disparaissait : le joueur
+        /// voyait un jeu qui ignore la moitié de ses ordres, ce qui ne se ressent pas comme « mon
+        /// timing est mauvais » mais comme « le jeu est mou ».
         ///
-        /// Le joueur, lui, avait bien appuyé. Il voyait donc un jeu qui ignore la moitié de ses
-        /// ordres, ce qui ne se ressent pas comme « mon timing est mauvais » mais comme « le jeu
-        /// est mou ». Aucun réglage de durée n'aurait pu corriger ça.
+        /// Façon GTA : un appui pendant un coup est GARDÉ (un seul, le dernier demandé) et part à
+        /// l'instant où le coup en cours devient enchaînable — fin de sa fenêtre d'impact, et pas
+        /// fin de tout le geste. Clic, clic, clic : les coups s'enchaînent sans temps mort. Le
+        /// martelage n'y gagne rien de plus : un seul ordre en attente, et chaque coup coûte de
+        /// l'endurance.
         /// </summary>
         private void UpdateAttacks()
         {
-            if (UpdateCharging()) return;
+            // Coup chargeable tenu : il est déjà parti ; lâcher la touche le libère.
+            if (_executor.IsHolding && !KeyHeld(_holdKey)) _executor.ReleaseHold();
 
-            AttackData requested = ReadAttackIntent();
+            AttackKey key;
+            AttackData requested = ReadAttackIntent(out key);
 
             if (requested != null)
             {
-                // Anti-martelage : un appui fait TROP tot n'est pas memorise. Seul l'appui fait
-                // juste avant la fin de la recuperation est garde (le tampon), ce qui recompense
-                // le rythme et pas la vitesse du doigt.
-                if (Time.time >= _nextAttackAllowed - _inputBuffer)
-                {
-                    _buffered = requested;
-                    _bufferedUntil = Time.time + _inputBuffer;
-                }
+                _buffered = requested;
+                _bufferedKey = key;
+                _bufferedUntil = Mathf.Max(Time.time, _nextAttackAllowed) + _inputBuffer;
             }
 
             if (_buffered == null) return;
 
-            if (Time.time < _nextAttackAllowed)
-            {
-                if (Time.time > _bufferedUntil) _buffered = null;
-                return;
-            }
+            // Le coup en cours n'est pas encore enchaînable (gel de contact, coup lourd raté) :
+            // l'ordre attend sans se périmer — il partira dès que possible.
+            bool waiting = Time.time < _nextAttackAllowed || (_executor.IsAttacking && !_executor.CanChain);
+            if (waiting) return;
 
-            if (_executor.TryPlay(_buffered))
+            // Un coup chargeable dont la touche est encore enfoncée part tout de suite et tient
+            // son armement : appui bref = coup sec, appui tenu = coup chargé.
+            bool hold = _buffered.chargeable && KeyHeld(_bufferedKey);
+            bool played = hold ? _executor.TryPlayHeld(_buffered) : _executor.TryPlay(_buffered);
+
+            if (played)
             {
+                _holdKey = hold ? _bufferedKey : AttackKey.None;
                 _buffered = null;
                 LockNextAttack();
+                AssistAim();
                 return;
             }
 
@@ -366,85 +399,105 @@ namespace UberBagarre.Player
         }
 
         /// <summary>
-        /// Gère les coups qui se CHARGENT. Renvoie vrai si une charge occupe la frame.
-        ///
-        /// Les coups lourds se chargent, les coups rapides se répètent, et ce partage n'est pas
-        /// arbitraire : l'intérêt d'un direct est de partir tout de suite, donc le maintenir doit
-        /// l'enchaîner. L'intérêt d'un uppercut est son poids, donc le maintenir doit l'armer.
-        /// Chaque touche garde ainsi un comportement qui découle du coup lui-même.
-        /// </summary>
-        private bool UpdateCharging()
-        {
-            // Pas de nouvelle charge pendant la recuperation du coup precedent.
-            AttackData held = !_executor.IsCharging && Time.time < _nextAttackAllowed ? null : ReadChargeableHeld();
-
-            if (held != null)
-            {
-                _executor.HoldCharge(held);
-                return true;
-            }
-
-            // Touche relachee : le coup part avec la charge accumulee.
-            if (_executor.IsCharging)
-            {
-                bool released = _executor.ReleaseCharge();
-                if (_executor.IsAttacking) LockNextAttack();
-                return released;
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// Fixe le moment où le prochain coup pourra partir : jamais avant l'intervalle minimal,
-        /// et jamais avant la fin du coup en cours plus sa récupération. Un coup de pied lourd
-        /// laisse donc le joueur exposé plus longtemps qu'un direct.
+        /// Fixe le moment le plus tôt où le coup suivant pourra partir : le point d'enchaînement
+        /// du coup (fin de sa fenêtre d'impact), jamais moins que l'intervalle minimal. L'exécuteur
+        /// a le dernier mot (<see cref="AttackExecutor.CanChain"/>) : un coup lourd parti dans le
+        /// vide s'enchaîne plus tard, c'est le prix du coup raté.
         /// </summary>
         private void LockNextAttack()
         {
             float duration = _executor != null ? _executor.EffectiveDuration : 0f;
-            _nextAttackAllowed = Time.time + Mathf.Max(_minAttackInterval, duration + _attackRecovery);
+            AttackData current = _executor != null ? _executor.CurrentAttack : null;
+            float chainAt = current != null ? current.comboCancelAt : 1f;
+            _nextAttackAllowed = Time.time + Mathf.Max(_chainInterval, duration * chainAt);
         }
 
-        /// <summary>Le coup chargeable dont la touche est actuellement maintenue, s'il y en a un.</summary>
-        private AttackData ReadChargeableHeld()
+        /// <summary>
+        /// Le verrouillage doux : quand un coup part vers un adversaire proche du centre de la
+        /// vue, la vue rattrape une partie de l'écart. On frappe là où on regarde À PEU PRÈS,
+        /// comme dans GTA, au lieu de fendre l'air pour quelques degrés.
+        /// </summary>
+        private void AssistAim()
         {
-            if (_input.LowKickHeld) return Chargeable(Resolve(_lowKick));
-            if (_input.KickHeld) return Chargeable(Resolve(_kick));
-            if (_input.UppercutHeld) return Chargeable(Resolve(_uppercut));
-            return null;
+            if (_look == null || _aimAssist <= 0f || _combatant == null) return;
+
+            StrikeTarget target = _executor.Target;
+            Vector3 point;
+            bool aimPitch = target.Valid;
+
+            if (target.Valid)
+            {
+                point = target.WorldPoint;
+            }
+            else
+            {
+                Combatant opponent = StrikeTarget.NearestInFront(_combatant);
+                if (opponent == null) return;
+                point = opponent.transform.position + Vector3.up * 1.2f;
+            }
+
+            Transform head = _look.Head;
+            Vector3 to = point - head.position;
+            Vector3 flat = new Vector3(to.x, 0f, to.z);
+            Vector3 forward = head.forward;
+            forward.y = 0f;
+            if (flat.sqrMagnitude < 0.01f || forward.sqrMagnitude < 1e-4f) return;
+
+            float yaw = Vector3.SignedAngle(forward, flat, Vector3.up);
+            if (Mathf.Abs(yaw) > _aimAssistMaxAngle) return;
+
+            float pitch = 0f;
+            if (aimPitch)
+            {
+                float wanted = -Mathf.Atan2(to.y, flat.magnitude) * Mathf.Rad2Deg;
+                pitch = Mathf.Clamp(Mathf.DeltaAngle(_look.Pitch, wanted), -12f, 12f) * 0.5f;
+            }
+
+            _look.Nudge(yaw * _aimAssist, pitch * _aimAssist);
         }
 
-        private static AttackData Chargeable(AttackData attack)
+        private bool KeyHeld(AttackKey key)
         {
-            return attack != null && attack.chargeable ? attack : null;
+            switch (key)
+            {
+                case AttackKey.Uppercut: return _input.UppercutHeld;
+                case AttackKey.Kick: return _input.KickHeld;
+                case AttackKey.LowKick: return _input.LowKickHeld;
+                case AttackKey.Hook: return _input.HookHeld;
+                case AttackKey.Straight: return _input.StraightHeld;
+                default: return false;
+            }
         }
 
         /// <summary>
         /// Quel coup le joueur demande. Les pressions gagnent toujours sur les maintiens : appuyer
         /// sur le coup de pied pendant qu'on tient le clic gauche doit sortir le coup de pied.
         /// </summary>
-        private AttackData ReadAttackIntent()
+        private AttackData ReadAttackIntent(out AttackKey key)
         {
+            key = AttackKey.None;
+
             // Ordre volontaire : du coup le plus engageant au plus rapide. Deux touches pressees
             // dans la meme image doivent donner un resultat previsible, pas le coup qui se trouve
             // en premier dans le code.
             // Le coup de tete et la bousculade ne passent PAS par la substitution contextuelle :
             // sprinter puis presser G ne doit pas sortir une charge d'epaule, et un coup de tete
             // sur un homme a terre n'aurait pas de sens.
-            if (_input.HeadbuttPressed && _headbuttUnlocked && _headbutt != null) return _headbutt;
-            if (_input.ShovePressed && _shove != null) return _shove;
+            if (_input.HeadbuttPressed && _headbuttUnlocked && _headbutt != null) { key = AttackKey.Headbutt; return _headbutt; }
+            if (_input.ShovePressed && _shove != null) { key = AttackKey.Shove; return _shove; }
 
-            if (_input.LowKickPressed) return Resolve(_lowKick);
-            if (_input.KickPressed) return Resolve(_kick);
-            if (_input.UppercutPressed) return Resolve(_uppercut);
-            if (_input.HookPressed) return Resolve(_hook);
-            if (_input.StraightPressed) return Resolve(_straight);
+            if (_input.LowKickPressed) { key = AttackKey.LowKick; return Resolve(_lowKick); }
+            if (_input.KickPressed) { key = AttackKey.Kick; return Resolve(_kick); }
+            if (_input.UppercutPressed) { key = AttackKey.Uppercut; return Resolve(_uppercut); }
+            if (_input.HookPressed) { key = AttackKey.Hook; return Resolve(_hook); }
+            if (_input.StraightPressed) { key = AttackKey.Straight; return Resolve(_straight); }
 
-            if (!_repeatWhileHeld) return null;
+            // Maintien : seulement si l'option est active, et jamais pendant un coup tenu (la
+            // touche tenue CHARGE, elle ne doit pas aussi relancer).
+            if (!_repeatWhileHeld || _executor.IsHolding) return null;
 
-            if (_input.HookHeld) return Resolve(_hook);
-            if (_input.StraightHeld) return Resolve(_straight);
+            if (_input.HookHeld) { key = AttackKey.Hook; return Resolve(_hook); }
+            if (_input.StraightHeld) { key = AttackKey.Straight; return Resolve(_straight); }
 
             return null;
         }
@@ -567,7 +620,7 @@ namespace UberBagarre.Player
         {
             if (_motor == null) return;
 
-            float target = _executor.IsAttacking ? _attackSpeedMultiplier : 1f;
+            float target = _executor.IsAttacking ? _moveWhileAttacking : 1f;
 
             _currentSpeedMultiplier = _executor.IsAttacking
                 ? target

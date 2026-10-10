@@ -134,8 +134,13 @@ namespace UberBagarre.Feedback
 
         private void OnHitLanded(AttackData attack, Hurtbox hurtbox, Vector3 point)
         {
-            if (_cameraShake != null) _cameraShake.Play(attack.shakeIntensity * 1.1f, attack.shakeDuration);
-            if (_audio != null) _audio.PlayImpact(attack.isHeavy);
+            // Le coup qui conclut un enchaînement secoue plus et sonne lourd, même si c'est un
+            // direct : c'est lui qui doit claquer.
+            bool finisher = _executor != null && _executor.IsFinisher;
+            float shake = attack.shakeIntensity * (finisher ? 1.8f : 1.1f);
+
+            if (_cameraShake != null) _cameraShake.Play(shake, attack.shakeDuration * (finisher ? 1.4f : 1f));
+            if (_audio != null) _audio.PlayImpact(attack.isHeavy || finisher);
         }
 
         private void OnDamageTaken(DamageInfo info)

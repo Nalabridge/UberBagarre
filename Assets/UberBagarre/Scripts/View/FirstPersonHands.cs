@@ -129,6 +129,15 @@ namespace UberBagarre.View
         private float _leftAttackGrip = -1f;
         private float _rightAttackGrip = -1f;
 
+        // La pose d'un coup interrompu (enchaîné par le suivant, annulé par un coup reçu) : la
+        // main y reste accrochée et rejoint la garde en quelques centièmes au lieu de s'y
+        // téléporter. Sans elle, chaque enchaînement faisait sauter le poing d'une image.
+        private HandPose _leftReleasePose;
+        private HandPose _rightReleasePose;
+        private float _leftReleaseWeight;
+        private float _rightReleaseWeight;
+        private const float ReleaseTime = 0.045f;
+
         private Vector3 _leftHoldPosition;
         private Quaternion _leftHoldRotation = Quaternion.identity;
         private float _leftHoldWeight;
@@ -274,11 +283,23 @@ namespace UberBagarre.View
         {
             if (side == HandSide.Left)
             {
+                if (_leftAttackWeight > 0.01f && _leftAttackWeight >= _leftReleaseWeight)
+                {
+                    _leftReleasePose = _leftAttackPose;
+                    _leftReleaseWeight = _leftAttackWeight;
+                }
+
                 _leftAttackWeight = 0f;
                 _leftAttackGrip = -1f;
             }
             else
             {
+                if (_rightAttackWeight > 0.01f && _rightAttackWeight >= _rightReleaseWeight)
+                {
+                    _rightReleasePose = _rightAttackPose;
+                    _rightReleaseWeight = _rightAttackWeight;
+                }
+
                 _rightAttackWeight = 0f;
                 _rightAttackGrip = -1f;
             }
@@ -309,8 +330,15 @@ namespace UberBagarre.View
             _smoothedLeft = HandPose.Lerp(_smoothedLeft, ComposeIdlePose(HandSide.Left), t);
             _smoothedRight = HandPose.Lerp(_smoothedRight, ComposeIdlePose(HandSide.Right), t);
 
-            ApplyHand(HandSide.Left, _leftArm, _leftHand, _smoothedLeft, _leftAttackPose, _leftAttackWeight, _leftAttackGrip);
-            ApplyHand(HandSide.Right, _rightArm, _rightHand, _smoothedRight, _rightAttackPose, _rightAttackWeight, _rightAttackGrip);
+            float release = Mathf.Exp(-dt / ReleaseTime);
+            _leftReleaseWeight = _leftReleaseWeight * release < 0.01f ? 0f : _leftReleaseWeight * release;
+            _rightReleaseWeight = _rightReleaseWeight * release < 0.01f ? 0f : _rightReleaseWeight * release;
+
+            HandPose left = _leftReleaseWeight > 0f ? HandPose.Lerp(_smoothedLeft, _leftReleasePose, _leftReleaseWeight) : _smoothedLeft;
+            HandPose right = _rightReleaseWeight > 0f ? HandPose.Lerp(_smoothedRight, _rightReleasePose, _rightReleaseWeight) : _smoothedRight;
+
+            ApplyHand(HandSide.Left, _leftArm, _leftHand, left, _leftAttackPose, _leftAttackWeight, _leftAttackGrip);
+            ApplyHand(HandSide.Right, _rightArm, _rightHand, right, _rightAttackPose, _rightAttackWeight, _rightAttackGrip);
         }
 
         private void UpdateSway(float dt)

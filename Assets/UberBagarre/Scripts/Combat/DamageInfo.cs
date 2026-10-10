@@ -57,6 +57,12 @@ namespace UberBagarre.Combat
         public bool IsRiposte;
 
         /// <summary>
+        /// Vrai pour le coup qui CONCLUT un enchaînement (le troisième d'une série qui a porté) :
+        /// il envoie l'adversaire valser, comme le dernier coup d'un combo dans GTA.
+        /// </summary>
+        public bool IsFinisher;
+
+        /// <summary>
         /// Chance de chute ajoutée par les circonstances du coup (charge, contexte).
         ///
         /// Séparée de celle de l'attaque : la même attaque chargée à fond ou relâchée aussitôt ne

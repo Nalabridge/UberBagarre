@@ -1,0 +1,62 @@
+{
+ "version": 1,
+ "sexe": "H",
+ "teint": [
+  1.0,
+  0.94,
+  0.88
+ ],
+ "visage": "Visage_H_Adulte_Albedo",
+ "visages": [
+  "Visage_H_Adulte_Albedo",
+  "Visage_H_Variante1_Albedo",
+  "Visage_H_Variante3_Albedo",
+  "Visage_H_Teint_Albedo",
+  "Visage_H_Use_Albedo",
+  "Visage_H_Balafre_Albedo",
+  "Visage_H_Age_Albedo"
+ ],
+ "peau": "Peau_H_Albedo",
+ "peauRelief": "Peau_H_Relief",
+ "visageRelief": "Visage_H_Relief",
+ "yeux": "Yeux_UMA",
+ "cils": "",
+ "tenues": [
+  {
+   "nom": "TShirt",
+   "albedo": "",
+   "relief": "",
+   "tissu": "jersey"
+  },
+  {
+   "nom": "Veste",
+   "albedo": "Tissu_Veste_H_Albedo",
+   "relief": "Tissu_Veste_H_Relief",
+   "tissu": ""
+  },
+  {
+   "nom": "Debardeur",
+   "albedo": "Tissu_Debardeur_H_Albedo",
+   "relief": "Tissu_Debardeur_H_Relief",
+   "tissu": ""
+  },
+  {
+   "nom": "Jean",
+   "albedo": "Tissu_Jean_H_Albedo",
+   "relief": "Tissu_Jean_H_Relief",
+   "tissu": ""
+  },
+  {
+   "nom": "Chaussures",
+   "albedo": "Tissu_Chaussures_H_Albedo",
+   "relief": "Tissu_Chaussures_H_Relief",
+   "tissu": ""
+  },
+  {
+   "nom": "Bandes",
+   "albedo": "",
+   "relief": "",
+   "tissu": "bandes"
+  }
+ ]
+}

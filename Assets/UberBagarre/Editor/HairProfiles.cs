@@ -136,7 +136,10 @@ namespace UberBagarre.EditorTools
         private static bool Measure(CorpsImporter.Data data, HairProfile profile)
         {
             int[] triangles;
-            if (data.Submeshes == null || !data.Submeshes.TryGetValue("Peau.32", out triangles) || triangles.Length < 300) return false;
+            // La tête : le visage UMA (Visage.32), ou la peau de la tête des anciens corps (Peau.32).
+            if (data.Submeshes == null) return false;
+            if (!data.Submeshes.TryGetValue("Visage.32", out triangles) && !data.Submeshes.TryGetValue("Peau.32", out triangles)) return false;
+            if (triangles.Length < 300) return false;
 
             int head = data.Bone("Head");
             int eyes = data.Bone("Yeux");

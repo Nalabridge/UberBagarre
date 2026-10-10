@@ -38,6 +38,10 @@ namespace UberBagarre.Player
 
         private Vector2 _smoothedDelta;
 
+        // Rattrapage demandé par l'aide au ciblage (degrés de lacet, de tangage), consommé en
+        // douceur image après image.
+        private Vector2 _assist;
+
         /// <summary>Désactive la visée sans désactiver le composant (état touché, menu, curseur libéré...).</summary>
         public bool LookEnabled { get; set; }
 
@@ -95,7 +99,11 @@ namespace UberBagarre.Player
 
         private void Update()
         {
-            if (!LookEnabled || _input == null) return;
+            if (!LookEnabled || _input == null)
+            {
+                _assist = Vector2.zero;
+                return;
+            }
 
             Vector2 rawDelta = _input.LookDelta * (_sensitivity * Mathf.Clamp(SensitivityScale, 0.05f, 4f) * _userSensitivity);
 
@@ -114,7 +122,11 @@ namespace UberBagarre.Player
 
             Yaw += _smoothedDelta.x;
             bool invert = _invertVertical != Core.GameSettings.InvertY;
-            Pitch += invert ? _smoothedDelta.y : -_smoothedDelta.y;
+            float pitchDelta = invert ? _smoothedDelta.y : -_smoothedDelta.y;
+            Pitch += pitchDelta;
+
+            ApplyAssist(_smoothedDelta.x, pitchDelta);
+
             Pitch = Mathf.Clamp(Pitch, _minPitch, _maxPitch);
 
             ApplyRotations();
@@ -133,12 +145,41 @@ namespace UberBagarre.Player
             }
         }
 
+        /// <summary>
+        /// Aide au ciblage : la vue rattrape <paramref name="yaw"/> et <paramref name="pitch"/>
+        /// degrés en ~0,1 s, sans saut. Le joueur garde la main : tirer franchement la souris
+        /// dans l'autre sens annule le rattrapage.
+        /// </summary>
+        public void Nudge(float yaw, float pitch)
+        {
+            _assist = Vector2.ClampMagnitude(_assist + new Vector2(yaw, pitch), 40f);
+        }
+
+        private void ApplyAssist(float yawInput, float pitchInput)
+        {
+            if (_assist.sqrMagnitude < 1e-4f)
+            {
+                _assist = Vector2.zero;
+                return;
+            }
+
+            // Le joueur tire à l'opposé : c'est lui qui décide.
+            if (yawInput * _assist.x < 0f && Mathf.Abs(yawInput) > 0.6f) _assist.x = 0f;
+            if (pitchInput * _assist.y < 0f && Mathf.Abs(pitchInput) > 0.6f) _assist.y = 0f;
+
+            Vector2 step = _assist * (1f - Mathf.Exp(-Time.unscaledDeltaTime * 24f));
+            Yaw += step.x;
+            Pitch += step.y;
+            _assist -= step;
+        }
+
         /// <summary>Force les angles de visée (spawn, scripts de test, cinématique).</summary>
         public void SetLookAngles(float yaw, float pitch)
         {
             Yaw = yaw;
             Pitch = Mathf.Clamp(pitch, _minPitch, _maxPitch);
             _smoothedDelta = Vector2.zero;
+            _assist = Vector2.zero;
             ApplyRotations();
         }
 

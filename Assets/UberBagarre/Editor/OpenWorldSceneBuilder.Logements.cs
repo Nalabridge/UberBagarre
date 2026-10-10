@@ -346,8 +346,8 @@ namespace UberBagarre.EditorTools
                     name = PlayerWardrobe.Tops[i].Name,
                     body = mesh,
                     shadow = whole,
-                    bodyMaterials = CorpsImporter.MaterialsFor(data.Name, slots, materials.Shirt, materials.Pants, materials.Shoe),
-                    shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, materials.Shirt, materials.Pants, materials.Shoe),
+                    bodyMaterials = CorpsImporter.MaterialsFor(data.Name, slots, materials.Shirt, materials.Pants, materials.Shoe, cuts[i]),
+                    shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, materials.Shirt, materials.Pants, materials.Shoe, cuts[i]),
                     bodySlots = slots.ToArray(),
                     shadowSlots = shadowSlots.ToArray()
                 };

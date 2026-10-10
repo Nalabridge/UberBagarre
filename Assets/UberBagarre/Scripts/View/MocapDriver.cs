@@ -983,7 +983,9 @@ namespace UberBagarre.View
             Vector3 strike = info.StrikeDirection;
             Vector3 local = _root.InverseTransformDirection(strike);
 
-            if (info.IsRiposte && _library.counterReactions.Count > 0)
+            // Une riposte ou le dernier coup d'un enchaînement : la grosse réaction, celle qui
+            // fait reculer de deux pas.
+            if ((info.IsRiposte || info.IsFinisher) && _library.counterReactions.Count > 0)
             {
                 return Best(_library.counterReactions, local);
             }

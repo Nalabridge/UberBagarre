@@ -746,7 +746,8 @@ namespace UberBagarre.EditorTools
                 Material pants = PrologueSceneBuilder.Jacket(_night, "M_Conducteur_Bas_" + i, new Color(0.10f, 0.12f, 0.2f));
                 Material shoes = EditorBuildUtility.CreateOrUpdateMaterial(NightMaterialFactory.MaterialsFolder,
                     "M_Conducteur_Chaussures", new Color(0.06f, 0.05f, 0.05f), 0.3f, 0f);
-                Material[] materials = CorpsImporter.MaterialsFor(data.Name, slots, top, pants, shoes);
+                Material[] materials = CorpsImporter.MaterialsFor(data.Name, slots, top, pants, shoes, CorpsImporter.Top.Veste,
+                    CorpsImporter.FaceFor(data, "Conducteur" + i));
 
                 GameObject temp = new GameObject("Conducteur (pose)");
                 CorpsImporter.Built built = CorpsImporter.BuildSkeleton(data, temp.transform, mesh, materials);

@@ -459,6 +459,38 @@ namespace UberBagarre.EditorTools
             }
         }
 
+        /// <summary>
+        /// Matériau découpé par l'alpha de sa texture (cheveux, cils, barbe) : URP Lit en
+        /// « Alpha Clipping », double face si demandé ; Standard en mode Cutout hors URP.
+        /// </summary>
+        public static void MakeCutout(Material m, float cutoff, bool doubleSided)
+        {
+            if (m == null || m.shader == null) return;
+            m.SetFloat("_Cutoff", cutoff);
+
+            if (m.shader.name.StartsWith("Universal Render Pipeline"))
+            {
+                m.SetFloat("_Surface", 0f);
+                m.SetFloat("_AlphaClip", 1f);
+                m.SetFloat("_Cull", doubleSided ? 0f : 2f);
+                if (!UpdateUrpMaterial(m)) SetLitKeywords(m, 1, m.GetTexture("_BumpMap") != null, false, false, false);
+                m.doubleSidedGI = doubleSided;
+                EditorUtility.SetDirty(m);
+                return;
+            }
+
+            m.SetFloat("_Mode", 1f);
+            m.SetOverrideTag("RenderType", "TransparentCutout");
+            m.SetInt("_SrcBlend", (int)BlendMode.One);
+            m.SetInt("_DstBlend", (int)BlendMode.Zero);
+            m.SetInt("_ZWrite", 1);
+            m.EnableKeyword("_ALPHATEST_ON");
+            m.DisableKeyword("_ALPHABLEND_ON");
+            m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            m.renderQueue = (int)RenderQueue.AlphaTest;
+            EditorUtility.SetDirty(m);
+        }
+
         /// <summary>Prépare un matériau URP Lit transparent (décalques, tags) — ou ne fait rien hors URP.</summary>
         public static void MakeTransparent(Material m)
         {

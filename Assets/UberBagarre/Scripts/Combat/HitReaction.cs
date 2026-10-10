@@ -27,7 +27,11 @@ namespace UberBagarre.Combat
         private MonoBehaviour _impulseReceiver;
 
         [Header("Reaction legere")]
-        [SerializeField, Min(0f)] private float _lightDuration = 0.20f;
+        [SerializeField, Min(0f)]
+        [Tooltip("Perte de controle apres un coup leger. Elle doit couvrir l'intervalle jusqu'au " +
+                 "coup suivant d'un enchainement (~0,2-0,27 s) : a 0,20 s l'adversaire reprenait " +
+                 "la main entre deux directs et esquivait le troisieme, le combo se cassait.")]
+        private float _lightStun = 0.30f;
         [SerializeField] private float _lightAngle = 9f;
 
         [SerializeField, Min(0f)]
@@ -35,7 +39,7 @@ namespace UberBagarre.Combat
         private float _lightKnockback = 1.9f;
 
         [Header("Reaction lourde")]
-        [SerializeField, Min(0f)] private float _heavyDuration = 0.42f;
+        [SerializeField, Min(0f)] private float _heavyStun = 0.48f;
         [SerializeField] private float _heavyAngle = 22f;
         [SerializeField, Min(0f)] private float _heavyKnockback = 2.2f;
 
@@ -68,10 +72,37 @@ namespace UberBagarre.Combat
         [Tooltip("Plafond du facteur de recul : meme un uppercut charge ne projette pas a l'autre bout de la rue.")]
         private float _maxKnockbackFactor = 1.1f;
 
+        [Header("Coup de conclusion")]
+        [SerializeField, Min(0f)]
+        [Tooltip("Le dernier coup d'un enchainement envoie valser : perte de controle et recul " +
+                 "multiplies d'autant.")]
+        private float _finisherStun = 0.65f;
+
+        [SerializeField, Min(1f)] private float _finisherKnockbackScale = 1.8f;
+
+        [SerializeField, Range(0.2f, 1f)]
+        [Tooltip("Le JOUEUR perd la main moins longtemps qu'un adversaire : etre sonne sur un " +
+                 "coup encaisse se lit comme un choc ; l'etre aussi longtemps qu'un PNJ se lit " +
+                 "comme une manette qui ne repond plus.")]
+        private float _playerStunScale = 0.65f;
+
         [Header("Retour")]
         [SerializeField, Min(0.5f)] private float _recoverySpeed = 6f;
 
+        [Header("Usure de la perte de controle")]
+        [SerializeField, Min(1)]
+        [Tooltip("Coups encaisses d'affilee avant que la perte de controle ne s'use. Au-dela, " +
+                 "chaque coup sonne un peu moins : on ne peut pas enfermer quelqu'un dans un " +
+                 "enchainement infini, il finit par se couvrir ou s'esquiver.")]
+        private int _hitsBeforeFatigue = 3;
+
+        [SerializeField, Range(0.1f, 1f)]
+        [Tooltip("Perte de controle restante, au plus usee (sept coups d'affilee et plus).")]
+        private float _minStunScale = 0.45f;
+
         private IImpulseReceiver _receiver;
+        private int _hitsInRow;
+        private float _lastHitTime = -10f;
         private Vector3 _currentAngle;
         private Vector3 _targetAngle;
         private float _holdTimer;
@@ -108,11 +139,19 @@ namespace UberBagarre.Combat
                 return;
             }
 
-            bool heavy = info.IsHeavy || info.Zone == HitZone.Head;
+            bool heavy = info.IsHeavy || info.Zone == HitZone.Head || info.IsFinisher;
 
-            float duration = heavy ? _heavyDuration : _lightDuration;
+            float duration = info.IsFinisher ? _finisherStun : heavy ? _heavyStun : _lightStun;
             float angle = heavy ? _heavyAngle : _lightAngle;
             float knockback = heavy ? _heavyKnockback : _lightKnockback;
+            float maxFactor = _maxKnockbackFactor;
+
+            if (info.IsFinisher)
+            {
+                angle *= 1.3f;
+                knockback *= _finisherKnockbackScale;
+                maxFactor *= _finisherKnockbackScale;
+            }
 
             if (info.Zone == HitZone.Leg)
             {
@@ -120,8 +159,15 @@ namespace UberBagarre.Combat
                 knockback *= _legKnockbackScale;
             }
 
+            // Les coups qui s'enchaînent sans répit usent la perte de contrôle.
+            _hitsInRow = Time.time - _lastHitTime < 0.9f ? _hitsInRow + 1 : 1;
+            _lastHitTime = Time.time;
+            float fatigue = Mathf.Clamp01((_hitsInRow - _hitsBeforeFatigue) / 4f);
+            duration *= Mathf.Lerp(1f, _minStunScale, fatigue);
+
             if (_combatant != null)
             {
+                if (_combatant.Faction == Faction.Player) duration *= _playerStunScale;
                 _combatant.State.TryEnter(CombatantState.Hit, duration);
             }
 
@@ -141,7 +187,7 @@ namespace UberBagarre.Combat
                 // reellement parcourue vaut v2 / (2 x amortissement) : avec l'amortissement de 8
                 // des moteurs, 0,9 m/s ne deplacait que 5 cm. Invisible. A 2 m/s on recule de
                 // 25 cm, a 4 m/s d'un bon metre : c'est la plage ou le coup se VOIT porter.
-                float speed = knockback * Mathf.Min(_knockbackBase + info.ImpactForce * _knockbackPerImpactForce, _maxKnockbackFactor);
+                float speed = knockback * Mathf.Min(_knockbackBase + info.ImpactForce * _knockbackPerImpactForce, maxFactor);
 
                 Vector3 push = info.Direction.normalized * speed;
                 push.y = 0f;

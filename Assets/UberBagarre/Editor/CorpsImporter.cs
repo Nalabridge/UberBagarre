@@ -11,14 +11,17 @@ namespace UberBagarre.EditorTools
 {
     /// <summary>
     /// Les corps réalistes : lecture des fichiers « Corps_*.bytes » produits par
-    /// Tools/corps/fabrique.py (MakeHuman, licence CC0), et construction dans Unity.
+    /// Tools/uma/corps_uma.py (UMA 2, gratuit sur l'Asset Store), et construction dans Unity.
     ///
     /// Un fichier contient UN corps et TOUTES ses tenues : la peau découpée par zones (chaque
-    /// zone sait quels vêtements la cachent), les yeux, le tee-shirt, la veste, le débardeur,
-    /// le jean, la ceinture, les chaussures et leurs semelles. Pour une tenue donnée, on
-    /// assemble un maillage qui ne garde que ce qui se voit — pas de peau qui traverse le
-    /// tissu, et rien d'inutile à animer. Le maillage est enregistré comme asset (dossier
-    /// Generes) et partagé par tous les personnages qui portent la même tenue.
+    /// zone sait quels vêtements la cachent), le visage, les yeux, les cils, le tee-shirt, la
+    /// veste, le débardeur, le jean, les chaussures et les bandes de boxe. Pour une tenue
+    /// donnée, on assemble un maillage qui ne garde que ce qui se voit — pas de peau qui
+    /// traverse le tissu, et rien d'inutile à animer. Le maillage est enregistré comme asset
+    /// (dossier Generes) et partagé par tous les personnages qui portent la même tenue.
+    ///
+    /// À côté, Corps_*.json dit le reste : le sexe, le teint, les visages possibles et les
+    /// textures de chaque vêtement (voir <see cref="Meta"/>).
     ///
     /// Le squelette est reconstruit avec les noms que le reste du jeu attend (Pelvis, Spine,
     /// Chest, Neck, Head, LeftUpperArm…), directement depuis les positions de liaison du
@@ -47,7 +50,52 @@ namespace UberBagarre.EditorTools
         }
 
         /// <summary>Emplacements de matière, dans l'ordre des sous-maillages.</summary>
-        public static readonly string[] Slots = { "Peau", "Yeux", "Haut", "Jean", "Ceinture", "Chaussures", "Semelle", "Bandes" };
+        public static readonly string[] Slots = { "Peau", "Visage", "Yeux", "Cils", "Haut", "Jean", "Chaussures", "Bandes" };
+
+        /// <summary>Un vêtement : sa texture (teintée par la couleur du personnage) ou son tissu procédural.</summary>
+        [Serializable]
+        public sealed class Tenue
+        {
+            public string nom;
+            public string albedo;
+            public string relief;
+            public string tissu;
+        }
+
+        /// <summary>Ce que le corps dit de lui-même (Corps_*.json, écrit par Tools/uma/corps_uma.py).</summary>
+        [Serializable]
+        public sealed class Meta
+        {
+            public int version;
+            public string sexe;
+            public float[] teint;
+            public string visage;
+            public string[] visages;
+            public string peau;
+            public string peauRelief;
+            public string visageRelief;
+            public string yeux;
+            public string cils;
+            public Tenue[] tenues;
+
+            public bool Female { get { return sexe == "F"; } }
+
+            public Color Teint
+            {
+                get { return teint != null && teint.Length >= 3 ? new Color(teint[0], teint[1], teint[2], 1f) : Color.white; }
+            }
+
+            public Tenue Find(string name)
+            {
+                if (tenues == null) return null;
+                for (int i = 0; i < tenues.Length; i++)
+                {
+                    if (tenues[i] != null && tenues[i].nom == name) return tenues[i];
+                }
+
+                return null;
+            }
+        }
 
         public sealed class Data
         {
@@ -63,6 +111,10 @@ namespace UberBagarre.EditorTools
             public float[] Weights;
             public Dictionary<string, int[]> Submeshes;
             public DateTime Stamp;
+            public Meta Meta;
+
+            /// <summary>La silhouette (sans le suffixe _Foule) : le nom des matières et de la méta.</summary>
+            public string Silhouette { get { return Name != null ? Name.Replace("_Foule", "") : ""; } }
 
             public int Bone(string name)
             {
@@ -127,8 +179,48 @@ namespace UberBagarre.EditorTools
             data = Parse(File.ReadAllBytes(path));
             data.Name = key;
             data.Stamp = stamp;
+            data.Meta = LoadMeta(silhouette);
             Cache[key] = data;
             return data;
+        }
+
+        private static readonly Dictionary<string, Meta> Metas = new Dictionary<string, Meta>();
+
+        /// <summary>La méta d'une silhouette (une coquille vide si le fichier manque : corps sans textures).</summary>
+        public static Meta LoadMeta(string silhouette)
+        {
+            string key = silhouette.Replace("_Foule", "");
+            Meta meta;
+            if (Metas.TryGetValue(key, out meta) && meta != null) return meta;
+
+            string path = Folder + "/Corps_" + key + ".json";
+            meta = File.Exists(path) ? JsonUtility.FromJson<Meta>(File.ReadAllText(path)) : null;
+            if (meta == null)
+            {
+                Debug.LogWarning("[UberBagarre] " + path + " introuvable : relance Tools/uma/corps_uma.py.");
+                meta = new Meta();
+            }
+
+            Metas[key] = meta;
+            return meta;
+        }
+
+        /// <summary>
+        /// Le visage d'un personnage, parmi ceux de son sexe : tiré d'après son nom (le même
+        /// personnage garde toujours le même visage), sinon celui de la silhouette.
+        /// </summary>
+        public static string FaceFor(Data data, string who)
+        {
+            Meta meta = data != null ? data.Meta : null;
+            if (meta == null) return null;
+            if (string.IsNullOrEmpty(who) || meta.visages == null || meta.visages.Length == 0) return meta.visage;
+
+            unchecked
+            {
+                int h = 17;
+                for (int i = 0; i < who.Length; i++) h = h * 31 + who[i];
+                return meta.visages[(h & 0x7fffffff) % meta.visages.Length];
+            }
         }
 
         private static Data Parse(byte[] compressed)
@@ -330,16 +422,21 @@ namespace UberBagarre.EditorTools
 
         private static string SlotOf(string submesh, Top top, bool withHead, int worn)
         {
-            if (submesh.StartsWith("Peau."))
+            // La peau du corps (Peau.N) et celle du visage (Visage.N) : N dit quels vêtements
+            // la cachent ; le visage porte toujours le bit Tete.
+            int dot = submesh.IndexOf('.');
+            if (dot > 0)
             {
+                string family = submesh.Substring(0, dot);
+                if (family != "Peau" && family != "Visage") return null;
                 int mask;
-                if (!int.TryParse(submesh.Substring(5), out mask)) return null;
-                return (mask & worn) == 0 ? "Peau" : null;
+                if (!int.TryParse(submesh.Substring(dot + 1), out mask)) return null;
+                return (mask & worn) == 0 ? family : null;
             }
 
-            if (submesh == "Yeux") return withHead ? "Yeux" : null;
+            if (submesh == "Yeux" || submesh == "Cils") return withHead ? submesh : null;
             if (submesh == top.ToString()) return "Haut";
-            if (submesh == "Jean" || submesh == "Ceinture" || submesh == "Chaussures" || submesh == "Semelle") return submesh;
+            if (submesh == "Jean" || submesh == "Chaussures") return submesh;
             if (submesh == "Bandes") return (worn & Bandes) != 0 ? "Bandes" : null;
             return null;
         }
@@ -422,11 +519,16 @@ namespace UberBagarre.EditorTools
         // ------------------------------------------------------------------ matières
 
         /// <summary>
-        /// Les matières d'une tenue, dans l'ordre des emplacements. La peau et les yeux
-        /// viennent du corps ; le haut, le bas et les chaussures de la palette du personnage.
+        /// Les matières d'une tenue, dans l'ordre des emplacements. La peau, le visage, les yeux
+        /// et les cils viennent du corps ; le haut, le jean et les chaussures prennent la couleur
+        /// du personnage (<paramref name="top"/>, <paramref name="pants"/>, <paramref name="shoes"/>)
+        /// posée sur la texture du vêtement — ou sur un tissu procédural pour ceux que l'outil
+        /// taille dans la peau.
         /// </summary>
-        public static Material[] MaterialsFor(string silhouette, List<string> slots, Material top, Material pants, Material shoes)
+        public static Material[] MaterialsFor(string silhouette, List<string> slots, Material top, Material pants, Material shoes,
+            Top cut = Top.TShirt, string face = null)
         {
+            Meta meta = LoadMeta(silhouette);
             Material[] materials = new Material[slots.Count];
 
             for (int i = 0; i < slots.Count; i++)
@@ -434,12 +536,12 @@ namespace UberBagarre.EditorTools
                 switch (slots[i])
                 {
                     case "Peau": materials[i] = SkinMaterial(silhouette); break;
-                    case "Yeux": materials[i] = EyeMaterial(); break;
-                    case "Haut": materials[i] = Fabric(top, "jersey", 0.55f); break;
-                    case "Jean": materials[i] = Fabric(pants, "denim", 0.7f); break;
-                    case "Ceinture": materials[i] = Fabric(Plain("M_Ceinture", new Color(0.075f, 0.05f, 0.035f), 0.5f), "cuir", 0.6f); break;
-                    case "Chaussures": materials[i] = Fabric(shoes, "cuir", 0.45f); break;
-                    case "Semelle": materials[i] = Fabric(Plain("M_Semelle", new Color(0.80f, 0.78f, 0.74f), 0.18f), "caoutchouc", 0.4f); break;
+                    case "Visage": materials[i] = FaceMaterial(silhouette, face); break;
+                    case "Yeux": materials[i] = EyeMaterial(meta); break;
+                    case "Cils": materials[i] = LashMaterial(meta); break;
+                    case "Haut": materials[i] = Garment(meta, cut.ToString(), top, "jersey", 0.55f); break;
+                    case "Jean": materials[i] = Garment(meta, "Jean", pants, "denim", 0.7f); break;
+                    case "Chaussures": materials[i] = Garment(meta, "Chaussures", shoes, "cuir", 0.45f); break;
                     case "Bandes": materials[i] = Fabric(Plain("M_Bandes", new Color(0.86f, 0.84f, 0.78f), 0.12f), "bandes", 0.8f); break;
                 }
             }
@@ -447,54 +549,151 @@ namespace UberBagarre.EditorTools
             return materials;
         }
 
+        /// <summary>Le chemin d'une texture du corps (jpg ou png), sans extension dans la méta.</summary>
+        private static string TexturePath(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            string jpg = Folder + "/" + name + ".jpg";
+            if (File.Exists(jpg)) return jpg;
+            string png = Folder + "/" + name + ".png";
+            return File.Exists(png) ? png : null;
+        }
+
+        private static Texture2D LoadTexture(string name, bool normalMap)
+        {
+            string path = TexturePath(name);
+            if (path == null) return null;
+            ConfigureTexture(path, normalMap);
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        }
+
         public static Material SkinMaterial(string silhouette)
         {
             string key = silhouette.Replace("_Foule", "");
+            Meta meta = LoadMeta(key);
+            // Corps pas encore refait (sans Corps_*.json) : ses anciennes textures.
+            string albedo = string.IsNullOrEmpty(meta.peau) ? "Peau_" + key + "_Albedo" : meta.peau;
+            string relief = string.IsNullOrEmpty(meta.peauRelief) ? "Peau_" + key + "_Relief" : meta.peauRelief;
+            return SkinLike("M_Peau_" + key, LoadTexture(albedo, false), LoadTexture(relief, true), meta.Teint);
+        }
+
+        /// <summary>Le visage : la même peau (et les mêmes bleus), sur la texture du visage choisi.</summary>
+        public static Material FaceMaterial(string silhouette, string face)
+        {
+            string key = silhouette.Replace("_Foule", "");
+            Meta meta = LoadMeta(key);
+            if (string.IsNullOrEmpty(face)) face = meta.visage;
+            string name = "M_" + (face ?? "Visage") + "_" + key;
+            return SkinLike(name, LoadTexture(face, false), LoadTexture(meta.visageRelief, true), meta.Teint);
+        }
+
+        private static Material SkinLike(string name, Texture2D albedo, Texture2D relief, Color teint)
+        {
             Material cached;
-            if (SkinMaterials.TryGetValue(key, out cached) && cached != null) return cached;
+            if (SkinMaterials.TryGetValue(name, out cached) && cached != null) return cached;
 
-            string albedoPath = Folder + "/Peau_" + key + "_Albedo.jpg";
-            string reliefPath = Folder + "/Peau_" + key + "_Relief.jpg";
-            ConfigureTexture(albedoPath, false);
-            ConfigureTexture(reliefPath, true);
-
-            Texture2D albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(albedoPath);
-            Texture2D relief = AssetDatabase.LoadAssetAtPath<Texture2D>(reliefPath);
-
-            Material material = EditorBuildUtility.CreateOrUpdateEffectMaterial(MaterialsFolder, "M_Peau_" + key, "UberBagarre/Peau");
+            Material material = EditorBuildUtility.CreateOrUpdateEffectMaterial(MaterialsFolder, name, "UberBagarre/Peau");
             if (material == null)
             {
-                material = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Peau_" + key, Color.white, 0.3f, 0f, albedo);
+                material = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, name, teint, 0.3f, 0f, albedo);
             }
 
             if (material.HasProperty("_MainTex") && albedo != null) material.SetTexture("_MainTex", albedo);
-            if (material.HasProperty("_Color")) material.SetColor("_Color", Color.white);
+            if (material.HasProperty("_BaseMap") && albedo != null) material.SetTexture("_BaseMap", albedo);
+
+            // Le teint de la silhouette : les textures UMA sont claires, la teinte les fonce.
+            if (material.HasProperty("_Color")) material.SetColor("_Color", teint);
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", teint);
 
             // La peau a un léger voile humide : un peu de lissage, pas du vinyle.
-            if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.34f);
+            if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0.36f);
             if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", 0f);
             if (material.HasProperty("_MarkSpace")) material.SetFloat("_MarkSpace", 1f);
-            if (relief != null) EditorBuildUtility.ApplyNormalMap(material, relief, 1f);
+            if (relief != null) EditorBuildUtility.ApplyNormalMap(material, relief, 0.9f);
 
             EditorUtility.SetDirty(material);
-            SkinMaterials[key] = material;
+            SkinMaterials[name] = material;
             return material;
         }
 
-        private static Material EyeMaterial()
+        private static Material EyeMaterial(Meta meta)
         {
-            string path = Folder + "/Yeux_Marron.png";
-            ConfigureTexture(path, false);
-            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            return EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Yeux", Color.white, 0.86f, 0f, texture);
+            string name = string.IsNullOrEmpty(meta.yeux) ? "Yeux_Marron" : meta.yeux;
+            Texture2D texture = LoadTexture(name, false);
+            return EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_" + name, Color.white, 0.86f, 0f, texture);
+        }
+
+        private static Material LashMaterial(Meta meta)
+        {
+            Texture2D texture = LoadTexture(meta.cils, false);
+            Material material = EditorBuildUtility.CreateOrUpdateMaterial(MaterialsFolder, "M_Cils_" + (meta.sexe ?? "F"),
+                Color.white, 0.2f, 0f, texture);
+            UrpSetup.MakeCutout(material, 0.35f, true);
+            return material;
         }
 
         private static readonly Dictionary<string, Material> Fabrics = new Dictionary<string, Material>();
 
         /// <summary>
+        /// La matière d'un vêtement : sa propre texture (plis, coutures, poches, en gris clair)
+        /// teintée de la couleur choisie pour le personnage ; à défaut, un tissu procédural
+        /// (<paramref name="fallbackStyle"/>) pour les vêtements taillés dans la peau, dont les
+        /// UV sont en mètres.
+        /// </summary>
+        private static Material Garment(Meta meta, string garment, Material source, string fallbackStyle, float normalScale)
+        {
+            if (source == null) return null;
+            Tenue tenue = meta != null ? meta.Find(garment) : null;
+
+            if (tenue == null || string.IsNullOrEmpty(tenue.albedo))
+            {
+                string style = tenue != null && !string.IsNullOrEmpty(tenue.tissu) ? tenue.tissu : fallbackStyle;
+                return Fabric(source, style, normalScale);
+            }
+
+            string key = garment + "|" + meta.sexe + "|" + source.name;
+            Material cached;
+            if (Fabrics.TryGetValue(key, out cached) && cached != null) return cached;
+
+            Texture2D albedo = LoadTexture(tenue.albedo, false);
+            Texture2D relief = LoadTexture(tenue.relief, true);
+
+            EditorBuildUtility.EnsureFolder(MaterialsFolder);
+            string path = MaterialsFolder + "/M_" + garment + "_" + meta.sexe + "_" + FileSafe(source.name) + ".mat";
+            Material m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(source);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            else
+            {
+                m.shader = source.shader;
+                m.CopyPropertiesFromMaterial(source);
+            }
+
+            foreach (string property in new[] { "_BaseMap", "_MainTex" })
+            {
+                if (!m.HasProperty(property)) continue;
+                m.SetTexture(property, albedo);
+                m.SetTextureScale(property, Vector2.one);
+            }
+
+            if (relief != null)
+            {
+                EditorBuildUtility.ApplyNormalMap(m, relief, normalScale);
+                if (m.HasProperty("_BumpMap")) m.SetTextureScale("_BumpMap", Vector2.one);
+            }
+
+            EditorUtility.SetDirty(m);
+            Fabrics[key] = m;
+            return m;
+        }
+
+        /// <summary>
         /// La matière d'un vêtement (sa couleur, sa brillance, choisies par le personnage)
         /// habillée d'un vrai tissu : la maille d'un tee-shirt, le sergé d'un jean, le grain du
-        /// cuir. Les UV des vêtements sont en mètres (voir Tools/corps/vetements.py) : la
+        /// cuir. Les UV de ces vêtements sont en mètres (voir Tools/uma/corps_uma.py) : la
         /// texture se répète à sa taille réelle, sur toutes les silhouettes. Une couleur unie
         /// sur un vêtement, c'est ce qui le faisait paraître en plastique.
         /// </summary>

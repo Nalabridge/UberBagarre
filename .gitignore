@@ -66,3 +66,6 @@ Assets/UberBagarre/Art/Interieurs/Generes.meta
 # Ville de Schedule 1 (pack de la carte, installe a la main : ne jamais la publier)
 /Assets/Schedule1/
 /Assets/Schedule1.meta
+
+# Cache d extraction du paquet UMA (Tools/uma/corps_uma.py)
+/Tools/uma/.cache/

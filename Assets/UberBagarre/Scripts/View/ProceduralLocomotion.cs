@@ -161,6 +161,8 @@ namespace UberBagarre.View
         /// </summary>
         public Vector3 CombatBodyEuler { get; set; }
 
+        private Vector3 _combatEuler;
+
         /// <summary>
         /// Rotation du buste due à un coup ENCAISSÉ, en degrés. Additive elle aussi.
         ///
@@ -204,6 +206,11 @@ namespace UberBagarre.View
 
             Vector3 flatVelocity = new Vector3(_velocity.x, 0f, _velocity.z);
             float speed = flatVelocity.magnitude;
+
+            // La torsion de combat est suivie de très près, mais pas recopiée : quand un coup en
+            // enchaîne un autre, la consigne retombe à zéro le temps d'une image, et le buste
+            // aurait claqué au neutre avant de repartir.
+            _combatEuler = Vector3.Lerp(_combatEuler, CombatBodyEuler, 1f - Mathf.Exp(-40f * dt));
 
             UpdatePhase(speed, dt);
             UpdateFeet(flatVelocity, speed, dt);
@@ -373,7 +380,7 @@ namespace UberBagarre.View
 
             // Le buste encaisse la moitié de la rotation de combat, la poitrine l'autre moitié :
             // la torsion se répartit le long de la colonne au lieu de casser à un seul endroit.
-            Vector3 combat = (CombatBodyEuler + HitReactionEuler) * 0.5f;
+            Vector3 combat = (_combatEuler + HitReactionEuler) * 0.5f;
 
             if (_rig.Spine != null)
             {

@@ -306,6 +306,11 @@ namespace UberBagarre.Enemy
         private void OnTargetAttackStarted(AttackData attack, View.HandSide side)
         {
             if (!_active) return;
+
+            // Sonné par le coup précédent, il ne voit pas venir le suivant : c'est ce qui laisse
+            // un enchaînement aller au bout. Avant, il réagissait au coup suivant dès sa
+            // sortie et l'esquivait à coup sûr dès que la perte de contrôle se terminait.
+            if (_self == null || !_self.CanAct) return;
             if (_self.DistanceTo(_target) > _dodgeMaxDistance) return;
 
             // L'esquive passe avant la garde : elle annule le coup au lieu de l'absorber, donc

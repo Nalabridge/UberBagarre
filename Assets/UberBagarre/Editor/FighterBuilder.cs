@@ -70,6 +70,12 @@ namespace UberBagarre.EditorTools
 
             public CorpsImporter.Top Top;
 
+            /// <summary>
+            /// Le visage (une texture UMA, voir Corps_*.json). Vide : tiré d'après le nom du
+            /// personnage, pour que la foule ne soit pas faite de jumeaux.
+            /// </summary>
+            public string Face;
+
             /// <summary>Version légère (sans subdivision) pour le public du fond de salle.</summary>
             public bool Crowd;
 
@@ -175,7 +181,10 @@ namespace UberBagarre.EditorTools
             System.Collections.Generic.List<string> slots;
             // Le joueur porte des bandes de boxe : ce sont ses mains qu'on voit tout le temps.
             Mesh mesh = CorpsImporter.BuildMesh(data, skin.Top, withHead, out slots, !withHead);
-            Material[] materials = CorpsImporter.MaterialsFor(data.Name, slots, skin.Shirt, skin.Pants, skin.Shoe);
+            string face = !string.IsNullOrEmpty(skin.Face)
+                ? skin.Face
+                : withHead ? CorpsImporter.FaceFor(data, owner != null ? owner.name : parent.name) : null;
+            Material[] materials = CorpsImporter.MaterialsFor(data.Name, slots, skin.Shirt, skin.Pants, skin.Shoe, skin.Top, face);
             CorpsImporter.Built built = CorpsImporter.BuildSkeleton(data, result.Body.transform, mesh, materials);
             result.Renderer = built.Renderer;
 
@@ -189,7 +198,7 @@ namespace UberBagarre.EditorTools
                 // projette rien. Sans ça, une silhouette sans tête marche à côté de toi au sol.
                 System.Collections.Generic.List<string> shadowSlots;
                 Mesh whole = CorpsImporter.BuildMesh(data, skin.Top, true, out shadowSlots, true);
-                Material[] shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, skin.Shirt, skin.Pants, skin.Shoe);
+                Material[] shadowMaterials = CorpsImporter.MaterialsFor(data.Name, shadowSlots, skin.Shirt, skin.Pants, skin.Shoe, skin.Top, face);
 
                 GameObject shadowGo = new GameObject("Ombre");
                 shadowGo.transform.SetParent(result.Body.transform, false);

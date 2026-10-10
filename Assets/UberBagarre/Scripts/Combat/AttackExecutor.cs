@@ -92,7 +92,24 @@ namespace UberBagarre.Combat
 
         [SerializeField, Min(0f)]
         [Tooltip("Vitesse maximale du pas glisse qui accompagne un coup hors de portee (m/s).")]
-        private float _maxLungeSpeed = 3.6f;
+        private float _maxLungeSpeed = 4.4f;
+
+        [SerializeField, Min(0f)]
+        [Tooltip("Ecart maximal comble par le pas glisse (m). Au-dela, on frappe l'air : c'est " +
+                 "voulu, sinon chaque coup deviendrait un bond.")]
+        private float _maxLungeGap = 1.35f;
+
+        [Header("Enchainement")]
+        [SerializeField, Min(1)]
+        [Tooltip("Coups portes d'affilee avant le coup de conclusion : au troisieme, l'adversaire " +
+                 "part valser (recul, ralenti, chute plus probable), comme le dernier coup d'un " +
+                 "combo dans GTA.")]
+        private int _finisherAfter = 2;
+
+        [SerializeField, Range(0f, 1f)]
+        [Tooltip("Un coup LOURD qui part dans le vide ne s'annule qu'a cette fraction de son " +
+                 "retour : rater un crochet se paie. Un coup qui porte s'enchaine tout de suite.")]
+        private float _whiffRecovery = 0.5f;
 
         [SerializeField, Min(0f)]
         [Tooltip("Amplification de la rotation du buste ecrite dans les coups.")]
@@ -124,6 +141,16 @@ namespace UberBagarre.Combat
         private AttackData _charging;
         private float _chargeTime;
 
+        // Coup chargeable lancé touche tenue : il part TOUT DE SUITE et tient son armement tant
+        // que la touche reste enfoncée (voir TryPlayHeld).
+        private bool _holding;
+        private float _holdTime;
+        private bool _lungePending;
+        private bool _deferLunge;
+
+        /// <summary>Tenue d'armement en dessous de laquelle un appui reste un coup sec, sans charge.</summary>
+        private const float TapTime = 0.1f;
+
         private StrikeTarget _target;
         private bool _hasTargetPose;
         private Vector3 _targetPose;
@@ -132,6 +159,8 @@ namespace UberBagarre.Combat
         private float _hitLag;
         private bool _contacted;
         private int _chain;
+        private int _comboHits;
+        private bool _finisher;
         private float _lastEndTime = -10f;
 
         private Vector3 _previousFist;
@@ -152,18 +181,30 @@ namespace UberBagarre.Combat
         {
             get
             {
+                if (IsHoldCharging) return _charge;
                 if (_charging == null) return 0f;
                 return Mathf.Clamp01(_chargeTime / Mathf.Max(0.05f, _charging.maxChargeTime));
             }
         }
 
-        public bool IsCharging { get { return _charging != null; } }
+        public bool IsCharging { get { return _charging != null || IsHoldCharging; } }
+
+        /// <summary>Vrai tant qu'un coup lancé touche tenue garde son armement.</summary>
+        public bool IsHolding { get { return _attack != null && _holding; } }
+
+        private bool IsHoldCharging { get { return _attack != null && _holding && _holdTime > TapTime; } }
         public AttackData ChargingAttack { get { return _charging; } }
         public bool IsAttacking { get { return _attack != null; } }
         public bool IsHitWindowOpen { get { return _hitWindowOpen; } }
 
         /// <summary>Nombre de coups enchaînés sans temps mort (0 = premier coup).</summary>
         public int Chain { get { return _chain; } }
+
+        /// <summary>Vrai si le coup en cours conclut un enchaînement (voir <see cref="_finisherAfter"/>).</summary>
+        public bool IsFinisher { get { return _attack != null && _finisher; } }
+
+        /// <summary>Vrai si le coup en cours a déjà touché quelqu'un.</summary>
+        public bool HasConnected { get { return _attack != null && _contacted; } }
 
         /// <summary>La cible du coup en cours (non valide si le coup part dans le vide).</summary>
         public StrikeTarget Target { get { return _target; } }
@@ -232,9 +273,30 @@ namespace UberBagarre.Combat
             }
         }
 
+        /// <summary>
+        /// Le coup en cours peut-il être interrompu par le suivant ? Dès la fin de sa fenêtre
+        /// d'impact s'il a porté ou s'il est léger ; un coup lourd parti dans le vide, lui, doit
+        /// faire une partie de son retour : c'est le prix du coup raté.
+        /// </summary>
         public bool CanChain
         {
-            get { return _attack != null && Progress >= _attack.comboCancelAt; }
+            get
+            {
+                if (_attack == null) return false;
+                return Progress >= ChainPoint;
+            }
+        }
+
+        /// <summary>Fraction du geste à partir de laquelle le coup en cours s'enchaîne.</summary>
+        public float ChainPoint
+        {
+            get
+            {
+                if (_attack == null) return 0f;
+                float at = _attack.comboCancelAt;
+                if (_attack.isHeavy && !_contacted) at = Mathf.Lerp(at, 1f, _whiffRecovery);
+                return at;
+            }
         }
 
         public bool IsReady
@@ -268,6 +330,12 @@ namespace UberBagarre.Combat
         private float TotalDuration
         {
             get { return EffectiveDuration + Telegraph; }
+        }
+
+        /// <summary>Sommet de l'armement (fraction du geste), où se tient un coup chargé.</summary>
+        private float HoldPoint
+        {
+            get { return _attack == null ? 0f : Mathf.Clamp(_attack.hitWindowStart * 0.5f, 0.05f, 0.3f); }
         }
 
         private float Telegraph
@@ -368,6 +436,7 @@ namespace UberBagarre.Combat
 
         public void CancelCharge()
         {
+            ReleaseHold();
             if (_charging == null) return;
 
             if (_hands != null && _charging.limb != AttackLimb.Foot)
@@ -400,6 +469,43 @@ namespace UberBagarre.Combat
         public bool TryPlay(AttackData attack)
         {
             return TryPlay(attack, 0f);
+        }
+
+        /// <summary>
+        /// Lance un coup chargeable À L'APPUI, touche encore tenue. Le geste part aussitôt, puis
+        /// s'arrête au sommet de son armement tant que la touche reste enfoncée : la charge monte,
+        /// le poing tremble, et le coup part au relâché (<see cref="ReleaseHold"/>).
+        ///
+        /// Avant, un coup chargeable ne partait qu'au RELÂCHÉ : un simple appui d'un dixième de
+        /// seconde retardait l'uppercut d'autant, et le combat paraissait mou sur exactement les
+        /// coups qui devaient être les plus francs. Un appui bref donne maintenant un coup sec,
+        /// immédiat ; seul un appui tenu charge.
+        /// </summary>
+        public bool TryPlayHeld(AttackData attack)
+        {
+            _deferLunge = attack != null && attack.chargeable;
+            bool played = TryPlay(attack, 0f);
+            _deferLunge = false;
+
+            if (!played) return false;
+            if (!attack.chargeable) return true;
+
+            _holding = true;
+            _holdTime = 0f;
+            return true;
+        }
+
+        /// <summary>Fin de la tenue : le coup chargé part avec la charge accumulée.</summary>
+        public void ReleaseHold()
+        {
+            if (!_holding) return;
+
+            _holding = false;
+            if (_attack != null && _lungePending)
+            {
+                _lungePending = false;
+                Lunge();
+            }
         }
 
         public bool TryPlay(AttackData attack, float charge)
@@ -448,8 +554,16 @@ namespace UberBagarre.Combat
             // et les impacts montent avec lui.
             _chain = chaining || Time.time - _lastEndTime < 0.35f ? _chain + 1 : 0;
 
+            // Le coup de conclusion : il faut que les coups précédents de la série aient PORTÉ.
+            // Après lui, on repart de zéro — jab, jab, et le troisième envoie valser.
+            if (_chain == 0 || _finisher) _comboHits = 0;
+            _finisher = _chain > 0 && _comboHits >= _finisherAfter;
+
             _attack = attack;
             _charge = attack.chargeable ? Mathf.Clamp01(charge) : 0f;
+            _holding = false;
+            _holdTime = 0f;
+            _lungePending = false;
             _riposteMultiplier = _guard != null ? _guard.ConsumeRiposte() : 1f;
 
             _side = ResolveHand(attack);
@@ -467,7 +581,10 @@ namespace UberBagarre.Combat
 
             AcquireTarget();
             BeginHandMotion();
-            Lunge();
+
+            // Coup tenu : le pas glissé attendra le relâché, sinon il s'épuiserait pendant la charge.
+            if (_deferLunge) _lungePending = true;
+            else Lunge();
 
             if (_cinematic && _riposteMultiplier > 1.01f)
             {
@@ -546,19 +663,43 @@ namespace UberBagarre.Combat
         private void Lunge()
         {
             IImpulseReceiver receiver = _impulseReceiver as IImpulseReceiver;
-            if (receiver == null || !_target.Valid || _maxLungeSpeed <= 0f) return;
+            if (receiver == null || _maxLungeSpeed <= 0f) return;
 
-            Vector3 root = _hands.ArmRoot(_side);
-            Vector3 point = _target.WorldPoint;
-            // La portée réelle dépasse le bras : le buste qui tourne et l'épaule qui s'avance
-            // ajoutent une douzaine de centimètres. Sans eux, l'élan emmène trop près et le
-            // direct finit coude plié.
-            float reach = _hands.ArmReach(_side) + 0.18f;
-            float gap = Vector3.Distance(root, point) - reach;
+            Vector3 point;
+            float gap;
 
-            if (gap < 0.03f || gap > 1.2f) return;
+            if (_target.Valid)
+            {
+                Vector3 root = _hands.ArmRoot(_side);
+                point = _target.WorldPoint;
+                // La portée réelle dépasse le bras : le buste qui tourne et l'épaule qui s'avance
+                // ajoutent une douzaine de centimètres. Sans eux, l'élan emmène trop près et le
+                // direct finit coude plié.
+                float reach = _hands.ArmReach(_side) + 0.18f;
+                gap = Vector3.Distance(root, point) - reach;
+            }
+            else if (_attack.limb != AttackLimb.Hand)
+            {
+                // Coup de pied, coup de tête, bousculade : pas de point de surface à guider,
+                // mais le corps se jette quand même vers l'adversaire qu'on regarde. Sans ça, un
+                // coup de pied à 1,4 m fendait l'air pendant que le poing, lui, allait chercher.
+                Combatant opponent = StrikeTarget.NearestInFront(_combatant);
+                if (opponent == null) return;
 
-            float timeToImpact = Mathf.Max(0.08f, _attack.ImpactTime * EffectiveDuration + Telegraph);
+                point = opponent.transform.position;
+                Vector3 flat = point - transform.position;
+                flat.y = 0f;
+                float reach = _attack.limb == AttackLimb.Foot ? 1.0f : 0.6f;
+                gap = flat.magnitude - reach;
+            }
+            else
+            {
+                return;
+            }
+
+            if (gap < 0.03f || gap > _maxLungeGap) return;
+
+            float timeToImpact = Mathf.Max(0.08f, ImpactDelay - _elapsed);
             float speed = Mathf.Min(_maxLungeSpeed * (_attack.isHeavy ? 1.1f : 1f), gap / timeToImpact * 1.15f);
 
             Vector3 direction = point - transform.position;
@@ -580,6 +721,8 @@ namespace UberBagarre.Combat
             CloseHitWindow();
             ClearLimbPose();
             _motionActive = false;
+            _holding = false;
+            _lungePending = false;
 
             if (_locomotion != null) _locomotion.CombatBodyEuler = Vector3.zero;
             if (_cameraPunch != null)
@@ -646,6 +789,22 @@ namespace UberBagarre.Combat
             {
                 // Le poing reste sur la cible : on ne fait pas avancer le geste.
                 _hitLag -= Time.unscaledDeltaTime;
+            }
+            else if (_holding && Normalized(_elapsed) >= HoldPoint)
+            {
+                // Touche tenue : le geste s'arrête au sommet de l'armement et la charge monte.
+                _holdTime += dt;
+                float max = Mathf.Max(TapTime + 0.05f, _attack.maxChargeTime);
+                _charge = Mathf.Clamp01((_holdTime - TapTime) / (max - TapTime));
+
+                // L'état d'attaque doit couvrir la tenue, sinon il expire pendant la charge.
+                if (_combatant != null && _combatant.State.Current == CombatantState.Attacking)
+                {
+                    _combatant.State.Enter(CombatantState.Attacking, Mathf.Max(0.05f, TotalDuration - _elapsed) + 0.05f);
+                }
+
+                // Pleine charge tenue trop longtemps : le coup part de lui-même.
+                if (_holdTime >= max + 0.35f) ReleaseHold();
             }
             else
             {
@@ -717,6 +876,19 @@ namespace UberBagarre.Combat
 
             if (_attack.limb == AttackLimb.Hand) pose = Retarget(pose, normalized, dt);
 
+            // Charge tenue : le poing recule encore un peu et tremble de plus en plus — la charge
+            // doit se VOIR, sinon on relâche au hasard.
+            if (IsHoldCharging)
+            {
+                float shake = _charge * _charge * 0.007f;
+                pose = new HandPose(
+                    pose.position + new Vector3(
+                        (Mathf.PerlinNoise(Time.time * 38f, 0f) - 0.5f) * shake,
+                        (Mathf.PerlinNoise(0f, Time.time * 41f) - 0.5f) * shake,
+                        -0.03f * _charge),
+                    pose.euler);
+            }
+
             // Gel du contact : le poing tremble à peine contre la cible.
             if (_hitLag > 0f)
             {
@@ -731,7 +903,7 @@ namespace UberBagarre.Combat
             if (_motionActive) _hands.SetAttackPose(_side == HandSide.Left ? HandSide.Right : HandSide.Left, capturedOff, 1f, -1f);
             else ApplyOffHandPose(key, mirrored, weight);
 
-            float intensity = 1f + Mathf.Min(_chain, 4) * 0.07f + _charge * 0.35f;
+            float intensity = 1f + Mathf.Min(_chain, 4) * 0.07f + _charge * 0.35f + (_finisher ? 0.25f : 0f);
 
             if (_locomotion != null)
             {
@@ -867,6 +1039,16 @@ namespace UberBagarre.Combat
             template.IsRiposte = _riposteMultiplier > 1.01f;
             template.BonusKnockdownChance = _attack.chargeKnockdownBonus * _charge;
 
+            // Le coup de conclusion pèse plus : un peu plus de dégâts, beaucoup plus de recul, et
+            // une vraie chance d'envoyer au sol (un crochet ou un uppercut plus souvent qu'un jab).
+            template.IsFinisher = _finisher;
+            if (_finisher)
+            {
+                template.Amount *= 1.2f;
+                template.ImpactForce *= 1.6f;
+                template.BonusKnockdownChance += _attack.isHeavy ? 0.35f : 0.15f;
+            }
+
             // L'entraînement (technique, puissance) : un peu plus de chutes, des ripostes plus lourdes.
             if (_combatant != null && _combatant.Stats != null)
             {
@@ -912,10 +1094,12 @@ namespace UberBagarre.Combat
 
             bool riposte = _riposteMultiplier > 1.01f;
             float strength = (_attack.isHeavy ? 1f : 0.62f) * (1f + _charge * 0.8f) * (riposte ? 1.3f : 1f) *
-                             (1f + Mathf.Min(_chain, 4) * 0.08f);
+                             (1f + Mathf.Min(_chain, 4) * 0.08f) * (_finisher ? 1.35f : 1f);
 
             // Le poing reste collé à la cible : plus le coup est lourd, plus il « s'écrase ».
-            _hitLag = (_attack.isHeavy ? 0.085f : 0.05f) * (1f + _charge * 0.6f) * (riposte ? 1.4f : 1f);
+            _hitLag = (_attack.isHeavy ? 0.085f : 0.05f) * (1f + _charge * 0.6f) * (riposte ? 1.4f : 1f) *
+                      (_finisher ? 1.3f : 1f);
+            if (!_contacted) _comboHits++;
             _contacted = true;
 
             // L'état d'attaque doit couvrir le gel, sinon il expire avant la fin du geste.
@@ -925,7 +1109,13 @@ namespace UberBagarre.Combat
                 _combatant.State.Enter(CombatantState.Attacking, remaining);
             }
 
-            if (_hitStop != null) _hitStop.Play(_attack.hitStopDuration * (1f + _charge));
+            // Le coup de conclusion « accroche » franchement : un arrêt net et plus profond, qui
+            // passe outre le temps mort entre deux arrêts (il vient forcément juste après un autre).
+            if (_hitStop != null)
+            {
+                if (_finisher) _hitStop.PlayStrong(0.07f + _charge * 0.02f, 0.12f);
+                else _hitStop.Play(_attack.hitStopDuration * (1f + _charge));
+            }
 
             bool killed = hurtbox != null && hurtbox.Health != null && !hurtbox.Health.IsAlive;
 
@@ -953,6 +1143,11 @@ namespace UberBagarre.Combat
             {
                 if (_hitStop != null) _hitStop.SlowMotion(0.3f, 0.45f);
                 if (_cameraPunch != null) _cameraPunch.HoldFov(7f, 0.35f);
+            }
+            else if (_cinematic && _finisher && _cameraPunch != null)
+            {
+                // La vue se resserre un instant sur l'adversaire qui part : on VOIT le combo conclure.
+                _cameraPunch.HoldFov(4f, 0.18f);
             }
 
             Action<AttackData, Hurtbox, Vector3> landed = HitLanded;

@@ -25,6 +25,12 @@ namespace UberBagarre.Feedback
 
         [SerializeField] private bool _enabled = true;
 
+        [SerializeField, Min(1f)]
+        [Tooltip("Raideur du ressort des CHOCS (coup porte, coup recu). Plus raide que celui du " +
+                 "geste : le choc culmine en ~35 ms au lieu de 60. C'est la difference entre un " +
+                 "impact qui claque et un impact qui pousse mollement la vue.")]
+        private float _impactStiffness = 28f;
+
         [SerializeField, Range(0f, 1.5f)]
         [Tooltip("Part du mouvement de camera des coups (elan du buste, accompagnement du poing). " +
                  "La vue SUIT le geste : elle plonge avec le direct, s'enroule avec le crochet, " +
@@ -67,6 +73,12 @@ namespace UberBagarre.Feedback
         private Vector3 _positionVelocity;
         private Vector3 _euler;
         private Vector3 _eulerVelocity;
+
+        // Les chocs ont leur propre ressort, plus sec, qui revient toujours a zero.
+        private Vector3 _impactPosition;
+        private Vector3 _impactPositionVelocity;
+        private Vector3 _impactEuler;
+        private Vector3 _impactEulerVelocity;
 
         private Vector3 _strikeEuler;
         private Camera _camera;
@@ -121,9 +133,9 @@ namespace UberBagarre.Feedback
         public void AddImpulse(Vector3 position, Vector3 euler)
         {
             // Ressort critique lancé à la vitesse v : x(t) = v·t·e^(-ωt), dont le pic vaut v/(e·ω).
-            float toVelocity = 2.71828f * _stiffness * _impulseScale;
-            _positionVelocity += position * toVelocity;
-            _eulerVelocity += euler * toVelocity;
+            float toVelocity = 2.71828f * _impactStiffness * _impulseScale;
+            _impactPositionVelocity += position * toVelocity;
+            _impactEulerVelocity += euler * toVelocity;
         }
 
         /// <summary>Remet la caméra au neutre (cinématique, changement de lieu).</summary>
@@ -135,6 +147,10 @@ namespace UberBagarre.Feedback
             _positionVelocity = Vector3.zero;
             _euler = Vector3.zero;
             _eulerVelocity = Vector3.zero;
+            _impactPosition = Vector3.zero;
+            _impactPositionVelocity = Vector3.zero;
+            _impactEuler = Vector3.zero;
+            _impactEulerVelocity = Vector3.zero;
             _strikeEuler = Vector3.zero;
             _fov = 0f;
             _fovVelocity = 0f;
@@ -156,16 +172,20 @@ namespace UberBagarre.Feedback
                 return;
             }
 
-            Step(ref _position, ref _positionVelocity, _drivenPosition, dt);
-            Step(ref _euler, ref _eulerVelocity, _drivenEuler + _strikeEuler, dt);
+            Step(ref _position, ref _positionVelocity, _drivenPosition, _stiffness, dt);
+            Step(ref _euler, ref _eulerVelocity, _drivenEuler + _strikeEuler, _stiffness, dt);
+            Step(ref _impactPosition, ref _impactPositionVelocity, Vector3.zero, _impactStiffness, dt);
+            Step(ref _impactEuler, ref _impactEulerVelocity, Vector3.zero, _impactStiffness, dt);
 
             _position = Vector3.ClampMagnitude(_position, _maxOffset);
             _euler = Vector3.ClampMagnitude(_euler, _maxAngle);
+            _impactPosition = Vector3.ClampMagnitude(_impactPosition, _maxOffset);
+            _impactEuler = Vector3.ClampMagnitude(_impactEuler, _maxAngle);
 
             // Réglage du joueur : secousses de caméra.
             float shake = Core.GameSettings.CameraShake;
-            transform.localPosition = _position * shake;
-            transform.localRotation = Quaternion.Euler(_euler * shake);
+            transform.localPosition = Vector3.ClampMagnitude(_position + _impactPosition, _maxOffset) * shake;
+            transform.localRotation = Quaternion.Euler(Vector3.ClampMagnitude(_euler + _impactEuler, _maxAngle) * shake);
 
             if (_fovHoldTimer > 0f) _fovHoldTimer -= dt;
             float fovTarget = _fovHoldTimer > 0f ? _fovHold : 0f;
@@ -206,13 +226,13 @@ namespace UberBagarre.Feedback
         /// Pas exact d'un ressort à amortissement critique vers <paramref name="target"/> :
         /// stable quel que soit le pas de temps, donc aussi à 20 images par seconde.
         /// </summary>
-        private void Step(ref Vector3 value, ref Vector3 velocity, Vector3 target, float dt)
+        private static void Step(ref Vector3 value, ref Vector3 velocity, Vector3 target, float stiffness, float dt)
         {
             Vector3 offset = value - target;
-            float decay = Mathf.Exp(-_stiffness * dt);
-            Vector3 temp = (velocity + offset * _stiffness) * dt;
+            float decay = Mathf.Exp(-stiffness * dt);
+            Vector3 temp = (velocity + offset * stiffness) * dt;
 
-            velocity = (velocity - temp * _stiffness) * decay;
+            velocity = (velocity - temp * stiffness) * decay;
             value = target + (offset + temp) * decay;
         }
     }

@@ -74,6 +74,7 @@ namespace UberBagarre.Feedback
         }
 
         private float _timer;
+        private float _timerScale = 1f;
         private float _cooldownTimer;
         private float _defaultFixedDelta;
 
@@ -131,7 +132,7 @@ namespace UberBagarre.Feedback
         private void ApplyScale()
         {
             float factor = SlowmoFactor();
-            if (_timer > 0f) factor = Mathf.Min(factor, _slowTimeScale);
+            if (_timer > 0f) factor = Mathf.Min(factor, _timerScale);
 
             Time.timeScale = factor * _baseTimeScale;
             Time.fixedDeltaTime = _defaultFixedDelta * Mathf.Max(0.02f, factor);
@@ -146,7 +147,24 @@ namespace UberBagarre.Feedback
             if (_cooldownTimer > 0f) return;
 
             _cooldownTimer = _cooldown;
+            if (_timer <= 0f) _timerScale = _slowTimeScale;
             _timer = Mathf.Max(_timer, Mathf.Min(duration, _maxDuration));
+            ApplyScale();
+        }
+
+        /// <summary>
+        /// Arrêt d'impact appuyé, pour le coup qui CONCLUT un enchaînement : plus profond
+        /// (<paramref name="scale"/>) et plus long qu'un arrêt ordinaire, et il passe outre le
+        /// temps mort — il arrive forcément juste après un autre coup. Rare par construction
+        /// (un coup sur trois au mieux), il ne rend donc pas le combat pâteux.
+        /// </summary>
+        public void PlayStrong(float duration, float scale)
+        {
+            if (!_enabled || duration <= 0f) return;
+
+            _cooldownTimer = _cooldown;
+            _timerScale = Mathf.Min(_timer > 0f ? _timerScale : 1f, Mathf.Clamp(scale, 0.05f, 1f));
+            _timer = Mathf.Max(_timer, Mathf.Min(duration, 0.1f));
             ApplyScale();
         }
 

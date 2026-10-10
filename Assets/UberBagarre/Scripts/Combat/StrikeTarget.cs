@@ -151,8 +151,14 @@ namespace UberBagarre.Combat
             return null;
         }
 
-        private static Combatant NearestInFront(Combatant attacker)
+        /// <summary>
+        /// L'adversaire le plus proche devant soi (à moins de <see cref="SearchRange"/> et de
+        /// 55 degrés), celui qu'on regarde de préférence. Null s'il n'y en a pas.
+        /// </summary>
+        public static Combatant NearestInFront(Combatant attacker)
         {
+            if (attacker == null) return null;
+
             Transform aim = attacker.AimOrigin;
             Vector3 forward = aim.forward;
             forward.y = 0f;
