@@ -573,6 +573,29 @@ namespace UberBagarre.EditorTools
                     Object.DestroyImmediate(all[i].gameObject);
                 }
             }
+
+            // Les niveaux de détail : seul le plus fin reste. Copiée hors de son LODGroup, la
+            // version simplifiée s'affichait EN MÊME TEMPS, un peu plus petite, dans la voiture.
+            LODGroup[] groups = shell.GetComponentsInChildren<LODGroup>(true);
+            for (int g = 0; g < groups.Length; g++)
+            {
+                LOD[] lods = groups[g].GetLODs();
+                for (int l = 1; l < lods.Length; l++)
+                {
+                    foreach (Renderer r in lods[l].renderers)
+                    {
+                        if (r != null) Object.DestroyImmediate(r);
+                    }
+                }
+
+                Object.DestroyImmediate(groups[g]);
+            }
+
+            Renderer[] renderers = shell.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (renderers[i] != null && CityRules.IsLodName(renderers[i].name)) Object.DestroyImmediate(renderers[i]);
+            }
         }
 
         /// <summary>
