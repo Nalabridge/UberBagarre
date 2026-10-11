@@ -592,6 +592,11 @@ namespace UberBagarre.World
 
         private void Honk()
         {
+            // Les conducteurs ne klaxonnent plus (trop envahissant) : le klaxon reste coupé.
+            _car.Honk(false);
+            return;
+
+#pragma warning disable CS0162
             bool annoyed = (_playerAhead && _agent.StoppedFor > 2.5f) || (_obstacle != null && _agent.StoppedFor > 7f);
             if (annoyed && Time.time >= _nextHonk)
             {
@@ -600,6 +605,7 @@ namespace UberBagarre.World
             }
 
             _car.Honk(Time.time < _honkUntil);
+#pragma warning restore CS0162
         }
 
         // ------------------------------------------------------------------ réactions

@@ -179,7 +179,7 @@ namespace UberBagarre.World
             bool queue = nearestCar != null && nearestCar.Queued;
             if (nearest < float.MaxValue && _stoppedFor > 4f && !player && !queue) _patientUntil = Time.time + 2.5f;
 
-            if (player && _stoppedFor > 2.5f && Time.time >= _honkAt && _horn != null)
+            if (false && player && _stoppedFor > 2.5f && Time.time >= _honkAt && _horn != null)
             {
                 _horn.Play();
                 _honkAt = Time.time + 4f;
