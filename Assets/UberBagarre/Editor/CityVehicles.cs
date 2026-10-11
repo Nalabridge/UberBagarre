@@ -463,6 +463,12 @@ namespace UberBagarre.EditorTools
             // de maillage temporaires, interdits sous un corps rigide).
             CarCabinBuilder.Result cab = CarCabinBuilder.Build(root.transform, shell.transform, model.key, shape, radius);
 
+            // Habitacle désactivé pour l'instant (il dépassait de certaines carrosseries) : seul
+            // l'emplacement du siège est gardé.
+            Object.DestroyImmediate(cab.Root.gameObject);
+            CarCockpit cockpitToRemove = root.GetComponent<CarCockpit>();
+            if (cockpitToRemove != null) Object.DestroyImmediate(cockpitToRemove);
+
             BoxCollider lower = root.AddComponent<BoxCollider>();
             lower.center = new Vector3(shape.center.x, (bottom + belt) * 0.5f, shape.center.z);
             lower.size = new Vector3(width * 0.98f, belt - bottom, length * 0.98f);
